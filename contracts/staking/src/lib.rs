@@ -66,6 +66,11 @@ fn get_total_rewards_internal(env: &Env) -> Result<i128, StakingError> {
         .ok_or(StakingError::NotInitialized)
 }
 
+/// Pure reward calculation — isolated from storage for testability.
+pub(crate) fn calculate_earned(stake: i128, rpt: i128, paid: i128, accrued: i128) -> i128 {
+    accrued + stake * (rpt - paid) / REWARD_SCALE
+}
+
 /// Computes how many reward tokens `staker` has earned since their last update.
 fn earned(env: &Env, staker: &Address) -> i128 {
     let stake: i128 = env
@@ -84,7 +89,7 @@ fn earned(env: &Env, staker: &Address) -> i128 {
         .persistent()
         .get(&DataKey::Rewards(staker.clone()))
         .unwrap_or(0i128);
-    accrued + stake * (rpt - paid) / REWARD_SCALE
+    calculate_earned(stake, rpt, paid, accrued)
 }
 
 /// Snapshots the staker's earned rewards and updates their paid-up-to pointer.
