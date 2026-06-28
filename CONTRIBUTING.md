@@ -437,6 +437,16 @@ All pull request titles must follow the [Conventional Commits](https://www.conve
 
 The format is `type(scope): subject`, where `type` is one of: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`. The `scope` is optional.
 
+#### Commit message template
+
+A `.gitmessage` file at the repo root provides a pre-filled template. Configure it once:
+
+```bash
+git config commit.template .gitmessage
+```
+
+Every `git commit` (without `-m`) will then open the template in your editor.
+
 ---
 
 ## Issue Labelling Conventions

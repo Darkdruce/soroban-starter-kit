@@ -96,6 +96,7 @@ pub fn require_state(env: &Env, expected: EscrowState) -> Result<(), crate::erro
 #[cfg(test)]
 mod tests {
     use super::{EscrowInfo, EscrowState};
+    use std::string::ToString;
 
     /// XDR ABI snapshot for [`EscrowInfo`].
     ///

@@ -695,7 +695,7 @@ fn test_cancel_admin_transfer() {
     let client = init_token(&env, &admin);
 
     client.propose_admin(&new_admin);
-    client.cancel_admin_transfer();
+    client.cancel_admin_proposal();
     // After cancellation, accept_admin must fail (no pending admin)
     assert!(client.try_accept_admin().is_err());
     // Original admin unchanged
@@ -905,6 +905,7 @@ fn test_allowance_expiry_no_allowance() {
 
     // Check that allowance_expiry returns None when no allowance exists
     assert_eq!(client.allowance_expiry(&owner, &spender), None);
+}
 
 #[test]
 fn test_propose_admin() {

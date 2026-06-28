@@ -54,6 +54,18 @@ pub fn transferred(env: &Env, from: &Address, to: &Address, amount: i128) {
     env.events().publish((Symbol::new(env, "transfer"), from.clone(), to.clone()), amount);
 }
 
+/// Emitted when an account is frozen.
+/// Topics: (Symbol, Address) — event name, account
+pub fn account_frozen(env: &Env, account: &Address) {
+    env.events().publish((Symbol::new(env, "account_frozen"), account.clone()), ());
+}
+
+/// Emitted when an account is unfrozen.
+/// Topics: (Symbol, Address) — event name, account
+pub fn account_unfrozen(env: &Env, account: &Address) {
+    env.events().publish((Symbol::new(env, "account_unfrozen"), account.clone()), ());
+}
+
 /// Emitted when the contract is paused.
 /// Topics: (Symbol, Address) — event name, admin
 pub fn paused(env: &Env, admin: &Address) {

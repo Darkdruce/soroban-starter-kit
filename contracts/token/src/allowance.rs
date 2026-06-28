@@ -9,7 +9,7 @@ use soroban_sdk::{panic_with_error, Env};
 use crate::errors::TokenError;
 use crate::storage::{AllowanceDataKey, AllowanceValue, DataKey};
 
-/// Soroban ledgers are expected roughly every 5 seconds on public networks.
+/// Soroban ledgers are expected roughly every `soroban_common::LEDGER_SECONDS` seconds on public networks.
 /// Allowance expiration is ledger-exact, so no additional wall-clock grace is
 /// applied beyond the caller-provided `expiration_ledger` (~0 seconds).
 const ALLOWANCE_EXPIRY_GRACE_LEDGERS: u32 = 0;
@@ -58,17 +58,16 @@ pub fn set_allowance(
     }
 }
 
-/// Deducts `amount` from the `(from, spender)` allowance, **preserving the
-/// original `expiration_ledger`** so the entry's TTL is not accidentally reset.
-///
-/// Panics with [`TokenError::InsufficientAllowance`] when the active allowance
-/// is less than `amount`.
-pub fn deduct_allowance(
+/// Validates that `spender` has sufficient allowance from `from` and deducts
+/// `amount`, returning `Err(TokenError::InsufficientAllowance)` instead of
+/// panicking. The original `expiration_ledger` is preserved so the TTL is not
+/// accidentally reset.
+pub(crate) fn validate_and_deduct_allowance(
     env: &Env,
     from: soroban_sdk::Address,
     spender: soroban_sdk::Address,
     amount: i128,
-) {
+) -> Result<(), TokenError> {
     let key = DataKey::Allowance(AllowanceDataKey {
         from: from.clone(),
         spender: spender.clone(),
@@ -81,14 +80,30 @@ pub fn deduct_allowance(
         _ => (0, EXPIRED_ALLOWANCE_LEDGER),
     };
     if current < amount {
-        panic_with_error!(env, TokenError::InsufficientAllowance);
+        return Err(TokenError::InsufficientAllowance);
     }
     env.storage().temporary().set(
         &key,
         &AllowanceValue {
             amount: current - amount,
-            // Preserve the original expiration so the TTL is not reset.
             expiration_ledger,
         },
     );
+    Ok(())
+}
+
+/// Deducts `amount` from the `(from, spender)` allowance, **preserving the
+/// original `expiration_ledger`** so the entry's TTL is not accidentally reset.
+///
+/// Panics with [`TokenError::InsufficientAllowance`] when the active allowance
+/// is less than `amount`.
+pub fn deduct_allowance(
+    env: &Env,
+    from: soroban_sdk::Address,
+    spender: soroban_sdk::Address,
+    amount: i128,
+) {
+    if let Err(e) = validate_and_deduct_allowance(env, from, spender, amount) {
+        panic_with_error!(env, e);
+    }
 }

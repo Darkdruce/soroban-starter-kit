@@ -108,6 +108,71 @@ fn test_full_escrow_lifecycle_refund_after_deadline() {
     assert_eq!(token.balance(&escrow_addr), 0);
 }
 
+/// initialize → fund → raise_dispute → arbiter resolves (both paths)
+/// Verifies Disputed state is reached and token balances after each resolution.
+#[test]
+fn test_escrow_dispute_and_arbiter_resolution() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let token_admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let arbiter = Address::generate(&env);
+    let amount = 1_000i128;
+    let deadline = env.ledger().sequence() + 200;
+
+    // ── Path 1: arbiter releases to seller ──────────────────────────────
+    let (token, token_addr) = deploy_token(&env, &token_admin);
+    token.mint(&buyer, &amount);
+
+    let (escrow, escrow_addr) = deploy_escrow(&env);
+    escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline);
+    escrow.fund();
+
+    assert_eq!(token.balance(&escrow_addr), amount);
+    assert_eq!(token.balance(&buyer), 0);
+
+    escrow.raise_dispute(&buyer);
+    assert_eq!(escrow.get_state(), Some(EscrowState::Disputed));
+    assert_eq!(token.balance(&escrow_addr), amount);
+
+    escrow.resolve_dispute(&true);
+    assert_eq!(escrow.get_state(), Some(EscrowState::Completed));
+    assert_eq!(token.balance(&seller), amount);
+    assert_eq!(token.balance(&escrow_addr), 0);
+    assert_eq!(token.balance(&buyer), 0);
+
+    // ── Path 2: arbiter refunds to buyer ────────────────────────────────
+    let buyer2 = Address::generate(&env);
+    let seller2 = Address::generate(&env);
+    let arbiter2 = Address::generate(&env);
+
+    token.mint(&buyer2, &amount);
+
+    let (escrow2, escrow_addr2) = deploy_escrow(&env);
+    escrow2.initialize(
+        &buyer2,
+        &seller2,
+        &arbiter2,
+        &token_addr,
+        &amount,
+        &deadline,
+    );
+    escrow2.fund();
+
+    assert_eq!(token.balance(&escrow_addr2), amount);
+
+    escrow2.raise_dispute(&seller2);
+    assert_eq!(escrow2.get_state(), Some(EscrowState::Disputed));
+
+    escrow2.resolve_dispute(&false);
+    assert_eq!(escrow2.get_state(), Some(EscrowState::Refunded));
+    assert_eq!(token.balance(&buyer2), amount);
+    assert_eq!(token.balance(&escrow_addr2), 0);
+    assert_eq!(token.balance(&seller2), 0);
+}
+
 /// initialize → fund → arbiter resolves in favour of seller
 #[test]
 fn test_full_escrow_lifecycle_arbiter_resolves_to_seller() {

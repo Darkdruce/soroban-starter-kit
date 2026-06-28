@@ -1,5 +1,7 @@
 #![cfg(test)]
 
+use std::format;
+
 use proptest::prelude::*;
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
@@ -39,6 +41,7 @@ proptest! {
     }
 
     /// Transfer is conservative: sender loses exactly what receiver gains.
+    /// Total supply is unchanged and all balances stay non-negative.
     #[test]
     fn prop_transfer_conservation(
         mint in 1i128..=1_000_000i128,
@@ -57,11 +60,33 @@ proptest! {
         prop_assert_eq!(client.balance(&sender), mint - transfer);
         prop_assert_eq!(client.balance(&receiver), transfer);
         prop_assert_eq!(client.total_supply(), mint);
+        prop_assert!(client.balance(&sender) >= 0);
+        prop_assert!(client.balance(&receiver) >= 0);
     }
 
-    /// Approve then transfer_from reduces allowance by exactly the transferred amount.
+    /// User burn reduces balance and total supply; balances never go negative.
     #[test]
-    fn prop_allowance_decrements_correctly(
+    fn prop_burn_conserves_supply(
+        mint in 1i128..=1_000_000i128,
+        burn in 1i128..=1_000_000i128,
+    ) {
+        let burn = burn.min(mint);
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _) = setup(&env);
+        let user = Address::generate(&env);
+
+        client.mint(&user, &mint);
+        client.burn(&user, &burn);
+
+        prop_assert_eq!(client.balance(&user), mint - burn);
+        prop_assert_eq!(client.total_supply(), mint - burn);
+        prop_assert!(client.balance(&user) >= 0);
+    }
+
+    /// transfer_from decrements allowance and preserves total supply.
+    #[test]
+    fn prop_transfer_from_conserves_supply(
         mint in 1i128..=1_000_000i128,
         approve in 1i128..=1_000_000i128,
         spend in 1i128..=1_000_000i128,
@@ -81,6 +106,11 @@ proptest! {
         client.transfer_from(&spender, &owner, &receiver, &spend);
 
         prop_assert_eq!(client.allowance(&owner, &spender), approve - spend);
+        prop_assert_eq!(client.balance(&owner), mint - spend);
+        prop_assert_eq!(client.balance(&receiver), spend);
+        prop_assert_eq!(client.total_supply(), mint);
+        prop_assert!(client.balance(&owner) >= 0);
+        prop_assert!(client.balance(&receiver) >= 0);
     }
 
     /// Total supply equals the sum of all individual balances after arbitrary mints.

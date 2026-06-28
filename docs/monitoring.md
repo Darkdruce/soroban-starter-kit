@@ -278,7 +278,228 @@ See [`scripts/monitor-escrow.sh`](../scripts/monitor-escrow.sh) for details.
 
 ---
 
-## 10. Resources
+## 10. Prometheus Alert Definitions
+
+The thresholds in §8 translate directly into Prometheus alerting rules. These
+assume an exporter (e.g. the custom indexer from §5) publishes the following
+metrics, labelled by `contract_id`:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `soroban_events_processed_total` | counter | Events ingested by the indexer |
+| `soroban_escrow_disputes_total` | counter | `dispute_raised` events observed |
+| `soroban_escrow_funded_total` | counter | `escrow_funded` events observed |
+| `soroban_transfer_amount` | histogram/gauge | Per-transfer value (base units) |
+| `soroban_upgrade_events_total` | counter | `upgrade_proposed` / `upgrade_executed` events |
+| `soroban_subscription_charge_failed_total` | counter | Failed `charged` attempts |
+| `soroban_subscription_charge_total` | counter | Total `charged` attempts |
+
+Save as `monitoring/alerts.yml` and load it from your Prometheus config
+(`rule_files: [ "alerts.yml" ]`):
+
+```yaml
+groups:
+  - name: soroban-contracts
+    rules:
+      # Indexer has stopped ingesting events entirely.
+      - alert: SorobanIndexerDown
+        expr: rate(soroban_events_processed_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No contract events processed for {{ $labels.contract_id }}"
+          description: "The indexer has ingested 0 events in the last 5 minutes."
+
+      # Event-processing lag: throughput dropped well below normal.
+      - alert: SorobanEventProcessingLag
+        expr: rate(soroban_events_processed_total[5m]) * 60 < 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Event processing lag for {{ $labels.contract_id }}"
+          description: "Fewer than 10 events/min processed over the last 10 minutes."
+
+      # Repeated disputes: dispute rate exceeds 10% of funded escrows.
+      - alert: SorobanEscrowDisputeSpike
+        expr: |
+          (
+            increase(soroban_escrow_disputes_total[1h])
+            / clamp_min(increase(soroban_escrow_funded_total[1h]), 1)
+          ) > 0.10
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Escrow dispute spike on {{ $labels.contract_id }}"
+          description: ">10% of funded escrows raised a dispute in the last hour."
+
+      # Large escrow / transfer: a single transfer exceeds the high-value cap.
+      - alert: SorobanLargeTransfer
+        expr: max_over_time(soroban_transfer_amount[5m]) > 1e11
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Large transfer on {{ $labels.contract_id }}"
+          description: "A transfer above the high-value threshold was observed. Review immediately."
+
+      # Failed upgrades / upgrade activity: alert on every upgrade event.
+      - alert: SorobanUpgradeActivity
+        expr: increase(soroban_upgrade_events_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Upgrade activity on {{ $labels.contract_id }}"
+          description: "An upgrade was proposed or executed. Verify the WASM hash and timelock."
+
+      # Subscription charge failures above 20% of attempts.
+      - alert: SorobanChargeFailureRate
+        expr: |
+          (
+            increase(soroban_subscription_charge_failed_total[1h])
+            / clamp_min(increase(soroban_subscription_charge_total[1h]), 1)
+          ) > 0.20
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High subscription charge-failure rate on {{ $labels.contract_id }}"
+          description: ">20% of charge attempts failed in the last hour."
+```
+
+Tune the numeric thresholds (`1e11` base units, `0.10`, `0.20`, …) to match the
+decimals and risk profile of your specific deployment — see the tables in §8.
+
+---
+
+## 11. Grafana Dashboard
+
+Import the JSON below via **Dashboards → New → Import** in Grafana. It expects a
+Prometheus datasource and the metrics described in §10. Replace the
+`${DS_PROMETHEUS}` datasource variable when prompted.
+
+```json
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "schemaVersion": 39,
+  "title": "Soroban Contract Monitoring",
+  "tags": ["soroban", "stellar", "contracts"],
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "contract_id",
+        "type": "query",
+        "datasource": "${DS_PROMETHEUS}",
+        "query": "label_values(soroban_events_processed_total, contract_id)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Events processed / min",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "rate(soroban_events_processed_total{contract_id=~\"$contract_id\"}[5m]) * 60",
+          "legendFormat": "{{contract_id}}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Dispute rate (1h)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.02 },
+              { "color": "red", "value": 0.1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "increase(soroban_escrow_disputes_total{contract_id=~\"$contract_id\"}[1h]) / clamp_min(increase(soroban_escrow_funded_total{contract_id=~\"$contract_id\"}[1h]), 1)",
+          "legendFormat": "{{contract_id}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Max transfer value (5m)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "max_over_time(soroban_transfer_amount{contract_id=~\"$contract_id\"}[5m])",
+          "legendFormat": "{{contract_id}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Upgrade events (10m)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "increase(soroban_upgrade_events_total{contract_id=~\"$contract_id\"}[10m])",
+          "legendFormat": "{{contract_id}}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Subscription charge-failure rate (1h)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.05 },
+              { "color": "red", "value": 0.2 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "increase(soroban_subscription_charge_failed_total{contract_id=~\"$contract_id\"}[1h]) / clamp_min(increase(soroban_subscription_charge_total{contract_id=~\"$contract_id\"}[1h]), 1)",
+          "legendFormat": "{{contract_id}}"
+        }
+      ]
+    }
+  ]
+}
+```
+
+> Tip: keep this JSON under version control (e.g. `monitoring/dashboard.json`)
+> and provision it automatically with the Grafana
+> [dashboard provisioning](https://grafana.com/docs/grafana/latest/administration/provisioning/#dashboards)
+> config so it is recreated on every environment.
+
+---
+
+## 12. Resources
 
 - [Horizon Events API](https://developers.stellar.org/docs/data/horizon/api-reference/resources/get-events-by-contract-id)
 - [Stellar CLI contract events](https://developers.stellar.org/docs/tools/stellar-cli)

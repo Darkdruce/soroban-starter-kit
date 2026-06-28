@@ -9,20 +9,33 @@ set -e
 NETWORK=${1:-testnet}
 CONTRACT_NAME="soroban-staking-template"
 
-echo "🚀 Deploying Staking Contract to $NETWORK..."
+# log_json — emit one structured JSON log line per deploy event on stdout.
+# Fields: timestamp (UTC ISO-8601), network, contract, contractId, txHash, status.
+# Human-readable progress goes to stderr so stdout stays clean NDJSON for log
+# aggregators. Usage: log_json <status> [contractId] [txHash]
+log_json() {
+  local status="$1" contract_id="${2:-}" tx_hash="${3:-}" ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"timestamp":"%s","network":"%s","contract":"staking","contractId":"%s","txHash":"%s","status":"%s"}\n' \
+    "$ts" "$NETWORK" "$contract_id" "$tx_hash" "$status"
+}
+
+echo "🚀 Deploying Staking Contract to $NETWORK..." >&2
 
 # Build the contract
-echo "📦 Building contract..."
-stellar contract build --manifest-path contracts/staking/Cargo.toml
+echo "📦 Building contract..." >&2
+log_json building
+stellar contract build --manifest-path contracts/staking/Cargo.toml >&2
 
 # Deploy the contract
-echo "🌐 Deploying to $NETWORK..."
+echo "🌐 Deploying to $NETWORK..." >&2
 CONTRACT_ID=$(stellar contract deploy \
     --wasm contracts/staking/target/wasm32-unknown-unknown/release/${CONTRACT_NAME}.wasm \
     --network "$NETWORK")
 
-echo "✅ Staking contract deployed!"
-echo "📋 Contract ID: $CONTRACT_ID"
+echo "✅ Staking contract deployed!" >&2
+echo "📋 Contract ID: $CONTRACT_ID" >&2
+log_json deployed "$CONTRACT_ID"
 
 # Save contract ID
 echo "staking: $CONTRACT_ID" >> .contract-ids
@@ -50,5 +63,5 @@ echo "staking: $CONTRACT_ID" >> .contract-ids
 #     -- add_rewards \
 #     --amount "$REWARD_AMOUNT"
 
-echo "🎉 Staking contract ready for use!"
-echo "📝 Save this Contract ID: $CONTRACT_ID"
+echo "🎉 Staking contract ready for use!" >&2
+echo "📝 Save this Contract ID: $CONTRACT_ID" >&2

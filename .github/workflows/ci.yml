@@ -41,6 +41,24 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+  clippy-all-features:
+    name: Clippy (all feature combos)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+          components: clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Run clippy across all feature combinations
+        run: bash scripts/clippy-all.sh
+
   list-contracts:
     name: List contracts
     runs-on: ubuntu-latest
@@ -74,6 +92,23 @@ jobs:
       - name: Run tests
         run: cargo test -p ${{ matrix.contract }}
 
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run integration tests
+        run: cargo test -p soroban-integration-tests
+
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
@@ -94,15 +129,82 @@ jobs:
       - name: Generate coverage
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
 
-      - name: Check coverage threshold
+      - name: Generate coverage summary
+        id: coverage
         run: |
           COVERAGE=$(cargo llvm-cov --workspace --json | jq '.data[0].summary.percent_covered')
+          echo "percent=${COVERAGE}" >> "$GITHUB_OUTPUT"
+          echo "Code coverage: ${COVERAGE}%"
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE="${{ steps.coverage.outputs.percent }}"
           THRESHOLD=80
           echo "Code coverage: ${COVERAGE}%"
           if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
             echo "ERROR: Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
             exit 1
           fi
+
+      - name: Compute base branch coverage delta
+        if: github.event_name == 'pull_request'
+        id: base_coverage
+        continue-on-error: true
+        run: |
+          git fetch origin "${{ github.base_ref }}"
+          git checkout "origin/${{ github.base_ref }}"
+          BASE=$(cargo llvm-cov --workspace --json | jq '.data[0].summary.percent_covered')
+          echo "percent=${BASE}" >> "$GITHUB_OUTPUT"
+          git checkout "${{ github.sha }}"
+
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const current = parseFloat('${{ steps.coverage.outputs.percent }}');
+            const baseRaw = '${{ steps.base_coverage.outputs.percent }}';
+            const base = baseRaw ? parseFloat(baseRaw) : null;
+            const delta = base !== null ? (current - base).toFixed(2) : null;
+            const deltaStr = delta !== null
+              ? (parseFloat(delta) >= 0 ? `+${delta}` : delta)
+              : 'n/a';
+            const threshold = 80;
+            const status = current >= threshold ? '✅' : '❌';
+            const body = [
+              '## Code Coverage Report',
+              '',
+              `| Metric | Value |`,
+              `|--------|-------|`,
+              `| Line coverage | **${current.toFixed(2)}%** ${status} |`,
+              `| Threshold | ${threshold}% |`,
+              `| Delta vs \`${{ github.base_ref }}\` | ${deltaStr}% |`,
+              '',
+              `Minimum line coverage of ${threshold}% is ${current >= threshold ? 'met' : '**not met**'}.`,
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const marker = '<!-- coverage-report -->';
+            const existing = comments.find(c => c.body.includes(marker));
+            const fullBody = `${marker}\n${body}`;
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: fullBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: fullBody,
+              });
+            }
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@ab904c41d6ece82784817410c45d8b8c02684457 # v3
@@ -260,13 +362,17 @@ jobs:
         run: cargo machete --workspace
 
   udeps:
-    name: Unused dev-dependencies (cargo-udeps)
+    name: Unused dependencies (cargo-udeps)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install nightly Rust
-        uses: dtolnay/rust-toolchain@nightly
+      # Pin the nightly toolchain so unused-dependency results are reproducible
+      # across runs (cargo-udeps requires nightly).
+      - name: Install pinned nightly Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-06-15
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -274,8 +380,8 @@ jobs:
       - name: Install cargo-udeps
         run: cargo install cargo-udeps --locked
 
-      - name: Check for unused dev-dependencies
-        run: cargo +nightly udeps --workspace --all-targets
+      - name: Check for unused dependencies
+        run: cargo udeps --workspace --all-targets
 
   semver:
     name: Semver Checks

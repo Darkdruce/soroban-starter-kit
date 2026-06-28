@@ -1,5 +1,8 @@
 #![no_std]
 
+#[cfg(test)]
+extern crate std;
+
 use soroban_sdk::{contract, contractimpl, token, Address, Env};
 
 mod admin;
@@ -197,4 +200,7 @@ impl EscrowContract {
     }
 }
 
+#[cfg(test)]
+mod prop_test;
+#[cfg(test)]
 mod test;

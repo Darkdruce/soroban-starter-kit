@@ -73,6 +73,17 @@ docker compose -f docker/docker-compose.yml up stellar-node
 ./scripts/local-net.sh logs     # tail logs
 ```
 
+### Full teardown and restart
+
+If the node gets stuck or you need a totally clean slate, use `scripts/reset-localnet.sh`. It stops, removes, and restarts the `stellar-node` container, then blocks until Docker reports the container healthy:
+
+```bash
+./scripts/reset-localnet.sh          # default 180s timeout
+./scripts/reset-localnet.sh 300      # custom timeout in seconds
+```
+
+The script exits 0 once the node is healthy and 1 if it times out.
+
 ### Waiting for readiness
 
 The node takes ~30 seconds to initialize. Use `scripts/wait-for-node.sh` to block until the Soroban RPC endpoint is accepting requests:

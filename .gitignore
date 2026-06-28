@@ -1,5 +1,6 @@
 # Rust
 target/
+mutants.out/
 **/*.rs.bk
 **/test_snapshots/
 **/proptest-regressions/

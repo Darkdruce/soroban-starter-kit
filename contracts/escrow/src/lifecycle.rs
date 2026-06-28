@@ -1,4 +1,4 @@
-use soroban_sdk::{token, Address, Env, Symbol, Vec};
+use soroban_sdk::{token, Address, Env, Vec};
 
 use crate::admin;
 use crate::errors::EscrowError;
@@ -87,7 +87,7 @@ pub fn initialize(
     }
     validate_amount(amount)?;
     validate_parties(&buyer, &seller, &arbiter)?;
-    validate_deadline(&env, deadline_ledger).map_err(|_| EscrowError::DeadlinePassed)?;
+    validate_deadline::<EscrowError>(&env, deadline_ledger)?;
     token::Client::new(&env, &token_contract).decimals();
     store_escrow_data(&env, &buyer, &seller, &arbiter, &token_contract, amount, deadline_ledger, 1u32);
     extend_ttl(&env);
@@ -110,7 +110,7 @@ pub fn initialize_with_arbiters(
     }
     validate_amount(amount)?;
     validate_parties_multi(&buyer, &seller, &arbiters, required_signatures)?;
-    validate_deadline(&env, deadline_ledger).map_err(|_| EscrowError::DeadlinePassed)?;
+    validate_deadline::<EscrowError>(&env, deadline_ledger)?;
     token::Client::new(&env, &token_contract).decimals();
     let primary_arbiter = arbiters.get(0).unwrap();
     store_escrow_data(&env, &buyer, &seller, &primary_arbiter, &token_contract, amount, deadline_ledger, required_signatures);
@@ -136,8 +136,7 @@ pub fn update_amount(env: Env, new_amount: i128) -> Result<(), EscrowError> {
     env.storage().instance().set(&Amount, &new_amount);
     extend_ttl(&env);
 
-    env.events()
-        .publish((Symbol::new(&env, "amount_updated"), buyer), new_amount);
+    events::amount_updated(&env, &buyer, new_amount);
 
     Ok(())
 }
@@ -166,8 +165,7 @@ pub fn fund(env: Env) -> Result<(), EscrowError> {
     env.storage().instance().set(&State, &EscrowState::Funded);
     extend_ttl(&env);
 
-    env.events()
-        .publish((Symbol::new(&env, "funded"), buyer), amount);
+    events::escrow_funded(&env, &buyer, amount);
 
     Ok(())
 }
@@ -187,8 +185,7 @@ pub fn mark_delivered(env: Env) -> Result<(), EscrowError> {
     env.storage().instance().set(&State, &EscrowState::Delivered);
     extend_ttl(&env);
 
-    env.events()
-        .publish((Symbol::new(&env, "marked_delivered"), seller), ());
+    events::delivery_marked(&env, &seller);
 
     Ok(())
 }
@@ -266,8 +263,7 @@ pub fn cancel(env: Env) -> Result<(), EscrowError> {
     env.storage().instance().set(&State, &EscrowState::Cancelled);
     extend_ttl(&env);
 
-    env.events()
-        .publish((Symbol::new(&env, "escrow_cancelled"), buyer), ());
+    events::escrow_cancelled(&env, &buyer);
 
     Ok(())
 }
@@ -293,8 +289,7 @@ pub fn extend_deadline(env: Env, new_deadline: u32) -> Result<(), EscrowError> {
     env.storage().instance().set(&Deadline, &new_deadline);
     extend_ttl(&env);
 
-    env.events()
-        .publish((Symbol::new(&env, "deadline_extended"), buyer), new_deadline);
+    events::deadline_extended(&env, &buyer, new_deadline);
 
     Ok(())
 }
@@ -310,8 +305,7 @@ pub fn release_to_seller(env: Env) -> Result<(), EscrowError> {
 
     admin::transfer_token(&env, &env.current_contract_address(), &seller, amount);
 
-    env.events()
-        .publish((Symbol::new(&env, "released"), seller), amount);
+    events::funds_released(&env, &seller, amount);
 
     Ok(())
 }

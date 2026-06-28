@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/Fidelis900/soroban-starter-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/Fidelis900/soroban-starter-kit/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/Fidelis900/soroban-starter-kit/branch/main/graph/badge.svg)](https://codecov.io/gh/Fidelis900/soroban-starter-kit)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Fidelis900/soroban-starter-kit)
 
 A curated collection of production-ready Soroban smart contract templates. These templates help developers quickly bootstrap common use cases on Soroban (Stellar's smart contract platform) for DeFi, payments, governance, and more.
 
@@ -353,6 +354,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, 
 
 ## 📚 Resources
 
+- [Directory Tree](docs/directory-tree.md) — Purpose of every directory in the repository
 - [FAQ](docs/faq.md) — Common developer questions: setup, testing, deployment, feature flags, token customization
 - [System Architecture](docs/architecture.md) — High-level design, contract relationships, storage tiers, event model, and admin framework
 - [Contract API Reference](docs/contract-api.md) — Full public API for all contracts (parameters, return types, errors)

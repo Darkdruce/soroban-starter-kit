@@ -1,0 +1,16 @@
+# Mutation testing: token and escrow critical paths only.
+# Packages are selected via CLI: -p soroban-token-template -p soroban-escrow-template
+
+examine_globs = [
+    "contracts/token/src/**/*.rs",
+    "contracts/escrow/src/**/*.rs",
+]
+
+exclude_globs = [
+    "contracts/*/src/bin/**",
+    "contracts/*/build.rs",
+    "contracts/*/src/test.rs",
+    "contracts/*/src/prop_test.rs",
+]
+
+test_workspace = true

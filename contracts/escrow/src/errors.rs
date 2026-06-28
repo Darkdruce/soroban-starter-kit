@@ -35,6 +35,12 @@ pub enum EscrowError {
     InvalidParties = 9,
 }
 
+impl From<()> for EscrowError {
+    fn from(_: ()) -> Self {
+        Self::DeadlinePassed
+    }
+}
+
 impl core::fmt::Display for EscrowError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {

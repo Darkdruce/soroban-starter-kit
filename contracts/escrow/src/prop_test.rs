@@ -1,5 +1,7 @@
 #![cfg(test)]
 
+use std::format;
+
 use proptest::prelude::*;
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
@@ -140,7 +142,7 @@ proptest! {
     ) {
         let env = Env::default();
         env.mock_all_auths();
-        let (client, ..) = setup_escrow(&env, 1_000i128);
+        let (client, buyer, ..) = setup_escrow(&env, 1_000i128);
 
         for action in actions {
             let state = client.get_state();
@@ -172,7 +174,7 @@ proptest! {
                 3 => {
                     // raise_dispute (only from Funded)
                     if state == Some(EscrowState::Funded) {
-                        let _ = client.try_raise_dispute();
+                        let _ = client.try_raise_dispute(&buyer);
                     }
                 }
                 4 => {
