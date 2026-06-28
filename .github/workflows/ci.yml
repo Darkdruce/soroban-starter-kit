@@ -20,7 +20,7 @@ jobs:
           components: rustfmt
 
       - name: Check formatting
-        run: cargo fmt --workspace --check
+        run: ./scripts/format-check.sh
 
   clippy:
     name: Clippy
