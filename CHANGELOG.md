@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error Reference section in README documenting all `TokenError` and `EscrowError` codes (#234)
 - This CHANGELOG file (#231)
 - Terraform provider version pinning and `.terraform` directory caching between plan and apply jobs (#242)
+- Structured JSON log lines (timestamp, network, contract, contractId, txHash, status) emitted by the deploy scripts so deployments can be piped to log aggregators (#696)
+- Prometheus alert definitions and a sample importable Grafana dashboard JSON in `docs/monitoring.md`, linked from the deployment guide (#697)
+
+### Changed
+- Migrated all workspace crates to the Rust 2024 edition and bumped the pinned toolchain to 1.85.0 (#703)
+- Pinned the nightly toolchain used by the `cargo-udeps` CI job for reproducible unused-dependency checks (#699)
 
 ## [0.1.0] - 2026-04-24
 

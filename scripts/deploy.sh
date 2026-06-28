@@ -3,6 +3,18 @@
 # Usage: ./scripts/deploy.sh [testnet|mainnet|local] [contract] [--identity <name>]
 set -euo pipefail
 
+# log_json — emit one structured JSON log line per deploy event on stdout.
+# Fields: timestamp (UTC ISO-8601), network, contract, contractId, txHash, status.
+# Human-readable progress is written to stderr so stdout stays a clean NDJSON
+# stream that can be piped straight to a log aggregator (jq, Loki, CloudWatch).
+# Usage: log_json <status> <contract> [contractId] [txHash]
+log_json() {
+  local status="$1" contract="${2:-}" contract_id="${3:-}" tx_hash="${4:-}" ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"timestamp":"%s","network":"%s","contract":"%s","contractId":"%s","txHash":"%s","status":"%s"}\n' \
+    "$ts" "${NETWORK:-}" "$contract" "$contract_id" "$tx_hash" "$status"
+}
+
 check_prerequisites() {
   local missing=()
   for cmd in stellar cargo; do
@@ -34,7 +46,7 @@ optimize_wasm() {
   local after
   after=$(stat -c%s "$wasm" 2>/dev/null || stat -f%z "$wasm")
   local pct=$(( (before - after) * 100 / before ))
-  echo "  wasm-opt: ${before}B → ${after}B (-${pct}%)"
+  echo "  wasm-opt: ${before}B → ${after}B (-${pct}%)" >&2
 }
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -93,17 +105,18 @@ esac
 deploy_contract() {
   local name="$1"
   local dir="$CONTRACTS_DIR/$name"
-  [[ -d "$dir" ]] || { echo "Contract not found: $name"; return 1; }
+  [[ -d "$dir" ]] || { echo "Contract not found: $name" >&2; log_json failed "$name"; return 1; }
 
-  echo "── Building $name ──"
-  (cd "$dir" && stellar contract build)
+  echo "── Building $name ──" >&2
+  log_json building "$name"
+  (cd "$dir" && stellar contract build) >&2
 
   WASM=$(find "$dir/target/wasm32-unknown-unknown/release" -name "*.wasm" | head -1)
-  [[ -n "$WASM" ]] || { echo "No WASM found for $name"; return 1; }
+  [[ -n "$WASM" ]] || { echo "No WASM found for $name" >&2; log_json failed "$name"; return 1; }
 
   optimize_wasm "$WASM"
 
-  echo "── Deploying $name to $NETWORK ──"
+  echo "── Deploying $name to $NETWORK ──" >&2
   CONTRACT_ID=$(stellar contract deploy \
     --wasm "$WASM" \
     --rpc-url "$RPC_URL" \
@@ -111,7 +124,8 @@ deploy_contract() {
     --source-account "$IDENTITY" \
     --network "$NETWORK")
   echo "$name: $CONTRACT_ID" >> "$ROOT/.contract-ids"
-  echo "Contract ID: $CONTRACT_ID"
+  echo "Contract ID: $CONTRACT_ID" >&2
+  log_json deployed "$name" "$CONTRACT_ID"
 }
 
 if [[ "$CONTRACT" == "all" ]]; then

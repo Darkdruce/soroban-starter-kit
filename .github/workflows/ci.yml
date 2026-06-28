@@ -362,13 +362,17 @@ jobs:
         run: cargo machete --workspace
 
   udeps:
-    name: Unused dev-dependencies (cargo-udeps)
+    name: Unused dependencies (cargo-udeps)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install nightly Rust
-        uses: dtolnay/rust-toolchain@nightly
+      # Pin the nightly toolchain so unused-dependency results are reproducible
+      # across runs (cargo-udeps requires nightly).
+      - name: Install pinned nightly Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-06-15
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -376,8 +380,8 @@ jobs:
       - name: Install cargo-udeps
         run: cargo install cargo-udeps --locked
 
-      - name: Check for unused dev-dependencies
-        run: cargo +nightly udeps --workspace --all-targets
+      - name: Check for unused dependencies
+        run: cargo udeps --workspace --all-targets
 
   semver:
     name: Semver Checks

@@ -353,6 +353,31 @@ To add automated deployment, extend `.github/workflows/ci.yml`:
     STELLAR_SECRET_KEY: ${{ secrets.STELLAR_SECRET_KEY }}
 ```
 
+### Structured deployment logs (JSON)
+
+`deploy.sh`, `deploy_staking.sh`, and `deploy_vesting.sh` emit one structured
+JSON log line per deploy event on **stdout**, while all human-readable progress
+goes to **stderr**. Each line has the shape:
+
+```json
+{"timestamp":"2026-06-28T12:00:00Z","network":"testnet","contract":"escrow","contractId":"C...","txHash":"","status":"deployed"}
+```
+
+`status` is one of `building`, `deployed`, or `failed`. Because stdout is a clean
+NDJSON stream, you can pipe it straight into a log aggregator or filter it with
+`jq`:
+
+```bash
+# Pretty-print only successful deployments
+./scripts/deploy.sh testnet 2>/dev/null | jq -c 'select(.status == "deployed")'
+
+# Persist a deploy ledger and ship lines to a collector at the same time
+./scripts/deploy.sh testnet 2>deploy.stderr.log \
+  | tee -a deploys.ndjson \
+  | curl -s -H 'Content-Type: application/x-ndjson' --data-binary @- \
+      https://logs.example.com/ingest
+```
+
 ---
 
 ## 8. Automated Guide Generation
@@ -654,6 +679,7 @@ The script also prints a warning when the deadline has passed and funds are stil
 - [Stellar Friendbot (testnet funding)](https://friendbot.stellar.org)
 - [Stellar Laboratory](https://laboratory.stellar.org/)
 - [cargo-audit](https://crates.io/crates/cargo-audit)
+- [Contract Monitoring Guide](./monitoring.md) — event indexing, anomaly detection, Prometheus alerts, and a sample Grafana dashboard for deployed contracts
 
 ---
 
