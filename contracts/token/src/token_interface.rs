@@ -5,10 +5,10 @@
 
 use soroban_sdk::{panic_with_error, Address, Env, String};
 
-use crate::allowance::{deduct_allowance, get_allowance, set_allowance};
+use crate::allowance::{get_allowance, set_allowance, validate_and_deduct_allowance};
 use crate::errors::TokenError;
 use crate::events;
-use crate::storage::{AllowanceDataKey, AllowanceValue, DataKey, MetadataKey};
+use crate::storage::{DataKey, MetadataKey};
 use crate::TokenContract;
 use soroban_common::{extend_ttl_instance, LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD};
 
@@ -64,7 +64,9 @@ pub fn transfer_from(env: Env, spender: Address, from: Address, to: Address, amo
     if let Err(e) = require_not_frozen(&env, &from) {
         panic_with_error!(&env, e);
     }
-    deduct_allowance(&env, from.clone(), spender.clone(), amount);
+    if let Err(e) = validate_and_deduct_allowance(&env, from.clone(), spender.clone(), amount) {
+        panic_with_error!(&env, e);
+    }
     if let Err(e) = TokenContract::transfer_impl(&env, from, to, amount) {
         panic_with_error!(&env, e);
     }
@@ -112,7 +114,9 @@ pub fn burn_from(env: Env, spender: Address, from: Address, amount: i128) {
     if let Err(e) = require_not_frozen(&env, &from) {
         panic_with_error!(&env, e);
     }
-    deduct_allowance(&env, from.clone(), spender.clone(), amount);
+    if let Err(e) = validate_and_deduct_allowance(&env, from.clone(), spender.clone(), amount) {
+        panic_with_error!(&env, e);
+    }
     if let Err(e) = TokenContract::update_balance(&env, &from, -amount) {
         panic_with_error!(&env, e);
     }
