@@ -44,6 +44,10 @@ fn validate_parties_multi(buyer: &Address, seller: &Address, arbiters: &Vec<Addr
     Ok(())
 }
 
+pub(crate) fn extend_ttl(env: &Env) {
+    extend_ttl_instance(env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+}
+
 fn store_escrow_data(
     env: &Env,
     buyer: &Address,
@@ -86,7 +90,7 @@ pub fn initialize(
     validate_deadline::<EscrowError>(&env, deadline_ledger)?;
     token::Client::new(&env, &token_contract).decimals();
     store_escrow_data(&env, &buyer, &seller, &arbiter, &token_contract, amount, deadline_ledger, 1u32);
-    extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+    extend_ttl(&env);
     emit_init_events(&env, &buyer, &seller, &arbiter, amount);
     Ok(())
 }
@@ -111,34 +115,26 @@ pub fn initialize_with_arbiters(
     let primary_arbiter = arbiters.get(0).unwrap();
     store_escrow_data(&env, &buyer, &seller, &primary_arbiter, &token_contract, amount, deadline_ledger, required_signatures);
     env.storage().instance().set(&Arbiters, &arbiters);
-    extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+    extend_ttl(&env);
     emit_init_events(&env, &buyer, &seller, &primary_arbiter, amount);
     Ok(())
 }
 
 pub fn update_amount(env: Env, new_amount: i128) -> Result<(), EscrowError> {
-    let buyer: Address = env
-        .storage()
-        .instance()
-        .get(&Buyer)
-        .ok_or(EscrowError::NotInitialized)?;
+    let buyer: Address = get_required(&env, &Buyer)?;
     buyer.require_auth();
 
     if new_amount <= 0 {
         return Err(EscrowError::InvalidAmount);
     }
 
-    let state: EscrowState = env
-        .storage()
-        .instance()
-        .get(&State)
-        .ok_or(EscrowError::NotInitialized)?;
+    let state: EscrowState = get_required(&env, &State)?;
     if state != EscrowState::Created {
         return Err(EscrowError::InvalidState);
     }
 
     env.storage().instance().set(&Amount, &new_amount);
-    extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+    extend_ttl(&env);
 
     events::amount_updated(&env, &buyer, new_amount);
 
@@ -167,7 +163,7 @@ pub fn fund(env: Env) -> Result<(), EscrowError> {
     token_client.transfer(&buyer, &env.current_contract_address(), &amount);
 
     env.storage().instance().set(&State, &EscrowState::Funded);
-    extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+    extend_ttl(&env);
 
     events::escrow_funded(&env, &buyer, amount);
 
@@ -187,7 +183,7 @@ pub fn mark_delivered(env: Env) -> Result<(), EscrowError> {
     }
 
     env.storage().instance().set(&State, &EscrowState::Delivered);
-    extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+    extend_ttl(&env);
 
     events::delivery_marked(&env, &seller);
 
@@ -208,18 +204,10 @@ pub fn release_partial(env: Env, amount: i128) -> Result<(), EscrowError> {
     #[cfg(feature = "pausable")]
     crate::EscrowContract::require_not_paused(&env)?;
 
-    let buyer: Address = env
-        .storage()
-        .instance()
-        .get(&Buyer)
-        .ok_or(EscrowError::NotInitialized)?;
+    let buyer: Address = get_required(&env, &Buyer)?;
     buyer.require_auth();
 
-    let state: EscrowState = env
-        .storage()
-        .instance()
-        .get(&State)
-        .ok_or(EscrowError::NotInitialized)?;
+    let state: EscrowState = get_required(&env, &State)?;
     if state != EscrowState::Funded {
         return Err(EscrowError::InvalidState);
     }
@@ -228,15 +216,15 @@ pub fn release_partial(env: Env, amount: i128) -> Result<(), EscrowError> {
         return Err(EscrowError::InvalidAmount);
     }
 
-    let stored_amount: i128 = env.storage().instance().get(&Amount).unwrap();
+    let stored_amount: i128 = get_required(&env, &Amount)?;
     if amount > stored_amount {
         return Err(EscrowError::InsufficientFunds);
     }
 
-    let seller: Address = env.storage().instance().get(&Seller).unwrap();
+    let seller: Address = get_required(&env, &Seller)?;
     let new_amount = stored_amount - amount;
     env.storage().instance().set(&Amount, &new_amount);
-    extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+    extend_ttl(&env);
 
     admin::transfer_token(&env, &env.current_contract_address(), &seller, amount);
     events::partial_release(&env, &seller, amount);
@@ -273,7 +261,7 @@ pub fn cancel(env: Env) -> Result<(), EscrowError> {
     }
 
     env.storage().instance().set(&State, &EscrowState::Cancelled);
-    extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+    extend_ttl(&env);
 
     events::escrow_cancelled(&env, &buyer);
 
@@ -281,41 +269,25 @@ pub fn cancel(env: Env) -> Result<(), EscrowError> {
 }
 
 pub fn extend_deadline(env: Env, new_deadline: u32) -> Result<(), EscrowError> {
-    let buyer: Address = env
-        .storage()
-        .instance()
-        .get(&Buyer)
-        .ok_or(EscrowError::NotInitialized)?;
-    let seller: Address = env
-        .storage()
-        .instance()
-        .get(&Seller)
-        .ok_or(EscrowError::NotInitialized)?;
+    let buyer: Address = get_required(&env, &Buyer)?;
+    let seller: Address = get_required(&env, &Seller)?;
 
     buyer.require_auth();
     seller.require_auth();
 
-    let current_deadline: u32 = env
-        .storage()
-        .instance()
-        .get(&Deadline)
-        .ok_or(EscrowError::NotInitialized)?;
+    let current_deadline: u32 = get_required(&env, &Deadline)?;
 
     if new_deadline <= current_deadline {
         return Err(EscrowError::DeadlinePassed);
     }
 
-    let state: EscrowState = env
-        .storage()
-        .instance()
-        .get(&State)
-        .ok_or(EscrowError::NotInitialized)?;
+    let state: EscrowState = get_required(&env, &State)?;
     if !matches!(state, EscrowState::Funded | EscrowState::Delivered) {
         return Err(EscrowError::InvalidState);
     }
 
     env.storage().instance().set(&Deadline, &new_deadline);
-    extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+    extend_ttl(&env);
 
     events::deadline_extended(&env, &buyer, new_deadline);
 
@@ -329,7 +301,7 @@ pub fn release_to_seller(env: Env) -> Result<(), EscrowError> {
     let amount: i128 = get_required(&env, &Amount)?;
 
     env.storage().instance().set(&State, &EscrowState::Completed);
-    extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+    extend_ttl(&env);
 
     admin::transfer_token(&env, &env.current_contract_address(), &seller, amount);
 
@@ -345,7 +317,7 @@ pub fn refund_to_buyer(env: Env) -> Result<(), EscrowError> {
     let amount: i128 = get_required(&env, &Amount)?;
 
     env.storage().instance().set(&State, &EscrowState::Refunded);
-    extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+    extend_ttl(&env);
 
     admin::transfer_token(&env, &env.current_contract_address(), &buyer, amount);
 

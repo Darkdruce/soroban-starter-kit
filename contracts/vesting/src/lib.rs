@@ -34,6 +34,13 @@ pub(crate) fn vested_amount(amount: i128, cliff_ledger: u32, end_ledger: u32, le
     amount * elapsed / total
 }
 
+fn validate_schedule(cliff_ledger: u32, end_ledger: u32, now: u32) -> Result<(), VestingError> {
+    if cliff_ledger >= end_ledger || end_ledger <= now {
+        return Err(VestingError::InvalidSchedule);
+    }
+    Ok(())
+}
+
 /// Token vesting contract with cliff + linear release schedule.
 ///
 /// Flow:
@@ -67,10 +74,7 @@ impl VestingContract {
         if amount <= 0 {
             return Err(VestingError::InvalidAmount);
         }
-        let now = env.ledger().sequence();
-        if cliff_ledger >= end_ledger || end_ledger <= now {
-            return Err(VestingError::InvalidSchedule);
-        }
+        validate_schedule(cliff_ledger, end_ledger, env.ledger().sequence())?;
 
         admin.require_auth();
 
