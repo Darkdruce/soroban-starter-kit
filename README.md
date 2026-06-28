@@ -20,6 +20,9 @@ make build
 # Run tests
 make test
 
+# Re-run tests automatically on file changes (requires cargo-watch)
+make watch
+
 # Deploy to testnet
 make deploy-testnet
 
