@@ -159,11 +159,15 @@ where
         .extend_ttl(key, threshold, extend_to);
 }
 
-/// Ledger threshold for TTL extension (~14 days at 5 seconds per ledger).
+/// Expected wall-clock seconds between consecutive Soroban ledgers.
+/// Used to convert ledger counts to approximate durations in doc comments.
+pub const LEDGER_SECONDS: u32 = 5;
+
+/// Ledger threshold for TTL extension (~14 days at `LEDGER_SECONDS` seconds per ledger).
 /// When remaining TTL falls below this, storage is extended to `LEDGER_BUMP_AMOUNT`.
 pub const LEDGER_LIFETIME_THRESHOLD: u32 = 120_960;
 
-/// Target TTL (in ledgers) after each extension (~60 days at 5 seconds per ledger).
+/// Target TTL (in ledgers) after each extension (~60 days at `LEDGER_SECONDS` seconds per ledger).
 pub const LEDGER_BUMP_AMOUNT: u32 = 518_400;
 
 /// Validates that a deadline is sufficiently far in the future.

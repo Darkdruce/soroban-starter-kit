@@ -1,4 +1,4 @@
-use soroban_sdk::{token, Address, Env, Symbol, Vec};
+use soroban_sdk::{token, Address, Env, Vec};
 
 use crate::admin;
 use crate::errors::EscrowError;
@@ -140,8 +140,7 @@ pub fn update_amount(env: Env, new_amount: i128) -> Result<(), EscrowError> {
     env.storage().instance().set(&Amount, &new_amount);
     extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
 
-    env.events()
-        .publish((Symbol::new(&env, "amount_updated"), buyer), new_amount);
+    events::amount_updated(&env, &buyer, new_amount);
 
     Ok(())
 }
@@ -170,8 +169,7 @@ pub fn fund(env: Env) -> Result<(), EscrowError> {
     env.storage().instance().set(&State, &EscrowState::Funded);
     extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
 
-    env.events()
-        .publish((Symbol::new(&env, "funded"), buyer), amount);
+    events::escrow_funded(&env, &buyer, amount);
 
     Ok(())
 }
@@ -191,8 +189,7 @@ pub fn mark_delivered(env: Env) -> Result<(), EscrowError> {
     env.storage().instance().set(&State, &EscrowState::Delivered);
     extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
 
-    env.events()
-        .publish((Symbol::new(&env, "marked_delivered"), seller), ());
+    events::delivery_marked(&env, &seller);
 
     Ok(())
 }
@@ -278,8 +275,7 @@ pub fn cancel(env: Env) -> Result<(), EscrowError> {
     env.storage().instance().set(&State, &EscrowState::Cancelled);
     extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
 
-    env.events()
-        .publish((Symbol::new(&env, "escrow_cancelled"), buyer), ());
+    events::escrow_cancelled(&env, &buyer);
 
     Ok(())
 }
@@ -321,8 +317,7 @@ pub fn extend_deadline(env: Env, new_deadline: u32) -> Result<(), EscrowError> {
     env.storage().instance().set(&Deadline, &new_deadline);
     extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
 
-    env.events()
-        .publish((Symbol::new(&env, "deadline_extended"), buyer), new_deadline);
+    events::deadline_extended(&env, &buyer, new_deadline);
 
     Ok(())
 }
@@ -338,8 +333,7 @@ pub fn release_to_seller(env: Env) -> Result<(), EscrowError> {
 
     admin::transfer_token(&env, &env.current_contract_address(), &seller, amount);
 
-    env.events()
-        .publish((Symbol::new(&env, "released"), seller), amount);
+    events::funds_released(&env, &seller, amount);
 
     Ok(())
 }

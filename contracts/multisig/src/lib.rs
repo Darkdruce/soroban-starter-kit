@@ -177,33 +177,7 @@ impl MultisigContract {
         Self::require_signer(&env, &proposer)?;
         proposer.require_auth();
 
-        let tx_id: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::NextTransactionId)
-            .ok_or(MultisigError::NotInitialized)?;
-        let mut signatures = Vec::new(&env);
-        signatures.push_back(proposer.clone());
-
-        let transaction = Transaction {
-            id: tx_id,
-            proposer: proposer.clone(),
-            target,
-            function,
-            args,
-            signatures,
-            executed: false,
-        };
-
-        env.storage()
-            .persistent()
-            .set(&DataKey::Transaction(tx_id), &transaction);
-        env.storage()
-            .instance()
-            .set(&DataKey::NextTransactionId, &(tx_id + 1));
-        bump_instance(&env);
-        bump_transaction(&env, tx_id);
-
+        let tx_id = Self::propose_phase(&env, &proposer, target, function, args)?;
         events::transaction_proposed(&env, tx_id, &proposer);
         Ok(tx_id)
     }
@@ -213,51 +187,14 @@ impl MultisigContract {
         Self::require_signer(&env, &signer)?;
         signer.require_auth();
 
-        let mut transaction = Self::get_required_transaction(&env, tx_id)?;
-        if transaction.executed {
-            return Err(MultisigError::AlreadyExecuted);
-        }
-        if contains(&transaction.signatures, &signer) {
-            return Err(MultisigError::AlreadySigned);
-        }
-
-        transaction.signatures.push_back(signer.clone());
-        let signature_count = transaction.signatures.len();
-        env.storage()
-            .persistent()
-            .set(&DataKey::Transaction(tx_id), &transaction);
-        bump_transaction(&env, tx_id);
-
+        let signature_count = Self::vote_phase(&env, &signer, tx_id)?;
         events::transaction_signed(&env, tx_id, &signer, signature_count);
         Ok(())
     }
 
     /// Execute a transaction once it has enough signatures.
     pub fn execute_transaction(env: Env, tx_id: u64) -> Result<Val, MultisigError> {
-        let mut transaction = Self::get_required_transaction(&env, tx_id)?;
-        if transaction.executed {
-            return Err(MultisigError::AlreadyExecuted);
-        }
-
-        let threshold: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::Threshold)
-            .ok_or(MultisigError::NotInitialized)?;
-        if transaction.signatures.len() < threshold {
-            return Err(MultisigError::ThresholdNotMet);
-        }
-
-        transaction.executed = true;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Transaction(tx_id), &transaction);
-        bump_transaction(&env, tx_id);
-        events::transaction_executed(&env, tx_id);
-
-        let result: Val =
-            env.invoke_contract(&transaction.target, &transaction.function, transaction.args);
-        Ok(result)
+        Self::execute_phase(&env, tx_id)
     }
 
     pub fn get_signers(env: Env) -> Vec<Address> {
@@ -289,6 +226,97 @@ impl MultisigContract {
     pub fn signature_count(env: Env, tx_id: u64) -> Option<u32> {
         Self::get_transaction(env, tx_id).map(|tx| tx.signatures.len())
     }
+
+    // ── Phase helpers ────────────────────────────────────────────────────────
+
+    /// Phase 1 — create a new proposal and record the proposer's implicit vote.
+    #[inline]
+    fn propose_phase(
+        env: &Env,
+        proposer: &Address,
+        target: Address,
+        function: Symbol,
+        args: Vec<Val>,
+    ) -> Result<u64, MultisigError> {
+        let tx_id: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NextTransactionId)
+            .ok_or(MultisigError::NotInitialized)?;
+        let mut signatures = Vec::new(env);
+        signatures.push_back(proposer.clone());
+
+        let transaction = Transaction {
+            id: tx_id,
+            proposer: proposer.clone(),
+            target,
+            function,
+            args,
+            signatures,
+            executed: false,
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Transaction(tx_id), &transaction);
+        env.storage()
+            .instance()
+            .set(&DataKey::NextTransactionId, &(tx_id + 1));
+        bump_instance(env);
+        bump_transaction(env, tx_id);
+        Ok(tx_id)
+    }
+
+    /// Phase 2 — record a signer's vote on an existing proposal.
+    #[inline]
+    fn vote_phase(env: &Env, signer: &Address, tx_id: u64) -> Result<u32, MultisigError> {
+        let mut transaction = Self::get_required_transaction(env, tx_id)?;
+        if transaction.executed {
+            return Err(MultisigError::AlreadyExecuted);
+        }
+        if contains(&transaction.signatures, signer) {
+            return Err(MultisigError::AlreadySigned);
+        }
+
+        transaction.signatures.push_back(signer.clone());
+        let signature_count = transaction.signatures.len();
+        env.storage()
+            .persistent()
+            .set(&DataKey::Transaction(tx_id), &transaction);
+        bump_transaction(env, tx_id);
+        Ok(signature_count)
+    }
+
+    /// Phase 3 — verify threshold and execute the approved proposal.
+    #[inline]
+    fn execute_phase(env: &Env, tx_id: u64) -> Result<Val, MultisigError> {
+        let mut transaction = Self::get_required_transaction(env, tx_id)?;
+        if transaction.executed {
+            return Err(MultisigError::AlreadyExecuted);
+        }
+
+        let threshold: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::Threshold)
+            .ok_or(MultisigError::NotInitialized)?;
+        if transaction.signatures.len() < threshold {
+            return Err(MultisigError::ThresholdNotMet);
+        }
+
+        transaction.executed = true;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Transaction(tx_id), &transaction);
+        bump_transaction(env, tx_id);
+        events::transaction_executed(env, tx_id);
+
+        let result: Val =
+            env.invoke_contract(&transaction.target, &transaction.function, transaction.args);
+        Ok(result)
+    }
+
+    // ── Internal helpers ─────────────────────────────────────────────────────
 
     #[inline]
     fn get_required_signers(env: &Env) -> Result<Vec<Address>, MultisigError> {

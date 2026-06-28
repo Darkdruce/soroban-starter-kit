@@ -9,7 +9,7 @@ use soroban_sdk::{panic_with_error, Env};
 use crate::errors::TokenError;
 use crate::storage::{AllowanceDataKey, AllowanceValue, DataKey};
 
-/// Soroban ledgers are expected roughly every 5 seconds on public networks.
+/// Soroban ledgers are expected roughly every `soroban_common::LEDGER_SECONDS` seconds on public networks.
 /// Allowance expiration is ledger-exact, so no additional wall-clock grace is
 /// applied beyond the caller-provided `expiration_ledger` (~0 seconds).
 const ALLOWANCE_EXPIRY_GRACE_LEDGERS: u32 = 0;

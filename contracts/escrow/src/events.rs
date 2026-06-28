@@ -43,6 +43,30 @@ pub fn funds_refunded(env: &Env, buyer: &Address, amount: i128) {
     env.events().publish((Symbol::new(env, "refunded"), buyer.clone()), amount);
 }
 
+/// Emitted when the escrow amount is updated.
+/// Topics: (Symbol, Address) — event name, buyer
+pub fn amount_updated(env: &Env, buyer: &Address, new_amount: i128) {
+    env.events().publish((Symbol::new(env, "amount_updated"), buyer.clone()), new_amount);
+}
+
+/// Emitted when the escrow is cancelled.
+/// Topics: (Symbol, Address) — event name, buyer
+pub fn escrow_cancelled(env: &Env, buyer: &Address) {
+    env.events().publish((Symbol::new(env, "escrow_cancelled"), buyer.clone()), ());
+}
+
+/// Emitted when the deadline is extended.
+/// Topics: (Symbol, Address) — event name, buyer
+pub fn deadline_extended(env: &Env, buyer: &Address, new_deadline: u32) {
+    env.events().publish((Symbol::new(env, "deadline_extended"), buyer.clone()), new_deadline);
+}
+
+/// Emitted when a dispute is raised.
+/// Topics: (Symbol, Address) — event name, caller
+pub fn dispute_raised(env: &Env, caller: &Address) {
+    env.events().publish((Symbol::new(env, "dispute_raised"), caller.clone()), ());
+}
+
 /// Emitted when the contract is paused.
 /// Topics: (Symbol, Address) — event name, admin
 pub fn paused(env: &Env, admin: &Address) {
