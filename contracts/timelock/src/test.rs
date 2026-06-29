@@ -3,9 +3,9 @@
 
 use super::*;
 use soroban_sdk::{
+    Address, Env, String,
     testutils::{Address as _, Ledger as _},
     token::TokenInterface,
-    Address, Env, String,
 };
 
 // ---------------------------------------------------------------------------
@@ -17,16 +17,26 @@ pub struct MockToken;
 
 #[contractimpl]
 impl TokenInterface for MockToken {
-    fn allowance(_env: Env, _from: Address, _spender: Address) -> i128 { 0 }
+    fn allowance(_env: Env, _from: Address, _spender: Address) -> i128 {
+        0
+    }
     fn approve(_env: Env, _from: Address, _spender: Address, _amount: i128, _exp: u32) {}
-    fn balance(_env: Env, _id: Address) -> i128 { i128::MAX }
+    fn balance(_env: Env, _id: Address) -> i128 {
+        i128::MAX
+    }
     fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {}
     fn transfer_from(_env: Env, _spender: Address, _from: Address, _to: Address, _amount: i128) {}
     fn burn(_env: Env, _from: Address, _amount: i128) {}
     fn burn_from(_env: Env, _spender: Address, _from: Address, _amount: i128) {}
-    fn decimals(_env: Env) -> u32 { 7 }
-    fn name(env: Env) -> String { String::from_str(&env, "Mock") }
-    fn symbol(env: Env) -> String { String::from_str(&env, "MCK") }
+    fn decimals(_env: Env) -> u32 {
+        7
+    }
+    fn name(env: Env) -> String {
+        String::from_str(&env, "Mock")
+    }
+    fn symbol(env: Env) -> String {
+        String::from_str(&env, "MCK")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +133,8 @@ fn test_release_after_ledger() {
 
     let (client, _, _, _, release_ledger, _) = setup(&env);
 
-    env.ledger().with_mut(|l| l.sequence_number = release_ledger);
+    env.ledger()
+        .with_mut(|l| l.sequence_number = release_ledger);
     client.release();
 
     assert_eq!(client.get_info().state, TimelockState::Released);
@@ -147,7 +158,8 @@ fn test_release_twice_fails() {
     env.mock_all_auths();
 
     let (client, _, _, _, release_ledger, _) = setup(&env);
-    env.ledger().with_mut(|l| l.sequence_number = release_ledger);
+    env.ledger()
+        .with_mut(|l| l.sequence_number = release_ledger);
     client.release();
     client.release();
 }
@@ -181,7 +193,8 @@ fn test_cancel_after_release_fails() {
     env.mock_all_auths();
 
     let (client, _, _, _, release_ledger, _) = setup(&env);
-    env.ledger().with_mut(|l| l.sequence_number = release_ledger);
+    env.ledger()
+        .with_mut(|l| l.sequence_number = release_ledger);
     client.release();
     client.cancel();
 }
@@ -194,7 +207,8 @@ fn test_release_after_cancel_fails() {
 
     let (client, _, _, _, release_ledger, _) = setup(&env);
     client.cancel();
-    env.ledger().with_mut(|l| l.sequence_number = release_ledger);
+    env.ledger()
+        .with_mut(|l| l.sequence_number = release_ledger);
     client.release();
 }
 
@@ -206,6 +220,7 @@ fn test_is_releasable() {
     let (client, _, _, _, release_ledger, _) = setup(&env);
     assert!(!client.is_releasable());
 
-    env.ledger().with_mut(|l| l.sequence_number = release_ledger);
+    env.ledger()
+        .with_mut(|l| l.sequence_number = release_ledger);
     assert!(client.is_releasable());
 }

@@ -3,10 +3,10 @@
 
 use super::*;
 use soroban_sdk::{
+    Address, Bytes, BytesN, Env, Vec,
     testutils::Address as _,
     token::{Client as TokenClient, StellarAssetClient},
     xdr::ToXdr,
-    Address, Bytes, BytesN, Env, Vec,
 };
 
 // ---------------------------------------------------------------------------
@@ -224,8 +224,5 @@ fn test_both_recipients_claim() {
         TokenClient::new(&env, &t.token).balance(&t.alice),
         alice_amount
     );
-    assert_eq!(
-        TokenClient::new(&env, &t.token).balance(&t.bob),
-        bob_amount
-    );
+    assert_eq!(TokenClient::new(&env, &t.token).balance(&t.bob), bob_amount);
 }

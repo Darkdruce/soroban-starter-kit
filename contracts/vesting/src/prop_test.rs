@@ -2,14 +2,17 @@
 #![cfg(test)]
 
 use proptest::prelude::*;
-use soroban_sdk::{testutils::Ledger as _, Env};
+use soroban_sdk::{Env, testutils::Ledger as _};
 
 use super::{make_token, setup_env};
-use crate::{vested_amount, VestingContract, VestingContractClient};
-use soroban_sdk::testutils::Address as _;
+use crate::{VestingContract, VestingContractClient, vested_amount};
 use soroban_sdk::Address;
+use soroban_sdk::testutils::Address as _;
 
-fn prop_setup(env: &Env, amount: i128) -> (VestingContractClient, Address, Address, Address, u32, u32) {
+fn prop_setup(
+    env: &Env,
+    amount: i128,
+) -> (VestingContractClient, Address, Address, Address, u32, u32) {
     let admin = Address::generate(env);
     let beneficiary = Address::generate(env);
     let token = make_token(env, &admin, amount);

@@ -3,9 +3,9 @@
 
 use super::*;
 use soroban_sdk::{
+    Address, Env,
     testutils::{Address as _, Ledger as _},
     token::StellarAssetClient,
-    Address, Env,
 };
 
 // ---------------------------------------------------------------------------
@@ -25,15 +25,7 @@ fn mint(env: &Env, token: &Address, to: &Address, amount: i128) {
     StellarAssetClient::new(env, token).mint(to, &amount);
 }
 
-fn setup(
-    env: &Env,
-) -> (
-    SwapContractClient,
-    Address,
-    Address,
-    Address,
-    Address,
-) {
+fn setup(env: &Env) -> (SwapContractClient, Address, Address, Address, Address) {
     let (token_a, _) = register_token(env);
     let (token_b, _) = register_token(env);
     let party_a = Address::generate(env);

@@ -1,4 +1,9 @@
 #![no_std]
+#![deny(missing_docs)]
+//! Bonding-curve token sale contract template.
+//!
+//! Token price scales deterministically with supply along a bonding curve;
+//! buyers mint tokens by paying the curve price and sellers burn to redeem.
 
 use soroban_sdk::{contract, contractimpl, token, Address, Env};
 
@@ -65,8 +70,17 @@ fn sell_proceeds(reserve: i128, supply: i128, amount: i128) -> Result<i128, Bond
 /// Linear curve: price increases with supply.
 /// Buy adds to supply and consumes reserve.
 /// Sell removes from supply and returns reserve.
-#[contract]
-pub struct BondingCurveContract;
+pub use contract::*;
+
+// The `#[contract]` / `#[contractimpl]` macros generate an undocumented public
+// client type. Confine the missing_docs allowance to this module and re-export
+// the public contract API above, keeping the rest of the crate enforced.
+mod contract {
+    #![allow(missing_docs)]
+    use super::*;
+
+    #[contract]
+    pub struct BondingCurveContract;
 
 #[contractimpl]
 impl BondingCurveContract {
@@ -234,6 +248,7 @@ impl BondingCurveContract {
             .get(&DataKey::Price)
             .unwrap_or(0i128)
     }
+}
 }
 
 #[cfg(test)]

@@ -1,8 +1,10 @@
-use soroban_sdk::{symbol_short, Address, Env};
+use soroban_sdk::{Address, Env, symbol_short};
 
 pub fn listed(env: &Env, listing_id: u64, seller: &Address, price: i128) {
-    env.events()
-        .publish((symbol_short!("listed"), listing_id), (seller.clone(), price));
+    env.events().publish(
+        (symbol_short!("listed"), listing_id),
+        (seller.clone(), price),
+    );
 }
 
 pub fn sold(env: &Env, listing_id: u64, buyer: &Address, price: i128) {

@@ -3,10 +3,9 @@
 
 use super::*;
 use soroban_sdk::{
-    contract, contractimpl, contracttype,
+    Address, Env, contract, contractimpl, contracttype,
     testutils::Address as _,
     token::{Client as TokenClient, StellarAssetClient},
-    Address, Env,
 };
 
 // ---------------------------------------------------------------------------
@@ -140,12 +139,9 @@ fn tok<'a>(env: &'a Env, token: &Address) -> TokenClient<'a> {
 fn test_initialize_rejects_duplicate() {
     let env = Env::default();
     let t = setup(&env);
-    let res = t.client.try_initialize(
-        &t.admin,
-        &t.token,
-        &100u32,
-        &t.royalty_recipient,
-    );
+    let res = t
+        .client
+        .try_initialize(&t.admin, &t.token, &100u32, &t.royalty_recipient);
     assert!(res.is_err());
 }
 
@@ -186,8 +182,14 @@ fn test_buy_happy_path() {
     let royalty = (price * 250) / 10_000; // 25
     let seller_amount = price - royalty; // 975
 
-    assert_eq!(tok(&env, &t.token).balance(&t.seller), seller_before + seller_amount);
-    assert_eq!(tok(&env, &t.token).balance(&t.royalty_recipient), royalty_before + royalty);
+    assert_eq!(
+        tok(&env, &t.token).balance(&t.seller),
+        seller_before + seller_amount
+    );
+    assert_eq!(
+        tok(&env, &t.token).balance(&t.royalty_recipient),
+        royalty_before + royalty
+    );
     assert_eq!(tok(&env, &t.token).balance(&t.buyer), buyer_before - price);
 
     // Verify NFT transferred to buyer
@@ -247,11 +249,7 @@ fn test_invalid_royalty_rejected() {
         .register_stellar_asset_contract_v2(admin.clone())
         .address();
     let marketplace = env.register_contract(None, MarketplaceContract);
-    let res = MarketplaceContractClient::new(&env, &marketplace).try_initialize(
-        &admin,
-        &token,
-        &10_001u32,
-        &admin,
-    );
+    let res = MarketplaceContractClient::new(&env, &marketplace)
+        .try_initialize(&admin, &token, &10_001u32, &admin);
     assert!(res.is_err());
 }

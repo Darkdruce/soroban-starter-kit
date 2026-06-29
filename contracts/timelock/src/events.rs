@@ -18,10 +18,8 @@ pub fn initialized(
 }
 
 pub fn released(env: &Env, beneficiary: &Address, amount: i128) {
-    env.events().publish(
-        (Symbol::new(env, "released"), beneficiary.clone()),
-        amount,
-    );
+    env.events()
+        .publish((Symbol::new(env, "released"), beneficiary.clone()), amount);
 }
 
 pub fn cancelled(env: &Env, admin: &Address) {

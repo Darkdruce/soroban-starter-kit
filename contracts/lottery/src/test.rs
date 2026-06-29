@@ -3,9 +3,7 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::Address as _,
-    token::TokenInterface,
-    Address, Bytes, BytesN, Env, String,
+    Address, Bytes, BytesN, Env, String, testutils::Address as _, token::TokenInterface,
 };
 
 // ---------------------------------------------------------------------------
@@ -17,16 +15,26 @@ pub struct MockToken;
 
 #[contractimpl]
 impl TokenInterface for MockToken {
-    fn allowance(_env: Env, _from: Address, _spender: Address) -> i128 { 0 }
+    fn allowance(_env: Env, _from: Address, _spender: Address) -> i128 {
+        0
+    }
     fn approve(_env: Env, _from: Address, _spender: Address, _amount: i128, _exp: u32) {}
-    fn balance(_env: Env, _id: Address) -> i128 { i128::MAX }
+    fn balance(_env: Env, _id: Address) -> i128 {
+        i128::MAX
+    }
     fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {}
     fn transfer_from(_env: Env, _spender: Address, _from: Address, _to: Address, _amount: i128) {}
     fn burn(_env: Env, _from: Address, _amount: i128) {}
     fn burn_from(_env: Env, _spender: Address, _from: Address, _amount: i128) {}
-    fn decimals(_env: Env) -> u32 { 7 }
-    fn name(env: Env) -> String { String::from_str(&env, "Mock") }
-    fn symbol(env: Env) -> String { String::from_str(&env, "MCK") }
+    fn decimals(_env: Env) -> u32 {
+        7
+    }
+    fn name(env: Env) -> String {
+        String::from_str(&env, "Mock")
+    }
+    fn symbol(env: Env) -> String {
+        String::from_str(&env, "MCK")
+    }
 }
 
 // ---------------------------------------------------------------------------

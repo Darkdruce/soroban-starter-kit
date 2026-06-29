@@ -2,9 +2,9 @@
 #![cfg(test)]
 
 use soroban_sdk::{
+    Address, Env,
     testutils::{Address as _, Ledger as _},
     token::StellarAssetClient,
-    Address, Env,
 };
 
 use crate::{SubscriptionContract, SubscriptionContractClient, SubscriptionError};

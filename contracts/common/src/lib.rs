@@ -1,6 +1,11 @@
 #![no_std]
+#![deny(missing_docs)]
+//! Shared helpers for the Soroban contract templates.
+//!
+//! Provides admin-storage helpers, TTL/lifetime constants, deadline validation,
+//! and the [`AdminKey`] storage key reused across the contract crates.
 
-use soroban_sdk::{contracttype, Address, Env};
+use soroban_sdk::{Address, Env, contracttype};
 
 /// Minimum number of ledgers the deadline must be ahead of the current ledger
 /// when initializing an escrow. Enforced by the contract; tests must respect
@@ -21,10 +26,20 @@ pub const MIN_DEADLINE_BUFFER: u32 = 10;
 /// let admin_address = Address::generate(&env);
 /// env.storage().instance().set(&AdminKey::Admin, &admin_address);
 /// ```
-#[contracttype]
-#[derive(Clone)]
-pub enum AdminKey {
-    Admin,
+pub use admin_key::AdminKey;
+
+// `#[contracttype]` generates an undocumented public associated item; confine
+// the missing_docs allowance to this module and re-export `AdminKey` above.
+mod admin_key {
+    #![allow(missing_docs)]
+    use super::contracttype;
+
+    #[contracttype]
+    #[derive(Clone)]
+    pub enum AdminKey {
+        /// Instance-storage slot holding the administrator [`Address`].
+        Admin,
+    }
 }
 
 /// Reads `AdminKey::Admin` from instance storage, panicking if unset.
@@ -105,8 +120,7 @@ pub fn try_get_admin(env: &Env) -> Option<Address> {
 /// ```
 pub fn get_instance<K, V>(env: &Env, key: &K) -> V
 where
-    K: soroban_sdk::TryIntoVal<Env, soroban_sdk::Val>
-        + soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
+    K: soroban_sdk::TryIntoVal<Env, soroban_sdk::Val> + soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
     V: soroban_sdk::TryFromVal<Env, soroban_sdk::Val>,
 {
     #[allow(clippy::expect_used)] // intentional panic: contract invariant
@@ -127,9 +141,7 @@ where
 /// extend_ttl_instance(&env, 120_960, 518_400);
 /// ```
 pub fn extend_ttl_instance(env: &Env, threshold: u32, extend_to: u32) {
-    env.storage()
-        .instance()
-        .extend_ttl(threshold, extend_to);
+    env.storage().instance().extend_ttl(threshold, extend_to);
 }
 
 /// Extends the TTL of a persistent storage entry if the current TTL is below
@@ -153,8 +165,7 @@ pub fn extend_ttl_instance(env: &Env, threshold: u32, extend_to: u32) {
 /// ```
 pub fn extend_ttl_persistent<K>(env: &Env, key: &K, threshold: u32, extend_to: u32)
 where
-    K: soroban_sdk::TryIntoVal<Env, soroban_sdk::Val>
-        + soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
+    K: soroban_sdk::TryIntoVal<Env, soroban_sdk::Val> + soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
 {
     env.storage()
         .persistent()

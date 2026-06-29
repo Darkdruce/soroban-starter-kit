@@ -383,6 +383,26 @@ jobs:
       - name: Check for unused dependencies
         run: cargo udeps --workspace --all-targets
 
+  lockfile:
+    name: Cargo.lock in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      # Fails if Cargo.lock is missing, out of date, or not committed.
+      # --locked turns any required lockfile change into an error instead of
+      # silently rewriting Cargo.lock.
+      - name: Check Cargo.lock is up to date
+        run: cargo update --locked --workspace
+
   semver:
     name: Semver Checks
     runs-on: ubuntu-latest

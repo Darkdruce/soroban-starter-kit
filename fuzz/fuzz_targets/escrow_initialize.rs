@@ -1,8 +1,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
 use soroban_escrow_template::EscrowContract;
+use soroban_sdk::{Address, Env, String, testutils::Address as _};
 use soroban_token_template::TokenContract;
 
 fn bytes_to_i128(data: &[u8], offset: usize) -> i128 {
@@ -71,12 +71,5 @@ fuzz_target!(|data: &[u8]| {
     let amount = bytes_to_i128(data, 3);
     let deadline = bytes_to_u32(data, 11);
 
-    let _ = escrow.try_initialize(
-        &buyer,
-        &seller,
-        &arbiter,
-        &token_addr,
-        &amount,
-        &deadline,
-    );
+    let _ = escrow.try_initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline);
 });

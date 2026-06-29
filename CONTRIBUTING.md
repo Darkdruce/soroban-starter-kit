@@ -15,6 +15,7 @@ From now on, every `git commit` will automatically run:
 
 - **`cargo fmt --check`** — rejects commits with unformatted Rust code. Run `cargo fmt` to fix.
 - **`cargo clippy`** — rejects commits that introduce Clippy warnings treated as errors.
+- **`cargo machete`** — rejects commits that leave unused `[dependencies]` entries in any `Cargo.toml`. This hook only runs when a `Cargo.toml` is staged. Install it once with `cargo install cargo-machete` (see the [cargo-machete CI section](#cargo-machete-unused-dependencies)); remove the flagged dependency to fix.
 
 To run the hooks manually without committing:
 
@@ -64,6 +65,59 @@ cargo install cargo-semver-checks --locked
 cargo semver-checks -p soroban-token-template
 cargo semver-checks -p soroban-escrow-template
 ```
+
+### Cargo.lock sync check
+
+The `lockfile` CI job runs `cargo update --locked --workspace` to guarantee that
+`Cargo.lock` is committed and fully in sync with every `Cargo.toml`. The
+`--locked` flag makes the command **fail** (instead of silently editing the
+lockfile) if any dependency would need to be added, removed, or re-resolved.
+
+If this job fails, your `Cargo.toml` change requires a lockfile update that was
+not committed. Run the command locally and commit the resulting `Cargo.lock`:
+
+```bash
+cargo update --locked --workspace   # verify it is in sync (no error = good)
+cargo generate-lockfile             # or regenerate from scratch if needed
+git add Cargo.lock
+```
+
+---
+
+## Dependency and lockfile policy
+
+`Cargo.lock` **is committed** to this repository. Because the workspace ships
+deployable on-chain contracts, every transitive dependency version is pinned in
+the lockfile so that all developers and CI build byte-for-byte reproducible
+artifacts.
+
+### When to update `Cargo.lock`
+
+| Situation | Action |
+|-----------|--------|
+| You add, remove, or change a dependency in a `Cargo.toml` | Commit the regenerated `Cargo.lock` in the **same** PR. |
+| You upgrade `soroban-sdk` | Follow [Upgrading soroban-sdk](#upgrading-soroban-sdk); commit the new lockfile. |
+| You want to pull in upstream security/bug fixes | Run a deliberate, reviewed `cargo update` in its own PR (see below). |
+| Routine, unrelated feature work | **Do not** touch `Cargo.lock`. Unrelated churn makes review harder. |
+
+### How to update `Cargo.lock`
+
+```bash
+# Update a single crate to the latest semver-compatible version:
+cargo update -p <crate>
+
+# Update a single crate to an exact version (used to unify duplicates):
+cargo update -p <crate>@<old-version> --precise <new-version>
+
+# Refresh every dependency to the latest semver-compatible versions
+# (deliberate maintenance only — open a dedicated PR):
+cargo update
+```
+
+After any update, run `cargo update --locked --workspace` to confirm the
+lockfile is internally consistent, then commit `Cargo.lock`. Lockfile-only
+maintenance PRs should run the full test suite to catch behavioural changes in
+the bumped dependencies.
 
 ---
 

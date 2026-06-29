@@ -1,4 +1,7 @@
 use soroban_common::impl_display_error;
+// #[contracterror] generates undocumented public associated items.
+#![allow(missing_docs)]
+
 use soroban_sdk::contracterror;
 
 /// Error codes returned by [`EscrowContract`](crate::EscrowContract) methods.

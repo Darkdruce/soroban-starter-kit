@@ -28,5 +28,9 @@ fn main() -> ExitCode {
         .status()
         .expect("failed to run `stellar contract deploy`");
 
-    if status.success() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    if status.success() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
 }

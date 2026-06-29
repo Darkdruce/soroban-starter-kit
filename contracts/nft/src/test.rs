@@ -2,7 +2,7 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use soroban_sdk::{Address, Env, String, testutils::Address as _};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,8 +57,18 @@ fn test_initialize_twice_fails() {
     let admin = Address::generate(&env);
     let addr = env.register_contract(None, NftContract);
     let client = NftContractClient::new(&env, &addr);
-    client.initialize(&admin, &String::from_str(&env, "A"), &String::from_str(&env, "A"), &0);
-    client.initialize(&admin, &String::from_str(&env, "B"), &String::from_str(&env, "B"), &0);
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "A"),
+        &String::from_str(&env, "A"),
+        &0,
+    );
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "B"),
+        &String::from_str(&env, "B"),
+        &0,
+    );
 }
 
 #[test]

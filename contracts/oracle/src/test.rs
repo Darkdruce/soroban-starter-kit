@@ -3,8 +3,8 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
     Address, Env,
+    testutils::{Address as _, Ledger as _},
 };
 
 fn setup(env: &Env) -> (OracleContractClient, Address) {

@@ -14,3 +14,12 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+
+      - id: machete
+        name: cargo machete
+        entry: cargo machete
+        language: system
+        # Run when any Cargo manifest changes so unused [dependencies] entries
+        # are caught before they reach CI.
+        files: (^|/)Cargo\.toml$
+        pass_filenames: false

@@ -1,6 +1,6 @@
-use soroban_sdk::{token, Address, Env};
-use crate::storage::DataKey;
 use crate::errors::EscrowError;
+use crate::storage::DataKey;
+use soroban_sdk::{Address, Env, token};
 
 pub fn require_admin(env: &Env) -> Result<Address, EscrowError> {
     soroban_common::try_get_admin(env).ok_or(EscrowError::NotInitialized)

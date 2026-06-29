@@ -3,9 +3,9 @@
 
 use super::*;
 use soroban_sdk::{
-    contract, contractimpl,
+    Address, Env, FromVal, IntoVal, Symbol, contract, contractimpl,
     testutils::{Address as _, Events as _},
-    vec, Address, Env, FromVal, IntoVal, Symbol,
+    vec,
 };
 
 #[contract]

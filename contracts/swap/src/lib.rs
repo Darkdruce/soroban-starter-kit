@@ -1,6 +1,11 @@
 #![no_std]
+#![deny(missing_docs)]
+//! Atomic two-party token swap contract template.
+//!
+//! Party A proposes a swap of their tokens for party B's tokens; on acceptance
+//! both transfers execute atomically, or party A may cancel beforehand.
 
-use soroban_sdk::{contract, contractimpl, token, Address, Env};
+use soroban_sdk::{Address, Env, contract, contractimpl, token};
 
 mod errors;
 mod events;
@@ -13,8 +18,7 @@ use soroban_common::{LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD};
 
 fn bump_persistent<K>(env: &Env, key: &K)
 where
-    K: soroban_sdk::TryIntoVal<Env, soroban_sdk::Val>
-        + soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
+    K: soroban_sdk::TryIntoVal<Env, soroban_sdk::Val> + soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
 {
     env.storage()
         .persistent()
@@ -25,191 +29,207 @@ where
 ///
 /// Party A specifies what they offer (`token_a`, `amount_a`) and what they want
 /// (`token_b`, `amount_b`). On acceptance, both transfers execute atomically in one transaction.
-#[contract]
-pub struct SwapContract;
+pub use contract::*;
 
-#[contractimpl]
-impl SwapContract {
-    /// Propose a new swap. Party A deposits `amount_a` of `token_a` into the contract.
-    ///
-    /// Returns the `swap_id` for use in `accept_swap` or `cancel_swap`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SwapError::InvalidAmount`] if either amount is <= 0.
-    /// Returns [`SwapError::InvalidDeadline`] if `deadline` <= current ledger.
-    pub fn propose_swap(
-        env: Env,
-        party_a: Address,
-        token_a: Address,
-        amount_a: i128,
-        token_b: Address,
-        amount_b: i128,
-        deadline: u32,
-    ) -> Result<u32, SwapError> {
-        if amount_a <= 0 || amount_b <= 0 {
-            return Err(SwapError::InvalidAmount);
-        }
-        if deadline <= env.ledger().sequence() {
-            return Err(SwapError::InvalidDeadline);
-        }
+// The `#[contract]` / `#[contractimpl]` macros generate an undocumented public
+// client type. Confine the missing_docs allowance to this module and re-export
+// the public contract API above, keeping the rest of the crate enforced.
+mod contract {
+    #![allow(missing_docs)]
+    use super::*;
 
-        party_a.require_auth();
+    #[contract]
+    pub struct SwapContract;
 
-        // Transfer token_a from party_a to this contract.
-        token::Client::new(&env, &token_a)
-            .transfer(&party_a, &env.current_contract_address(), &amount_a);
+    #[contractimpl]
+    impl SwapContract {
+        /// Propose a new swap. Party A deposits `amount_a` of `token_a` into the contract.
+        ///
+        /// Returns the `swap_id` for use in `accept_swap` or `cancel_swap`.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SwapError::InvalidAmount`] if either amount is <= 0.
+        /// Returns [`SwapError::InvalidDeadline`] if `deadline` <= current ledger.
+        pub fn propose_swap(
+            env: Env,
+            party_a: Address,
+            token_a: Address,
+            amount_a: i128,
+            token_b: Address,
+            amount_b: i128,
+            deadline: u32,
+        ) -> Result<u32, SwapError> {
+            if amount_a <= 0 || amount_b <= 0 {
+                return Err(SwapError::InvalidAmount);
+            }
+            if deadline <= env.ledger().sequence() {
+                return Err(SwapError::InvalidDeadline);
+            }
 
-        let swap_id: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::SwapCount)
-            .unwrap_or(0);
+            party_a.require_auth();
 
-        let swap = SwapInfo {
-            id: swap_id,
-            party_a: party_a.clone(),
-            token_a: token_a.clone(),
-            amount_a,
-            token_b: token_b.clone(),
-            amount_b,
-            deadline,
-            state: SwapState::Open,
-        };
+            // Transfer token_a from party_a to this contract.
+            token::Client::new(&env, &token_a).transfer(
+                &party_a,
+                &env.current_contract_address(),
+                &amount_a,
+            );
 
-        env.storage()
-            .persistent()
-            .set(&SwapKey::Swap(swap_id), &swap);
-        env.storage()
-            .instance()
-            .set(&DataKey::SwapCount, &(swap_id + 1));
+            let swap_id: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::SwapCount)
+                .unwrap_or(0);
 
-        bump_persistent(&env, &SwapKey::Swap(swap_id));
-        events::swap_proposed(
-            &env, &party_a, swap_id, &token_a, amount_a, &token_b, amount_b,
-        );
+            let swap = SwapInfo {
+                id: swap_id,
+                party_a: party_a.clone(),
+                token_a: token_a.clone(),
+                amount_a,
+                token_b: token_b.clone(),
+                amount_b,
+                deadline,
+                state: SwapState::Open,
+            };
 
-        Ok(swap_id)
-    }
+            env.storage()
+                .persistent()
+                .set(&SwapKey::Swap(swap_id), &swap);
+            env.storage()
+                .instance()
+                .set(&DataKey::SwapCount, &(swap_id + 1));
 
-    /// Accept a swap as party B. Party B deposits `amount_b` of `token_b` and both parties
-    /// receive their requested tokens in the same transaction.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SwapError::SwapNotFound`] if the swap does not exist.
-    /// Returns [`SwapError::AlreadyCompleted`] or [`SwapError::AlreadyCancelled`] for finished swaps.
-    /// Returns [`SwapError::DeadlineExpired`] if the swap deadline has passed.
-    pub fn accept_swap(env: Env, swap_id: u32, party_b: Address) -> Result<(), SwapError> {
-        party_b.require_auth();
+            bump_persistent(&env, &SwapKey::Swap(swap_id));
+            events::swap_proposed(
+                &env, &party_a, swap_id, &token_a, amount_a, &token_b, amount_b,
+            );
 
-        let mut swap: SwapInfo = env
-            .storage()
-            .persistent()
-            .get(&SwapKey::Swap(swap_id))
-            .ok_or(SwapError::SwapNotFound)?;
-
-        match swap.state {
-            SwapState::Completed => return Err(SwapError::AlreadyCompleted),
-            SwapState::Cancelled => return Err(SwapError::AlreadyCancelled),
-            SwapState::Open => {}
+            Ok(swap_id)
         }
 
-        if env.ledger().sequence() > swap.deadline {
-            return Err(SwapError::DeadlineExpired);
+        /// Accept a swap as party B. Party B deposits `amount_b` of `token_b` and both parties
+        /// receive their requested tokens in the same transaction.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SwapError::SwapNotFound`] if the swap does not exist.
+        /// Returns [`SwapError::AlreadyCompleted`] or [`SwapError::AlreadyCancelled`] for finished swaps.
+        /// Returns [`SwapError::DeadlineExpired`] if the swap deadline has passed.
+        pub fn accept_swap(env: Env, swap_id: u32, party_b: Address) -> Result<(), SwapError> {
+            party_b.require_auth();
+
+            let mut swap: SwapInfo = env
+                .storage()
+                .persistent()
+                .get(&SwapKey::Swap(swap_id))
+                .ok_or(SwapError::SwapNotFound)?;
+
+            match swap.state {
+                SwapState::Completed => return Err(SwapError::AlreadyCompleted),
+                SwapState::Cancelled => return Err(SwapError::AlreadyCancelled),
+                SwapState::Open => {}
+            }
+
+            if env.ledger().sequence() > swap.deadline {
+                return Err(SwapError::DeadlineExpired);
+            }
+
+            swap.state = SwapState::Completed;
+            env.storage()
+                .persistent()
+                .set(&SwapKey::Swap(swap_id), &swap);
+            bump_persistent(&env, &SwapKey::Swap(swap_id));
+
+            // Party B sends token_b to this contract, then contract forwards both tokens.
+            token::Client::new(&env, &swap.token_b).transfer(
+                &party_b,
+                &env.current_contract_address(),
+                &swap.amount_b,
+            );
+
+            // Party B receives token_a.
+            token::Client::new(&env, &swap.token_a).transfer(
+                &env.current_contract_address(),
+                &party_b,
+                &swap.amount_a,
+            );
+
+            // Party A receives token_b.
+            token::Client::new(&env, &swap.token_b).transfer(
+                &env.current_contract_address(),
+                &swap.party_a,
+                &swap.amount_b,
+            );
+
+            events::swap_accepted(&env, &party_b, swap_id);
+
+            Ok(())
         }
 
-        swap.state = SwapState::Completed;
-        env.storage()
-            .persistent()
-            .set(&SwapKey::Swap(swap_id), &swap);
-        bump_persistent(&env, &SwapKey::Swap(swap_id));
+        /// Cancel a swap. Party A can cancel any time before acceptance. After the deadline,
+        /// anyone may cancel to return party A's tokens.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SwapError::SwapNotFound`] if the swap does not exist.
+        /// Returns [`SwapError::AlreadyCompleted`] or [`SwapError::AlreadyCancelled`] if already done.
+        /// Returns [`SwapError::NotAuthorized`] if the caller is not party A and the deadline has not passed.
+        pub fn cancel_swap(env: Env, swap_id: u32) -> Result<(), SwapError> {
+            let mut swap: SwapInfo = env
+                .storage()
+                .persistent()
+                .get(&SwapKey::Swap(swap_id))
+                .ok_or(SwapError::SwapNotFound)?;
 
-        // Party B sends token_b to this contract, then contract forwards both tokens.
-        token::Client::new(&env, &swap.token_b).transfer(
-            &party_b,
-            &env.current_contract_address(),
-            &swap.amount_b,
-        );
+            match swap.state {
+                SwapState::Completed => return Err(SwapError::AlreadyCompleted),
+                SwapState::Cancelled => return Err(SwapError::AlreadyCancelled),
+                SwapState::Open => {}
+            }
 
-        // Party B receives token_a.
-        token::Client::new(&env, &swap.token_a).transfer(
-            &env.current_contract_address(),
-            &party_b,
-            &swap.amount_a,
-        );
+            let deadline_passed = env.ledger().sequence() > swap.deadline;
+            if !deadline_passed {
+                // Before deadline: only party A may cancel.
+                swap.party_a.require_auth();
+            }
+            // After deadline: no auth required; anyone can trigger to return party A's funds.
 
-        // Party A receives token_b.
-        token::Client::new(&env, &swap.token_b).transfer(
-            &env.current_contract_address(),
-            &swap.party_a,
-            &swap.amount_b,
-        );
+            swap.state = SwapState::Cancelled;
+            env.storage()
+                .persistent()
+                .set(&SwapKey::Swap(swap_id), &swap);
+            bump_persistent(&env, &SwapKey::Swap(swap_id));
 
-        events::swap_accepted(&env, &party_b, swap_id);
+            // Return token_a to party_a.
+            token::Client::new(&env, &swap.token_a).transfer(
+                &env.current_contract_address(),
+                &swap.party_a,
+                &swap.amount_a,
+            );
 
-        Ok(())
-    }
+            events::swap_cancelled(&env, swap_id);
 
-    /// Cancel a swap. Party A can cancel any time before acceptance. After the deadline,
-    /// anyone may cancel to return party A's tokens.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SwapError::SwapNotFound`] if the swap does not exist.
-    /// Returns [`SwapError::AlreadyCompleted`] or [`SwapError::AlreadyCancelled`] if already done.
-    /// Returns [`SwapError::NotAuthorized`] if the caller is not party A and the deadline has not passed.
-    pub fn cancel_swap(env: Env, swap_id: u32) -> Result<(), SwapError> {
-        let mut swap: SwapInfo = env
-            .storage()
-            .persistent()
-            .get(&SwapKey::Swap(swap_id))
-            .ok_or(SwapError::SwapNotFound)?;
-
-        match swap.state {
-            SwapState::Completed => return Err(SwapError::AlreadyCompleted),
-            SwapState::Cancelled => return Err(SwapError::AlreadyCancelled),
-            SwapState::Open => {}
+            Ok(())
         }
 
-        let deadline_passed = env.ledger().sequence() > swap.deadline;
-        if !deadline_passed {
-            // Before deadline: only party A may cancel.
-            swap.party_a.require_auth();
+        /// Return swap details by ID.
+        #[must_use]
+        pub fn get_swap(env: Env, swap_id: u32) -> Result<SwapInfo, SwapError> {
+            env.storage()
+                .persistent()
+                .get(&SwapKey::Swap(swap_id))
+                .ok_or(SwapError::SwapNotFound)
         }
-        // After deadline: no auth required; anyone can trigger to return party A's funds.
 
-        swap.state = SwapState::Cancelled;
-        env.storage()
-            .persistent()
-            .set(&SwapKey::Swap(swap_id), &swap);
-        bump_persistent(&env, &SwapKey::Swap(swap_id));
-
-        // Return token_a to party_a.
-        token::Client::new(&env, &swap.token_a).transfer(
-            &env.current_contract_address(),
-            &swap.party_a,
-            &swap.amount_a,
-        );
-
-        events::swap_cancelled(&env, swap_id);
-
-        Ok(())
-    }
-
-    /// Return swap details by ID.
-    #[must_use]
-    pub fn get_swap(env: Env, swap_id: u32) -> Result<SwapInfo, SwapError> {
-        env.storage()
-            .persistent()
-            .get(&SwapKey::Swap(swap_id))
-            .ok_or(SwapError::SwapNotFound)
-    }
-
-    /// Return total number of swaps proposed.
-    #[must_use]
-    pub fn swap_count(env: Env) -> u32 {
-        env.storage().instance().get(&DataKey::SwapCount).unwrap_or(0)
+        /// Return total number of swaps proposed.
+        #[must_use]
+        pub fn swap_count(env: Env) -> u32 {
+            env.storage()
+                .instance()
+                .get(&DataKey::SwapCount)
+                .unwrap_or(0)
+        }
     }
 }
 

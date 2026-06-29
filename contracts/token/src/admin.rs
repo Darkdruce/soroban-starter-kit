@@ -1,6 +1,6 @@
-use soroban_sdk::{Address, Env};
 use crate::errors::TokenError;
 use crate::storage::DataKey;
+use soroban_sdk::{Address, Env};
 
 pub fn require_admin(env: &Env) -> Result<Address, TokenError> {
     env.storage()

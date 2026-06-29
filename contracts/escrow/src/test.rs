@@ -4,8 +4,8 @@
 use super::*;
 use soroban_sdk::token::TokenInterface;
 use soroban_sdk::{
-    testutils::{Address as _, Events as _, Ledger as _},
     Address, Env, FromVal, IntoVal, String, Symbol,
+    testutils::{Address as _, Events as _, Ledger as _},
 };
 
 // ---------------------------------------------------------------------------
@@ -96,7 +96,15 @@ fn setup_funded_escrow<'a>(
     client.initialize(&buyer, &seller, &arbiter, &token, &amount, &deadline);
     client.fund();
 
-    (client, contract_address, buyer, seller, arbiter, token, amount)
+    (
+        client,
+        contract_address,
+        buyer,
+        seller,
+        arbiter,
+        token,
+        amount,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -117,7 +125,14 @@ fn test_initialize() {
 
     let (client, contract_address) = create_escrow_contract(&env);
 
-    client.initialize(&buyer, &seller, &arbiter, &token_contract, &amount, &deadline);
+    client.initialize(
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_contract,
+        &amount,
+        &deadline,
+    );
 
     let info = client.get_escrow_info();
     assert_eq!(info.buyer, buyer);
@@ -134,12 +149,23 @@ fn test_initialize() {
             &env,
             (
                 contract_address.clone(),
-                (Symbol::new(&env, "escrow_created"), buyer.clone(), seller.clone()).into_val(&env),
+                (
+                    Symbol::new(&env, "escrow_created"),
+                    buyer.clone(),
+                    seller.clone()
+                )
+                    .into_val(&env),
                 amount.into_val(&env),
             ),
             (
                 contract_address.clone(),
-                (Symbol::new(&env, "initialized"), buyer.clone(), seller.clone(), arbiter.clone()).into_val(&env),
+                (
+                    Symbol::new(&env, "initialized"),
+                    buyer.clone(),
+                    seller.clone(),
+                    arbiter.clone()
+                )
+                    .into_val(&env),
                 amount.into_val(&env),
             ),
         ]
@@ -161,9 +187,23 @@ fn test_initialize_twice() {
 
     let (client, _) = create_escrow_contract(&env);
 
-    client.initialize(&buyer, &seller, &arbiter, &token_contract, &amount, &deadline);
+    client.initialize(
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_contract,
+        &amount,
+        &deadline,
+    );
     // Second call must fail with AlreadyInitialized (#5)
-    client.initialize(&buyer, &seller, &arbiter, &token_contract, &amount, &deadline);
+    client.initialize(
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_contract,
+        &amount,
+        &deadline,
+    );
 }
 
 #[test]
@@ -181,7 +221,14 @@ fn test_initialize_past_deadline() {
     let deadline = 5u32; // 5 < 10, already in the past
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&buyer, &seller, &arbiter, &token_contract, &amount, &deadline);
+    client.initialize(
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_contract,
+        &amount,
+        &deadline,
+    );
 }
 
 #[test]
@@ -282,7 +329,14 @@ fn test_fund() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, contract_address) = create_escrow_contract(&env);
-    client.initialize(&buyer, &seller, &arbiter, &token_contract, &amount, &deadline);
+    client.initialize(
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_contract,
+        &amount,
+        &deadline,
+    );
     client.fund();
 
     assert_eq!(client.get_state(), Some(EscrowState::Funded));
@@ -299,7 +353,13 @@ fn test_fund() {
             ),
             (
                 contract_address.clone(),
-                (Symbol::new(&env, "initialized"), buyer.clone(), seller.clone(), arbiter.clone()).into_val(&env),
+                (
+                    Symbol::new(&env, "initialized"),
+                    buyer.clone(),
+                    seller.clone(),
+                    arbiter.clone()
+                )
+                    .into_val(&env),
                 amount.into_val(&env),
             ),
             (
@@ -417,11 +477,19 @@ fn test_deadline_passed() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&buyer, &seller, &arbiter, &token_contract, &amount, &deadline);
+    client.initialize(
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_contract,
+        &amount,
+        &deadline,
+    );
 
     assert_eq!(client.is_deadline_passed(), false);
 
-    env.ledger().with_mut(|li| li.sequence_number = deadline + 1);
+    env.ledger()
+        .with_mut(|li| li.sequence_number = deadline + 1);
 
     assert_eq!(client.is_deadline_passed(), true);
 }
@@ -467,7 +535,14 @@ fn test_initialize_invalid_token_address() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&buyer, &seller, &arbiter, &invalid_token, &amount, &deadline);
+    client.initialize(
+        &buyer,
+        &seller,
+        &arbiter,
+        &invalid_token,
+        &amount,
+        &deadline,
+    );
 }
 
 #[test]
@@ -604,7 +679,7 @@ fn test_approve_delivery_by_seller_fails() {
 
     let (client, _, _buyer, seller, ..) = setup_funded_escrow(&env);
     client.mark_delivered();
-    
+
     // Clear auths and only authorize seller — approve_delivery requires buyer auth
     use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
     let contract_address = env.register_contract(None, EscrowContract);
@@ -628,7 +703,7 @@ fn test_approve_delivery_by_arbiter_fails() {
 
     let (client, _, _buyer, _seller, arbiter, ..) = setup_funded_escrow(&env);
     client.mark_delivered();
-    
+
     // Clear auths and only authorize arbiter — approve_delivery requires buyer auth
     use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
     let contract_address = env.register_contract(None, EscrowContract);
@@ -651,12 +726,12 @@ fn test_release_partial() {
 
     let (client, _, _buyer, _seller, _arbiter, _token, amount) = setup_funded_escrow(&env);
     let partial = amount / 2;
-    
+
     client.release_partial(&partial);
-    
+
     // Verify state is still Funded
     assert_eq!(client.get_state(), Some(EscrowState::Funded));
-    
+
     // Verify amount was decremented
     let info = client.get_escrow_info();
     assert_eq!(info.amount, amount - partial);
@@ -677,7 +752,7 @@ fn test_release_partial_invalid_state() {
 
     let (client, _) = create_escrow_contract(&env);
     client.initialize(&buyer, &seller, &arbiter, &token, &amount, &deadline);
-    
+
     // Try to release_partial in Created state — should fail with InvalidState
     client.release_partial(&500i128);
 }
@@ -689,7 +764,7 @@ fn test_release_partial_exceeds_amount() {
     env.mock_all_auths();
 
     let (client, _, _buyer, _seller, _arbiter, _token, amount) = setup_funded_escrow(&env);
-    
+
     // Try to release more than available — should fail with InsufficientFunds
     client.release_partial(&(amount + 1));
 }
@@ -701,7 +776,7 @@ fn test_release_partial_zero_amount() {
     env.mock_all_auths();
 
     let (client, _, _buyer, _seller, _arbiter, _token, _amount) = setup_funded_escrow(&env);
-    
+
     // Try to release zero amount — should fail with InvalidAmount
     client.release_partial(&0i128);
 }
@@ -726,9 +801,7 @@ mod pausable_tests {
     use super::*;
     use soroban_common::AdminKey;
 
-    fn setup_with_admin<'a>(
-        env: &'a Env,
-    ) -> (EscrowContractClient<'a>, Address, Address) {
+    fn setup_with_admin<'a>(env: &'a Env) -> (EscrowContractClient<'a>, Address, Address) {
         let admin = Address::generate(env);
         let buyer = Address::generate(env);
         let seller = Address::generate(env);
@@ -776,7 +849,7 @@ mod pausable_tests {
 
         client.pause();
 
-        use soroban_sdk::{testutils::Events as _, IntoVal, Symbol};
+        use soroban_sdk::{IntoVal, Symbol, testutils::Events as _};
         let all = env.events().all();
         let last = all.last().unwrap();
         let (_, topics, _) = last;
@@ -792,11 +865,14 @@ mod pausable_tests {
         client.pause();
         client.unpause();
 
-        use soroban_sdk::{testutils::Events as _, IntoVal, Symbol};
+        use soroban_sdk::{IntoVal, Symbol, testutils::Events as _};
         let all = env.events().all();
         let last = all.last().unwrap();
         let (_, topics, _) = last;
-        assert_eq!(topics, (Symbol::new(&env, "unpaused"), admin).into_val(&env));
+        assert_eq!(
+            topics,
+            (Symbol::new(&env, "unpaused"), admin).into_val(&env)
+        );
     }
 }
 
@@ -835,7 +911,7 @@ mod upgradeable_tests {
         // even though the call fails (invalid hash), the event is still captured.
         let _ = client.try_upgrade(&dummy_hash);
 
-        use soroban_sdk::{testutils::Events as _, IntoVal, Symbol};
+        use soroban_sdk::{IntoVal, Symbol, testutils::Events as _};
         let all = env.events().all();
         // Find the upgraded event
         let found = all.iter().any(|(_, topics, _)| {
@@ -858,10 +934,10 @@ fn test_update_amount() {
     let (client, _) = create_escrow_contract(&env);
 
     client.initialize(&buyer, &seller, &arbiter, &token, &1_000, &deadline);
-    
+
     // Update amount before funding
     client.update_amount(&2_000);
-    
+
     let info = client.get_escrow_info();
     assert_eq!(info.amount, 2_000);
 }
@@ -888,7 +964,7 @@ fn test_update_amount_after_funding_fails() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, ..) = setup_funded_escrow(&env);
-    
+
     // Try to update amount after funding
     client.update_amount(&2_000);
 }
@@ -908,7 +984,7 @@ fn test_initialize_with_arbiters() {
 
     let arbiters = soroban_sdk::vec![&env, arbiter1.clone(), arbiter2.clone(), arbiter3.clone()];
     client.initialize_with_arbiters(&buyer, &seller, &arbiters, &token, &1_000, &deadline, &2);
-    
+
     let info = client.get_escrow_info();
     assert_eq!(info.amount, 1_000);
 }

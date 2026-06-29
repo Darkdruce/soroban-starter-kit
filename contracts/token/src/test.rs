@@ -2,7 +2,10 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::{Address as _, Ledger as _}, Address, Env, FromVal, String};
+use soroban_sdk::{
+    Address, Env, FromVal, String,
+    testutils::{Address as _, Ledger as _},
+};
 
 fn create_token_contract<'a>(env: &Env) -> (TokenContractClient<'a>, Address) {
     let contract_address = env.register_contract(None, TokenContract);
@@ -40,7 +43,7 @@ fn test_initialize() {
     assert_eq!(client.total_supply(), 0i128);
 
     // Verify initialized event was emitted
-    use soroban_sdk::{testutils::Events as _, IntoVal, Symbol};
+    use soroban_sdk::{IntoVal, Symbol, testutils::Events as _};
     assert_eq!(
         env.events().all(),
         soroban_sdk::vec![
@@ -258,7 +261,7 @@ fn test_set_admin() {
     assert_eq!(client.admin(), new_admin);
 
     // Verify admin_changed event was emitted with old_admin as topic and new_admin as data
-    use soroban_sdk::{testutils::Events as _, IntoVal, Symbol};
+    use soroban_sdk::{IntoVal, Symbol, testutils::Events as _};
     let all_events = env.events().all();
     let n = all_events.len();
     assert!(n > 0);
@@ -341,7 +344,7 @@ fn test_approve_revoke() {
     assert_eq!(client.allowance(&user, &spender), 500i128);
 
     // Revoke by approving with amount == 0 — must emit revoke, not approve
-    use soroban_sdk::{testutils::Events as _, IntoVal, Symbol};
+    use soroban_sdk::{IntoVal, Symbol, testutils::Events as _};
     client.approve(&user, &spender, &0i128, &expiration);
     assert_eq!(client.allowance(&user, &spender), 0i128);
 
@@ -458,7 +461,7 @@ mod pausable_tests {
 
         client.pause();
 
-        use soroban_sdk::{testutils::Events as _, IntoVal, Symbol};
+        use soroban_sdk::{IntoVal, Symbol, testutils::Events as _};
         let all = env.events().all();
         let last = all.last().unwrap();
         let (_, topics, _) = last;
@@ -475,11 +478,14 @@ mod pausable_tests {
         client.pause();
         client.unpause();
 
-        use soroban_sdk::{testutils::Events as _, IntoVal, Symbol};
+        use soroban_sdk::{IntoVal, Symbol, testutils::Events as _};
         let all = env.events().all();
         let last = all.last().unwrap();
         let (_, topics, _) = last;
-        assert_eq!(topics, (Symbol::new(&env, "unpaused"), admin).into_val(&env));
+        assert_eq!(
+            topics,
+            (Symbol::new(&env, "unpaused"), admin).into_val(&env)
+        );
     }
 }
 
@@ -510,7 +516,7 @@ mod upgradeable_tests {
         // upgraded event is emitted before update_current_contract_wasm
         let _ = client.try_upgrade(&dummy_hash);
 
-        use soroban_sdk::{testutils::Events as _, IntoVal, Symbol};
+        use soroban_sdk::{IntoVal, Symbol, testutils::Events as _};
         let all = env.events().all();
         let found = all.iter().any(|(_, topics, _)| {
             topics == (Symbol::new(&env, "upgraded"), admin.clone()).into_val(&env)
@@ -595,11 +601,8 @@ mod capped_supply_tests {
         let cap = 1_000i128;
         let client = init_capped(&env, &admin, cap);
 
-        let recipients = soroban_sdk::vec![
-            &env,
-            (user1.clone(), 400i128),
-            (user2.clone(), 600i128),
-        ];
+        let recipients =
+            soroban_sdk::vec![&env, (user1.clone(), 400i128), (user2.clone(), 600i128),];
         client.batch_mint(&recipients);
 
         assert_eq!(client.balance(&user1), 400i128);
@@ -617,11 +620,8 @@ mod capped_supply_tests {
         let cap = 1_000i128;
         let client = init_capped(&env, &admin, cap);
 
-        let recipients = soroban_sdk::vec![
-            &env,
-            (user1.clone(), 600i128),
-            (user2.clone(), 500i128),
-        ];
+        let recipients =
+            soroban_sdk::vec![&env, (user1.clone(), 600i128), (user2.clone(), 500i128),];
         assert!(client.try_batch_mint(&recipients).is_err());
         assert_eq!(client.total_supply(), 0);
     }
@@ -730,25 +730,27 @@ fn test_transfer_from_preserves_expiration() {
     let spender = Address::generate(&env);
     let client = init_token(&env, &admin);
     client.mint(&user1, &1000i128);
-    
+
     // Approve with a specific expiration
     let expiration = env.ledger().sequence() + 100;
     client.approve(&user1, &spender, &500i128, &expiration);
     assert_eq!(client.allowance(&user1, &spender), 500i128);
-    
+
     // Perform a partial transfer_from
     client.transfer_from(&spender, &user1, &user2, &200i128);
     assert_eq!(client.balance(&user1), 800i128);
     assert_eq!(client.balance(&user2), 200i128);
     assert_eq!(client.allowance(&user1, &spender), 300i128);
-    
+
     // Verify expiration is still the original value (not extended)
     // by advancing ledger and checking allowance is still valid
-    env.ledger().with_mut(|l| l.sequence_number = expiration - 1);
+    env.ledger()
+        .with_mut(|l| l.sequence_number = expiration - 1);
     assert_eq!(client.allowance(&user1, &spender), 300i128);
-    
+
     // Advance past original expiration
-    env.ledger().with_mut(|l| l.sequence_number = expiration + 1);
+    env.ledger()
+        .with_mut(|l| l.sequence_number = expiration + 1);
     // Allowance should now be expired (return 0)
     assert_eq!(client.allowance(&user1, &spender), 0i128);
 }
@@ -864,11 +866,7 @@ fn test_batch_mint_zero_amount() {
     let user2 = Address::generate(&env);
     let client = init_token(&env, &admin);
 
-    let recipients = soroban_sdk::vec![
-        &env,
-        (user1.clone(), 100i128),
-        (user2.clone(), 0i128),
-    ];
+    let recipients = soroban_sdk::vec![&env, (user1.clone(), 100i128), (user2.clone(), 0i128),];
     client.batch_mint(&recipients);
 }
 
@@ -889,7 +887,8 @@ fn test_allowance_expiry() {
     assert_eq!(client.allowance_expiry(&owner, &spender), Some(expiration));
 
     // Advance ledger past expiration
-    env.ledger().with_mut(|l| l.sequence_number = expiration + 1);
+    env.ledger()
+        .with_mut(|l| l.sequence_number = expiration + 1);
 
     // Check that allowance_expiry returns None after expiration
     assert_eq!(client.allowance_expiry(&owner, &spender), None);
@@ -960,7 +959,7 @@ fn test_accept_admin_by_wrong_address_fails() {
     let client = init_token(&env, &admin);
 
     client.propose_admin(&new_admin);
-    
+
     // Try to accept as wrong address
     use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
     let contract_address = env.register_contract(None, TokenContract);
@@ -989,7 +988,7 @@ fn test_cancel_admin_proposal() {
 
     // Admin should still be the old admin
     assert_eq!(client.admin(), admin);
-    
+
     // Trying to accept should fail since proposal was cancelled
     assert!(client.try_accept_admin().is_err());
 }
@@ -1005,7 +1004,7 @@ fn test_cancel_admin_proposal_by_non_admin_fails() {
     let client = init_token(&env, &admin);
 
     client.propose_admin(&new_admin);
-    
+
     // Try to cancel as non-admin
     use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
     let contract_address = env.register_contract(None, TokenContract);
