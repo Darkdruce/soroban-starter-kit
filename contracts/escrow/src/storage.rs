@@ -1,4 +1,7 @@
-use soroban_sdk::{contracttype, Address, Env};
+// #[contracttype] generates undocumented public associated items.
+#![allow(missing_docs)]
+
+use soroban_sdk::{Address, Env, contracttype};
 
 /// Top-level storage keys used by [`EscrowContract`](crate::EscrowContract).
 ///
@@ -107,9 +110,9 @@ mod tests {
     #[test]
     fn test_escrow_info_xdr_snapshot() {
         use soroban_sdk::{
+            Address, Env, IntoVal, TryFromVal,
             testutils::Address as _,
             xdr::{Limits, ScVal, ToXdr, WriteXdr},
-            Address, Env, IntoVal, TryFromVal,
         };
 
         let env = Env::default();
@@ -134,7 +137,10 @@ mod tests {
         let val: soroban_sdk::Val = info.clone().into_val(&env);
         let decoded =
             EscrowInfo::try_from_val(&env, &val).expect("EscrowInfo XDR round-trip failed");
-        assert_eq!(decoded, info, "EscrowInfo XDR round-trip produced a different value");
+        assert_eq!(
+            decoded, info,
+            "EscrowInfo XDR round-trip produced a different value"
+        );
 
         // Structural snapshot: the XDR map must have exactly these 7 keys,
         // in alphabetical order.  Hard-coded here as the stored snapshot.

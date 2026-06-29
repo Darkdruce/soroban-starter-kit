@@ -4,7 +4,7 @@
 //! and `burn_from` share a single code path, eliminating the duplication that
 //! previously existed across `token_interface.rs`.
 
-use soroban_sdk::{panic_with_error, Env};
+use soroban_sdk::{Env, panic_with_error};
 
 use crate::errors::TokenError;
 use crate::storage::{AllowanceDataKey, AllowanceValue, DataKey};
@@ -48,9 +48,13 @@ pub fn set_allowance(
         from: from.clone(),
         spender: spender.clone(),
     });
-    env.storage()
-        .temporary()
-        .set(&key, &AllowanceValue { amount, expiration_ledger });
+    env.storage().temporary().set(
+        &key,
+        &AllowanceValue {
+            amount,
+            expiration_ledger,
+        },
+    );
     if expiration_ledger > env.ledger().sequence() {
         env.storage()
             .temporary()

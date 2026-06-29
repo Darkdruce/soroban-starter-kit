@@ -3,14 +3,14 @@
 //! Each function here maps 1-to-1 to a method on `token::TokenInterface`.
 //! `lib.rs` hosts the `#[contractimpl]` block and delegates to these functions.
 
-use soroban_sdk::{panic_with_error, Address, Env, String};
+use soroban_sdk::{Address, Env, String, panic_with_error};
 
+use crate::TokenContract;
 use crate::allowance::{get_allowance, set_allowance, validate_and_deduct_allowance};
 use crate::errors::TokenError;
 use crate::events;
 use crate::storage::{DataKey, MetadataKey};
-use crate::TokenContract;
-use soroban_common::{extend_ttl_instance, LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD};
+use soroban_common::{LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD, extend_ttl_instance};
 
 #[cfg(feature = "pausable")]
 use crate::require_not_paused;
@@ -24,7 +24,13 @@ pub fn allowance(env: Env, from: Address, spender: Address) -> i128 {
 
 pub fn approve(env: Env, from: Address, spender: Address, amount: i128, expiration_ledger: u32) {
     from.require_auth();
-    set_allowance(&env, from.clone(), spender.clone(), amount, expiration_ledger);
+    set_allowance(
+        &env,
+        from.clone(),
+        spender.clone(),
+        amount,
+        expiration_ledger,
+    );
     if amount == 0 {
         events::revoked(&env, &from, &spender);
     } else {

@@ -1,10 +1,12 @@
-use soroban_sdk::{token, Address, Env, Vec};
+use soroban_sdk::{Address, Env, Vec, token};
 
 use crate::admin;
 use crate::errors::EscrowError;
 use crate::events;
-use crate::storage::{require_state, DataKey, EscrowState};
-use soroban_common::{extend_ttl_instance, validate_deadline, LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD};
+use crate::storage::{DataKey, EscrowState, require_state};
+use soroban_common::{
+    LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD, extend_ttl_instance, validate_deadline,
+};
 
 use DataKey::*;
 
@@ -25,15 +27,27 @@ fn validate_amount(amount: i128) -> Result<(), EscrowError> {
     Ok(())
 }
 
-fn validate_parties(buyer: &Address, seller: &Address, arbiter: &Address) -> Result<(), EscrowError> {
+fn validate_parties(
+    buyer: &Address,
+    seller: &Address,
+    arbiter: &Address,
+) -> Result<(), EscrowError> {
     if buyer == seller || buyer == arbiter || seller == arbiter {
         return Err(EscrowError::InvalidParties);
     }
     Ok(())
 }
 
-fn validate_parties_multi(buyer: &Address, seller: &Address, arbiters: &Vec<Address>, required_signatures: u32) -> Result<(), EscrowError> {
-    if arbiters.is_empty() || required_signatures == 0 || required_signatures > arbiters.len() as u32 {
+fn validate_parties_multi(
+    buyer: &Address,
+    seller: &Address,
+    arbiters: &Vec<Address>,
+    required_signatures: u32,
+) -> Result<(), EscrowError> {
+    if arbiters.is_empty()
+        || required_signatures == 0
+        || required_signatures > arbiters.len() as u32
+    {
         return Err(EscrowError::InvalidParties);
     }
     for arbiter in arbiters.iter() {
@@ -65,7 +79,9 @@ fn store_escrow_data(
     env.storage().instance().set(&Amount, &amount);
     env.storage().instance().set(&Deadline, &deadline_ledger);
     env.storage().instance().set(&State, &EscrowState::Created);
-    env.storage().instance().set(&RequiredSignatures, &required_signatures);
+    env.storage()
+        .instance()
+        .set(&RequiredSignatures, &required_signatures);
 }
 
 fn emit_init_events(env: &Env, buyer: &Address, seller: &Address, arbiter: &Address, amount: i128) {
@@ -89,7 +105,16 @@ pub fn initialize(
     validate_parties(&buyer, &seller, &arbiter)?;
     validate_deadline::<EscrowError>(&env, deadline_ledger)?;
     token::Client::new(&env, &token_contract).decimals();
-    store_escrow_data(&env, &buyer, &seller, &arbiter, &token_contract, amount, deadline_ledger, 1u32);
+    store_escrow_data(
+        &env,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_contract,
+        amount,
+        deadline_ledger,
+        1u32,
+    );
     extend_ttl(&env);
     emit_init_events(&env, &buyer, &seller, &arbiter, amount);
     Ok(())
@@ -113,7 +138,16 @@ pub fn initialize_with_arbiters(
     validate_deadline::<EscrowError>(&env, deadline_ledger)?;
     token::Client::new(&env, &token_contract).decimals();
     let primary_arbiter = arbiters.get(0).unwrap();
-    store_escrow_data(&env, &buyer, &seller, &primary_arbiter, &token_contract, amount, deadline_ledger, required_signatures);
+    store_escrow_data(
+        &env,
+        &buyer,
+        &seller,
+        &primary_arbiter,
+        &token_contract,
+        amount,
+        deadline_ledger,
+        required_signatures,
+    );
     env.storage().instance().set(&Arbiters, &arbiters);
     extend_ttl(&env);
     emit_init_events(&env, &buyer, &seller, &primary_arbiter, amount);
@@ -182,7 +216,9 @@ pub fn mark_delivered(env: Env) -> Result<(), EscrowError> {
         return Err(EscrowError::InvalidState);
     }
 
-    env.storage().instance().set(&State, &EscrowState::Delivered);
+    env.storage()
+        .instance()
+        .set(&State, &EscrowState::Delivered);
     extend_ttl(&env);
 
     events::delivery_marked(&env, &seller);
@@ -260,7 +296,9 @@ pub fn cancel(env: Env) -> Result<(), EscrowError> {
         return Err(EscrowError::InvalidState);
     }
 
-    env.storage().instance().set(&State, &EscrowState::Cancelled);
+    env.storage()
+        .instance()
+        .set(&State, &EscrowState::Cancelled);
     extend_ttl(&env);
 
     events::escrow_cancelled(&env, &buyer);
@@ -300,7 +338,9 @@ pub fn release_to_seller(env: Env) -> Result<(), EscrowError> {
     let seller: Address = get_required(&env, &Seller)?;
     let amount: i128 = get_required(&env, &Amount)?;
 
-    env.storage().instance().set(&State, &EscrowState::Completed);
+    env.storage()
+        .instance()
+        .set(&State, &EscrowState::Completed);
     extend_ttl(&env);
 
     admin::transfer_token(&env, &env.current_contract_address(), &seller, amount);

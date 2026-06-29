@@ -1,9 +1,9 @@
 #![cfg(test)]
 
 use soroban_sdk::{
+    Address, Env,
     testutils::{Address as _, Ledger as _},
     token::StellarAssetClient,
-    Address, Env,
 };
 
 use crate::{VestingContract, VestingContractClient, VestingError};
@@ -24,7 +24,17 @@ pub(crate) fn make_token(env: &Env, mint_to: &Address, amount: i128) -> Address 
     addr
 }
 
-pub(crate) fn setup(env: &Env) -> (VestingContractClient, Address, Address, Address, u32, u32, i128) {
+pub(crate) fn setup(
+    env: &Env,
+) -> (
+    VestingContractClient,
+    Address,
+    Address,
+    Address,
+    u32,
+    u32,
+    i128,
+) {
     let admin = Address::generate(env);
     let beneficiary = Address::generate(env);
     let amount = 1_000i128;
@@ -221,7 +231,10 @@ fn test_claimable_after_end_is_full_amount() {
 
 use proptest::prelude::*;
 
-fn prop_setup(env: &Env, amount: i128) -> (VestingContractClient, Address, Address, Address, u32, u32) {
+fn prop_setup(
+    env: &Env,
+    amount: i128,
+) -> (VestingContractClient, Address, Address, Address, u32, u32) {
     let admin = Address::generate(env);
     let beneficiary = Address::generate(env);
     let token = make_token(env, &admin, amount);

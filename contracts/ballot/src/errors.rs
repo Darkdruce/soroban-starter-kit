@@ -1,3 +1,6 @@
+// `#[contracterror]` generates undocumented public associated items.
+#![allow(missing_docs)]
+
 use soroban_sdk::contracterror;
 
 #[contracterror]

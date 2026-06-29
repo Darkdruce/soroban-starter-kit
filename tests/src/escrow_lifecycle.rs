@@ -1,8 +1,8 @@
 //! End-to-end escrow lifecycle with a real token contract deployed in the same Env.
 
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
     Address, Env, String,
+    testutils::{Address as _, Ledger as _},
 };
 
 use soroban_escrow_template::{EscrowContract, EscrowContractClient, EscrowState};

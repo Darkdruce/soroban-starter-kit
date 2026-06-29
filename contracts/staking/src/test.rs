@@ -1,10 +1,6 @@
 #![cfg(test)]
 
-use soroban_sdk::{
-    testutils::Address as _,
-    token::StellarAssetClient,
-    Address, Env,
-};
+use soroban_sdk::{Address, Env, testutils::Address as _, token::StellarAssetClient};
 
 use crate::{StakingContract, StakingContractClient, StakingError};
 

@@ -1,6 +1,12 @@
 #![no_std]
+#![deny(missing_docs)]
+//! Merkle-proof airdrop contract template.
+//!
+//! An admin sets a merkle root describing the distribution; eligible accounts
+//! claim their allocation by presenting a merkle proof. Duplicate claims are
+//! rejected on-chain.
 
-use soroban_sdk::{contract, contractimpl, token, xdr::ToXdr, Address, Bytes, BytesN, Env, Vec};
+use soroban_sdk::{Address, Bytes, BytesN, Env, Vec, contract, contractimpl, token, xdr::ToXdr};
 
 mod errors;
 mod events;
@@ -71,137 +77,147 @@ fn verify_proof(env: &Env, leaf: BytesN<32>, proof: &Vec<BytesN<32>>, root: &Byt
 /// 2. Admin calls `set_root` with the merkle root of the airdrop distribution tree.
 /// 3. Each eligible address calls `claim(amount, proof)` with a pre-computed merkle proof.
 ///    Duplicate claims are rejected on-chain.
-#[contract]
-pub struct AirdropContract;
+pub use contract::*;
 
-#[contractimpl]
-impl AirdropContract {
-    /// Initialize the airdrop contract.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AirdropError::AlreadyInitialized`] if already initialized.
-    pub fn initialize(env: Env, admin: Address, token: Address) -> Result<(), AirdropError> {
-        if env.storage().instance().has(&DataKey::Admin) {
-            return Err(AirdropError::AlreadyInitialized);
+// The `#[contract]` / `#[contractimpl]` macros generate an undocumented public
+// client type. Confine the missing_docs allowance to this module and re-export
+// the public contract API above, keeping the rest of the crate enforced.
+mod contract {
+    #![allow(missing_docs)]
+    use super::*;
+
+    #[contract]
+    pub struct AirdropContract;
+
+    #[contractimpl]
+    impl AirdropContract {
+        /// Initialize the airdrop contract.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`AirdropError::AlreadyInitialized`] if already initialized.
+        pub fn initialize(env: Env, admin: Address, token: Address) -> Result<(), AirdropError> {
+            if env.storage().instance().has(&DataKey::Admin) {
+                return Err(AirdropError::AlreadyInitialized);
+            }
+
+            // Validate token interface.
+            token::Client::new(&env, &token).decimals();
+
+            env.storage().instance().set(&DataKey::Admin, &admin);
+            env.storage().instance().set(&DataKey::Token, &token);
+            bump_instance(&env);
+            Ok(())
         }
 
-        // Validate token interface.
-        token::Client::new(&env, &token).decimals();
+        /// Set (or replace) the merkle root. Only the admin may call this.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`AirdropError::NotInitialized`] if the contract has not been initialized.
+        /// Returns [`AirdropError::Unauthorized`] if caller is not the admin.
+        pub fn set_root(env: Env, root: BytesN<32>) -> Result<(), AirdropError> {
+            let admin: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Admin)
+                .ok_or(AirdropError::NotInitialized)?;
 
-        env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::Token, &token);
-        bump_instance(&env);
-        Ok(())
-    }
+            admin.require_auth();
 
-    /// Set (or replace) the merkle root. Only the admin may call this.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AirdropError::NotInitialized`] if the contract has not been initialized.
-    /// Returns [`AirdropError::Unauthorized`] if caller is not the admin.
-    pub fn set_root(env: Env, root: BytesN<32>) -> Result<(), AirdropError> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(AirdropError::NotInitialized)?;
+            let root_bytes = Bytes::from(root.clone());
+            env.storage()
+                .instance()
+                .set(&DataKey::MerkleRoot, &root_bytes);
+            bump_instance(&env);
 
-        admin.require_auth();
-
-        let root_bytes = Bytes::from(root.clone());
-        env.storage()
-            .instance()
-            .set(&DataKey::MerkleRoot, &root_bytes);
-        bump_instance(&env);
-
-        events::root_set(&env, &root_bytes);
-        Ok(())
-    }
-
-    /// Claim tokens by supplying a valid merkle proof.
-    ///
-    /// The caller must appear in the airdrop tree with exactly `amount` tokens.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AirdropError::NotInitialized`] if not initialized.
-    /// Returns [`AirdropError::RootNotSet`] if no merkle root has been set.
-    /// Returns [`AirdropError::InvalidAmount`] if `amount <= 0`.
-    /// Returns [`AirdropError::AlreadyClaimed`] if the address already claimed.
-    /// Returns [`AirdropError::InvalidProof`] if the merkle proof does not verify.
-    pub fn claim(
-        env: Env,
-        recipient: Address,
-        amount: i128,
-        proof: Vec<BytesN<32>>,
-    ) -> Result<(), AirdropError> {
-        let token_addr: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Token)
-            .ok_or(AirdropError::NotInitialized)?;
-
-        let root_bytes: Bytes = env
-            .storage()
-            .instance()
-            .get(&DataKey::MerkleRoot)
-            .ok_or(AirdropError::RootNotSet)?;
-
-        if amount <= 0 {
-            return Err(AirdropError::InvalidAmount);
+            events::root_set(&env, &root_bytes);
+            Ok(())
         }
 
-        recipient.require_auth();
+        /// Claim tokens by supplying a valid merkle proof.
+        ///
+        /// The caller must appear in the airdrop tree with exactly `amount` tokens.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`AirdropError::NotInitialized`] if not initialized.
+        /// Returns [`AirdropError::RootNotSet`] if no merkle root has been set.
+        /// Returns [`AirdropError::InvalidAmount`] if `amount <= 0`.
+        /// Returns [`AirdropError::AlreadyClaimed`] if the address already claimed.
+        /// Returns [`AirdropError::InvalidProof`] if the merkle proof does not verify.
+        pub fn claim(
+            env: Env,
+            recipient: Address,
+            amount: i128,
+            proof: Vec<BytesN<32>>,
+        ) -> Result<(), AirdropError> {
+            let token_addr: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Token)
+                .ok_or(AirdropError::NotInitialized)?;
 
-        // Duplicate-claim prevention.
-        let claimed_key = DataKey::Claimed(recipient.clone());
-        if env
-            .storage()
-            .persistent()
-            .get::<_, bool>(&claimed_key)
-            .unwrap_or(false)
-        {
-            return Err(AirdropError::AlreadyClaimed);
+            let root_bytes: Bytes = env
+                .storage()
+                .instance()
+                .get(&DataKey::MerkleRoot)
+                .ok_or(AirdropError::RootNotSet)?;
+
+            if amount <= 0 {
+                return Err(AirdropError::InvalidAmount);
+            }
+
+            recipient.require_auth();
+
+            // Duplicate-claim prevention.
+            let claimed_key = DataKey::Claimed(recipient.clone());
+            if env
+                .storage()
+                .persistent()
+                .get::<_, bool>(&claimed_key)
+                .unwrap_or(false)
+            {
+                return Err(AirdropError::AlreadyClaimed);
+            }
+
+            // Convert stored bytes back to BytesN<32>.
+            let root: BytesN<32> = root_bytes
+                .try_into()
+                .map_err(|_| AirdropError::RootNotSet)?;
+
+            let leaf = compute_leaf(&env, &recipient, amount);
+            if !verify_proof(&env, leaf, &proof, &root) {
+                return Err(AirdropError::InvalidProof);
+            }
+
+            // Checks-effects-interactions: mark claimed before transfer.
+            env.storage().persistent().set(&claimed_key, &true);
+            bump_claimed(&env, &recipient);
+            bump_instance(&env);
+
+            token::Client::new(&env, &token_addr).transfer(
+                &env.current_contract_address(),
+                &recipient,
+                &amount,
+            );
+
+            events::claimed(&env, &recipient, amount);
+            Ok(())
         }
 
-        // Convert stored bytes back to BytesN<32>.
-        let root: BytesN<32> = root_bytes
-            .try_into()
-            .map_err(|_| AirdropError::RootNotSet)?;
-
-        let leaf = compute_leaf(&env, &recipient, amount);
-        if !verify_proof(&env, leaf, &proof, &root) {
-            return Err(AirdropError::InvalidProof);
+        /// Returns `true` if `address` has already claimed.
+        pub fn is_claimed(env: Env, address: Address) -> bool {
+            env.storage()
+                .persistent()
+                .get::<_, bool>(&DataKey::Claimed(address))
+                .unwrap_or(false)
         }
 
-        // Checks-effects-interactions: mark claimed before transfer.
-        env.storage().persistent().set(&claimed_key, &true);
-        bump_claimed(&env, &recipient);
-        bump_instance(&env);
-
-        token::Client::new(&env, &token_addr).transfer(
-            &env.current_contract_address(),
-            &recipient,
-            &amount,
-        );
-
-        events::claimed(&env, &recipient, amount);
-        Ok(())
-    }
-
-    /// Returns `true` if `address` has already claimed.
-    pub fn is_claimed(env: Env, address: Address) -> bool {
-        env.storage()
-            .persistent()
-            .get::<_, bool>(&DataKey::Claimed(address))
-            .unwrap_or(false)
-    }
-
-    /// Returns the current merkle root, or `None` if not set.
-    pub fn get_root(env: Env) -> Option<Bytes> {
-        env.storage().instance().get(&DataKey::MerkleRoot)
+        /// Returns the current merkle root, or `None` if not set.
+        pub fn get_root(env: Env) -> Option<Bytes> {
+            env.storage().instance().get(&DataKey::MerkleRoot)
+        }
     }
 }
 

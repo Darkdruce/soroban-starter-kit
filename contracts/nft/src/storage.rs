@@ -1,4 +1,7 @@
-use soroban_sdk::{contracttype, Address, String};
+// `#[contracttype]` generates undocumented public associated items.
+#![allow(missing_docs)]
+
+use soroban_sdk::{String, contracttype};
 
 /// Instance-storage keys (shared TTL for contract-level data).
 #[contracttype]

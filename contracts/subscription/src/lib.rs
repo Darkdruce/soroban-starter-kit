@@ -1,6 +1,11 @@
 #![no_std]
+#![deny(missing_docs)]
+//! Recurring subscription payment contract template.
+//!
+//! A provider charges a subscriber a fixed amount per interval by pulling from
+//! a pre-approved token allowance until the subscriber cancels.
 
-use soroban_sdk::{contract, contractimpl, token, Address, Env};
+use soroban_sdk::{Address, Env, contract, contractimpl, token};
 
 mod errors;
 mod events;
@@ -34,205 +39,215 @@ fn bump_subscription(env: &Env, subscriber: &Address) {
 ///    can pull payments: `token.approve(subscriber, this_contract, amount * N, expiry)`.
 /// 3. Provider calls `charge(subscriber)` once per interval to collect payment.
 /// 4. Subscriber calls `cancel` to stop future charges.
-#[contract]
-pub struct SubscriptionContract;
+pub use contract::*;
 
-#[contractimpl]
-impl SubscriptionContract {
-    /// Initialize the contract with a provider and payment token. Must be called exactly once.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SubscriptionError::AlreadyInitialized`] if already initialized.
-    pub fn initialize(
-        env: Env,
-        provider: Address,
-        token: Address,
-    ) -> Result<(), SubscriptionError> {
-        if env.storage().instance().has(&DataKey::Provider) {
-            return Err(SubscriptionError::AlreadyInitialized);
-        }
+// The `#[contract]` / `#[contractimpl]` macros generate an undocumented public
+// client type. Confine the missing_docs allowance to this module and re-export
+// the public contract API above, keeping the rest of the crate enforced.
+mod contract {
+    #![allow(missing_docs)]
+    use super::*;
 
-        // Validate that token implements the token interface.
-        token::Client::new(&env, &token).decimals();
+    #[contract]
+    pub struct SubscriptionContract;
 
-        env.storage().instance().set(&DataKey::Provider, &provider);
-        env.storage().instance().set(&DataKey::Token, &token);
-        bump_instance(&env);
-
-        events::initialized(&env, &provider, &token);
-        Ok(())
-    }
-
-    /// Register a recurring payment subscription.
-    ///
-    /// The subscriber must pre-approve this contract as a spender on the payment token
-    /// before the provider can call `charge`. Concretely, the subscriber should call
-    /// `token.approve(subscriber, subscription_contract, amount * periods, expiry_ledger)`
-    /// with enough allowance to cover the desired number of billing periods.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SubscriptionError::NotInitialized`] if the contract is not initialized.
-    /// Returns [`SubscriptionError::InvalidAmount`] if `amount` <= 0.
-    /// Returns [`SubscriptionError::InvalidInterval`] if `interval_ledgers` == 0.
-    /// Returns [`SubscriptionError::AlreadySubscribed`] if the subscriber already has an active plan.
-    pub fn subscribe(
-        env: Env,
-        subscriber: Address,
-        amount: i128,
-        interval_ledgers: u32,
-    ) -> Result<(), SubscriptionError> {
-        if !env.storage().instance().has(&DataKey::Provider) {
-            return Err(SubscriptionError::NotInitialized);
-        }
-        if amount <= 0 {
-            return Err(SubscriptionError::InvalidAmount);
-        }
-        if interval_ledgers == 0 {
-            return Err(SubscriptionError::InvalidInterval);
-        }
-
-        subscriber.require_auth();
-
-        let key = DataKey::Subscription(subscriber.clone());
-        if let Some(existing) = env.storage().persistent().get::<_, SubscriptionInfo>(&key) {
-            if existing.active {
-                return Err(SubscriptionError::AlreadySubscribed);
+    #[contractimpl]
+    impl SubscriptionContract {
+        /// Initialize the contract with a provider and payment token. Must be called exactly once.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SubscriptionError::AlreadyInitialized`] if already initialized.
+        pub fn initialize(
+            env: Env,
+            provider: Address,
+            token: Address,
+        ) -> Result<(), SubscriptionError> {
+            if env.storage().instance().has(&DataKey::Provider) {
+                return Err(SubscriptionError::AlreadyInitialized);
             }
+
+            // Validate that token implements the token interface.
+            token::Client::new(&env, &token).decimals();
+
+            env.storage().instance().set(&DataKey::Provider, &provider);
+            env.storage().instance().set(&DataKey::Token, &token);
+            bump_instance(&env);
+
+            events::initialized(&env, &provider, &token);
+            Ok(())
         }
 
-        let info = SubscriptionInfo {
-            amount,
-            interval_ledgers,
-            last_charged_ledger: env.ledger().sequence(),
-            active: true,
-        };
+        /// Register a recurring payment subscription.
+        ///
+        /// The subscriber must pre-approve this contract as a spender on the payment token
+        /// before the provider can call `charge`. Concretely, the subscriber should call
+        /// `token.approve(subscriber, subscription_contract, amount * periods, expiry_ledger)`
+        /// with enough allowance to cover the desired number of billing periods.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SubscriptionError::NotInitialized`] if the contract is not initialized.
+        /// Returns [`SubscriptionError::InvalidAmount`] if `amount` <= 0.
+        /// Returns [`SubscriptionError::InvalidInterval`] if `interval_ledgers` == 0.
+        /// Returns [`SubscriptionError::AlreadySubscribed`] if the subscriber already has an active plan.
+        pub fn subscribe(
+            env: Env,
+            subscriber: Address,
+            amount: i128,
+            interval_ledgers: u32,
+        ) -> Result<(), SubscriptionError> {
+            if !env.storage().instance().has(&DataKey::Provider) {
+                return Err(SubscriptionError::NotInitialized);
+            }
+            if amount <= 0 {
+                return Err(SubscriptionError::InvalidAmount);
+            }
+            if interval_ledgers == 0 {
+                return Err(SubscriptionError::InvalidInterval);
+            }
 
-        env.storage().persistent().set(&key, &info);
-        bump_subscription(&env, &subscriber);
-        bump_instance(&env);
+            subscriber.require_auth();
 
-        events::subscribed(&env, &subscriber, amount, interval_ledgers);
-        Ok(())
-    }
+            let key = DataKey::Subscription(subscriber.clone());
+            if let Some(existing) = env.storage().persistent().get::<_, SubscriptionInfo>(&key) {
+                if existing.active {
+                    return Err(SubscriptionError::AlreadySubscribed);
+                }
+            }
 
-    /// Provider pulls a recurring payment from a subscriber.
-    ///
-    /// Requires the subscriber to have an active subscription and to have granted
-    /// sufficient allowance to this contract. The interval since the last charge
-    /// must have fully elapsed.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SubscriptionError::NotInitialized`] if the contract is not initialized.
-    /// Returns [`SubscriptionError::NotAuthorized`] if the caller is not the provider.
-    /// Returns [`SubscriptionError::NotSubscribed`] if no subscription exists for `subscriber`.
-    /// Returns [`SubscriptionError::SubscriptionInactive`] if the subscription was cancelled.
-    /// Returns [`SubscriptionError::IntervalNotElapsed`] if the charge interval has not passed.
-    /// Returns [`SubscriptionError::InsufficientAllowance`] if the subscriber's token allowance is too low.
-    pub fn charge(env: Env, subscriber: Address) -> Result<(), SubscriptionError> {
-        let provider: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Provider)
-            .ok_or(SubscriptionError::NotInitialized)?;
-        let token_addr: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Token)
-            .ok_or(SubscriptionError::NotInitialized)?;
+            let info = SubscriptionInfo {
+                amount,
+                interval_ledgers,
+                last_charged_ledger: env.ledger().sequence(),
+                active: true,
+            };
 
-        provider.require_auth();
+            env.storage().persistent().set(&key, &info);
+            bump_subscription(&env, &subscriber);
+            bump_instance(&env);
 
-        let key = DataKey::Subscription(subscriber.clone());
-        let mut info: SubscriptionInfo = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .ok_or(SubscriptionError::NotSubscribed)?;
-
-        if !info.active {
-            return Err(SubscriptionError::SubscriptionInactive);
+            events::subscribed(&env, &subscriber, amount, interval_ledgers);
+            Ok(())
         }
 
-        let current_ledger = env.ledger().sequence();
-        if current_ledger < info.last_charged_ledger + info.interval_ledgers {
-            return Err(SubscriptionError::IntervalNotElapsed);
+        /// Provider pulls a recurring payment from a subscriber.
+        ///
+        /// Requires the subscriber to have an active subscription and to have granted
+        /// sufficient allowance to this contract. The interval since the last charge
+        /// must have fully elapsed.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SubscriptionError::NotInitialized`] if the contract is not initialized.
+        /// Returns [`SubscriptionError::NotAuthorized`] if the caller is not the provider.
+        /// Returns [`SubscriptionError::NotSubscribed`] if no subscription exists for `subscriber`.
+        /// Returns [`SubscriptionError::SubscriptionInactive`] if the subscription was cancelled.
+        /// Returns [`SubscriptionError::IntervalNotElapsed`] if the charge interval has not passed.
+        /// Returns [`SubscriptionError::InsufficientAllowance`] if the subscriber's token allowance is too low.
+        pub fn charge(env: Env, subscriber: Address) -> Result<(), SubscriptionError> {
+            let provider: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Provider)
+                .ok_or(SubscriptionError::NotInitialized)?;
+            let token_addr: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Token)
+                .ok_or(SubscriptionError::NotInitialized)?;
+
+            provider.require_auth();
+
+            let key = DataKey::Subscription(subscriber.clone());
+            let mut info: SubscriptionInfo = env
+                .storage()
+                .persistent()
+                .get(&key)
+                .ok_or(SubscriptionError::NotSubscribed)?;
+
+            if !info.active {
+                return Err(SubscriptionError::SubscriptionInactive);
+            }
+
+            let current_ledger = env.ledger().sequence();
+            if current_ledger < info.last_charged_ledger + info.interval_ledgers {
+                return Err(SubscriptionError::IntervalNotElapsed);
+            }
+
+            let token_client = token::Client::new(&env, &token_addr);
+
+            let allowance = token_client.allowance(&subscriber, &env.current_contract_address());
+            if allowance < info.amount {
+                return Err(SubscriptionError::InsufficientAllowance);
+            }
+
+            // checks-effects-interactions: update state before external call
+            info.last_charged_ledger = current_ledger;
+            env.storage().persistent().set(&key, &info);
+            bump_subscription(&env, &subscriber);
+            bump_instance(&env);
+
+            token_client.transfer_from(
+                &env.current_contract_address(),
+                &subscriber,
+                &provider,
+                &info.amount,
+            );
+
+            events::charged(&env, &subscriber, &provider, info.amount);
+            Ok(())
         }
 
-        let token_client = token::Client::new(&env, &token_addr);
+        /// Subscriber cancels their subscription. No further charges can be made.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SubscriptionError::NotInitialized`] if the contract is not initialized.
+        /// Returns [`SubscriptionError::NotSubscribed`] if no subscription exists for `subscriber`.
+        /// Returns [`SubscriptionError::SubscriptionInactive`] if already cancelled.
+        pub fn cancel(env: Env, subscriber: Address) -> Result<(), SubscriptionError> {
+            if !env.storage().instance().has(&DataKey::Provider) {
+                return Err(SubscriptionError::NotInitialized);
+            }
 
-        let allowance = token_client.allowance(&subscriber, &env.current_contract_address());
-        if allowance < info.amount {
-            return Err(SubscriptionError::InsufficientAllowance);
+            subscriber.require_auth();
+
+            let key = DataKey::Subscription(subscriber.clone());
+            let mut info: SubscriptionInfo = env
+                .storage()
+                .persistent()
+                .get(&key)
+                .ok_or(SubscriptionError::NotSubscribed)?;
+
+            if !info.active {
+                return Err(SubscriptionError::SubscriptionInactive);
+            }
+
+            info.active = false;
+            env.storage().persistent().set(&key, &info);
+            bump_instance(&env);
+
+            events::cancelled(&env, &subscriber);
+            Ok(())
         }
 
-        // checks-effects-interactions: update state before external call
-        info.last_charged_ledger = current_ledger;
-        env.storage().persistent().set(&key, &info);
-        bump_subscription(&env, &subscriber);
-        bump_instance(&env);
-
-        token_client.transfer_from(
-            &env.current_contract_address(),
-            &subscriber,
-            &provider,
-            &info.amount,
-        );
-
-        events::charged(&env, &subscriber, &provider, info.amount);
-        Ok(())
-    }
-
-    /// Subscriber cancels their subscription. No further charges can be made.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SubscriptionError::NotInitialized`] if the contract is not initialized.
-    /// Returns [`SubscriptionError::NotSubscribed`] if no subscription exists for `subscriber`.
-    /// Returns [`SubscriptionError::SubscriptionInactive`] if already cancelled.
-    pub fn cancel(env: Env, subscriber: Address) -> Result<(), SubscriptionError> {
-        if !env.storage().instance().has(&DataKey::Provider) {
-            return Err(SubscriptionError::NotInitialized);
+        /// Return the subscription details for `subscriber`, or `None` if not subscribed.
+        pub fn get_subscription(env: Env, subscriber: Address) -> Option<SubscriptionInfo> {
+            env.storage()
+                .persistent()
+                .get(&DataKey::Subscription(subscriber))
         }
 
-        subscriber.require_auth();
-
-        let key = DataKey::Subscription(subscriber.clone());
-        let mut info: SubscriptionInfo = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .ok_or(SubscriptionError::NotSubscribed)?;
-
-        if !info.active {
-            return Err(SubscriptionError::SubscriptionInactive);
+        /// Return the provider address, or `None` if not initialized.
+        pub fn get_provider(env: Env) -> Option<Address> {
+            env.storage().instance().get(&DataKey::Provider)
         }
 
-        info.active = false;
-        env.storage().persistent().set(&key, &info);
-        bump_instance(&env);
-
-        events::cancelled(&env, &subscriber);
-        Ok(())
-    }
-
-    /// Return the subscription details for `subscriber`, or `None` if not subscribed.
-    pub fn get_subscription(env: Env, subscriber: Address) -> Option<SubscriptionInfo> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Subscription(subscriber))
-    }
-
-    /// Return the provider address, or `None` if not initialized.
-    pub fn get_provider(env: Env) -> Option<Address> {
-        env.storage().instance().get(&DataKey::Provider)
-    }
-
-    /// Return the payment token address, or `None` if not initialized.
-    pub fn get_token(env: Env) -> Option<Address> {
-        env.storage().instance().get(&DataKey::Token)
+        /// Return the payment token address, or `None` if not initialized.
+        pub fn get_token(env: Env) -> Option<Address> {
+            env.storage().instance().get(&DataKey::Token)
+        }
     }
 }
 

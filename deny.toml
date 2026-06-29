@@ -20,11 +20,21 @@ allow = [
 multiple-versions = "deny"
 wildcards = "deny"
 
-# darling 0.20 is required by soroban-sdk-macros; darling 0.23 is required by
-# serde_with_macros (a transitive dep of soroban-sdk). Neither can be updated
-# without upstream changes to soroban-sdk.
+# Duplicate transitive crates audited in docs/dependency-duplicates.md. In every
+# case one version is anchored by the exact-pinned soroban-sdk subtree and the
+# other by a major-incompatible dev/build tool, so none can be unified without
+# an upstream soroban-sdk release. They are skipped here intentionally rather
+# than silenced; re-audit and prune after every soroban-sdk upgrade.
 skip = [
+    # darling 0.20 is required by soroban-sdk-macros; darling 0.23 is required by
+    # serde_with_macros (a transitive dep of soroban-sdk).
     { crate = "darling@0.20.11", reason = "soroban-sdk-macros requires 0.20; serde_with_macros requires 0.23" },
     { crate = "darling_core@0.20.11", reason = "transitive dep of darling 0.20" },
     { crate = "darling_macro@0.20.11", reason = "transitive dep of darling 0.20" },
+    # getrandom 0.2 is reached via k256 -> soroban-env-host -> soroban-sdk;
+    # getrandom 0.4 is dev-only via tempfile -> proptest and never ships in WASM.
+    { crate = "getrandom@0.2.17", reason = "required by soroban-env-host crypto stack (rand_core 0.6); 0.4 is dev-only via proptest/tempfile" },
+    # itertools 0.11 is required by soroban-builtin-sdk-macros (in the pinned SDK
+    # tree); itertools 0.10 is dev-only via the criterion benchmark harness.
+    { crate = "itertools@0.10.5", reason = "criterion benchmark harness requires 0.10; soroban-builtin-sdk-macros requires 0.11" },
 ]

@@ -2,7 +2,7 @@ use soroban_sdk::{Address, Env};
 
 use crate::errors::EscrowError;
 use crate::events;
-use crate::lifecycle::{get_required, refund_to_buyer, release_to_seller};
+use crate::lifecycle::{extend_ttl, get_required, refund_to_buyer, release_to_seller};
 use crate::storage::{DataKey, EscrowState};
 
 use DataKey::*;
@@ -62,7 +62,9 @@ fn resolve_single(env: Env, release_to_seller_flag: bool) -> Result<(), EscrowEr
     arbiter.require_auth();
 
     if release_to_seller_flag {
-        env.storage().instance().set(&State, &EscrowState::Delivered);
+        env.storage()
+            .instance()
+            .set(&State, &EscrowState::Delivered);
         release_to_seller(env)
     } else {
         env.storage().instance().set(&State, &EscrowState::Funded);
@@ -101,7 +103,9 @@ fn resolve_multisig(
     if votes.len() as u32 >= required_sigs {
         env.storage().instance().remove(&DataKey::ArbiterVotes);
         if release_to_seller_flag {
-            env.storage().instance().set(&State, &EscrowState::Delivered);
+            env.storage()
+                .instance()
+                .set(&State, &EscrowState::Delivered);
             release_to_seller(env)
         } else {
             env.storage().instance().set(&State, &EscrowState::Funded);

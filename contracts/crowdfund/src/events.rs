@@ -15,22 +15,16 @@ pub fn pledged(env: &Env, pledger: &Address, amount: i128, total: i128) {
 }
 
 pub fn withdrawn(env: &Env, pledger: &Address, amount: i128) {
-    env.events().publish(
-        (Symbol::new(env, "withdrawn"), pledger.clone()),
-        amount,
-    );
+    env.events()
+        .publish((Symbol::new(env, "withdrawn"), pledger.clone()), amount);
 }
 
 pub fn claimed(env: &Env, creator: &Address, amount: i128) {
-    env.events().publish(
-        (Symbol::new(env, "claimed"), creator.clone()),
-        amount,
-    );
+    env.events()
+        .publish((Symbol::new(env, "claimed"), creator.clone()), amount);
 }
 
 pub fn refunded(env: &Env, pledger: &Address, amount: i128) {
-    env.events().publish(
-        (Symbol::new(env, "refunded"), pledger.clone()),
-        amount,
-    );
+    env.events()
+        .publish((Symbol::new(env, "refunded"), pledger.clone()), amount);
 }

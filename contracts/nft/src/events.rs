@@ -1,6 +1,11 @@
 use soroban_sdk::{Address, Env, Symbol};
 
-pub fn initialized(env: &Env, admin: &Address, name: &soroban_sdk::String, symbol: &soroban_sdk::String) {
+pub fn initialized(
+    env: &Env,
+    admin: &Address,
+    name: &soroban_sdk::String,
+    symbol: &soroban_sdk::String,
+) {
     env.events().publish(
         (Symbol::new(env, "initialized"), admin.clone()),
         (name.clone(), symbol.clone()),

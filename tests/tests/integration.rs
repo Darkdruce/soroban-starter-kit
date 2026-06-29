@@ -7,9 +7,9 @@
 #![cfg(test)]
 
 use soroban_sdk::{
+    Address, Env, String,
     testutils::{Address as _, Ledger as _},
     token::StellarAssetClient,
-    Address, Env, String,
 };
 
 use soroban_escrow_template::{EscrowContract, EscrowContractClient, EscrowState};

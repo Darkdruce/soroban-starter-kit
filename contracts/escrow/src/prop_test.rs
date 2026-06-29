@@ -4,9 +4,9 @@ use std::format;
 
 use proptest::prelude::*;
 use soroban_sdk::{
+    Address, Env,
     testutils::{Address as _, Ledger as _},
     token::StellarAssetClient,
-    Address, Env,
 };
 
 use crate::{EscrowContract, EscrowContractClient, EscrowState};
@@ -146,7 +146,7 @@ proptest! {
 
         for action in actions {
             let state = client.get_state();
-            
+
             // Terminal states cannot transition
             if let Some(EscrowState::Completed) | Some(EscrowState::Refunded) | Some(EscrowState::Cancelled) = state {
                 break;

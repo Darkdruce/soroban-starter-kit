@@ -1,4 +1,9 @@
 #![no_std]
+#![deny(missing_docs)]
+//! Ranked-choice / single-choice ballot voting contract template.
+//!
+//! Voters cast a single vote among registered options; results are tallied
+//! on-chain once voting closes.
 
 use soroban_sdk::{contract, contractimpl, Address, Env};
 
@@ -25,8 +30,17 @@ fn bump(env: &Env) {
 /// 2. Admin calls `register_voter` to add voters to the ballot.
 /// 3. Voters call `vote` to cast their single vote (yes=1, no=0).
 /// 4. Admin calls `tally` to get final results and close voting.
-#[contract]
-pub struct BallotContract;
+pub use contract::*;
+
+// The `#[contract]` / `#[contractimpl]` macros generate an undocumented public
+// client type. Confine the missing_docs allowance to this module and re-export
+// the public contract API above, keeping the rest of the crate enforced.
+mod contract {
+    #![allow(missing_docs)]
+    use super::*;
+
+    #[contract]
+    pub struct BallotContract;
 
 #[contractimpl]
 impl BallotContract {
@@ -202,6 +216,7 @@ impl BallotContract {
             .get(&DataKey::NoVotes)
             .unwrap_or(0i128)
     }
+}
 }
 
 #[cfg(test)]

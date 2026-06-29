@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address};
+use soroban_sdk::{Address, contracttype};
 
 #[contracttype]
 #[derive(Clone)]
@@ -48,7 +48,7 @@ pub enum MetadataKey {
 #[cfg(test)]
 mod discriminant_tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Address, Env};
+    use soroban_sdk::{Address, Env, testutils::Address as _};
 
     // In Soroban, #[contracttype] enums use the variant NAME as the XDR storage discriminant.
     // NEVER rename, reorder, or remove variants — doing so will corrupt on-chain storage for
@@ -84,13 +84,19 @@ mod discriminant_tests {
     fn data_key_discriminants_are_stable() {
         let env = Env::default();
         let addr = Address::generate(&env);
-        let allowance_key = AllowanceDataKey { from: addr.clone(), spender: addr.clone() };
+        let allowance_key = AllowanceDataKey {
+            from: addr.clone(),
+            spender: addr.clone(),
+        };
 
         assert_eq!(token_data_key_index(&DataKey::Admin), 0);
         assert_eq!(token_data_key_index(&DataKey::PendingAdmin), 1);
         assert_eq!(token_data_key_index(&DataKey::Balance(addr.clone())), 2);
         assert_eq!(token_data_key_index(&DataKey::Allowance(allowance_key)), 3);
-        assert_eq!(token_data_key_index(&DataKey::Metadata(MetadataKey::Name)), 4);
+        assert_eq!(
+            token_data_key_index(&DataKey::Metadata(MetadataKey::Name)),
+            4
+        );
         assert_eq!(token_data_key_index(&DataKey::TotalSupply), 5);
         assert_eq!(token_data_key_index(&DataKey::Paused), 6);
         assert_eq!(token_data_key_index(&DataKey::MaxSupply), 7);
