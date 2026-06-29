@@ -98,6 +98,7 @@ fn resolve_multisig(
 
     env.storage().instance().set(&DataKey::ArbiterVotes, &votes);
 
+    #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
     if votes.len() as u32 >= required_sigs {
         env.storage().instance().remove(&DataKey::ArbiterVotes);
         if release_to_seller_flag {

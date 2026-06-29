@@ -1,3 +1,4 @@
+use soroban_common::impl_display_error;
 use soroban_sdk::contracterror;
 
 /// Error codes returned by [`MultisigContract`](crate::MultisigContract).
@@ -26,19 +27,16 @@ pub enum MultisigError {
     InsufficientApprovals = 10,
 }
 
-impl core::fmt::Display for MultisigError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            MultisigError::AlreadyInitialized => write!(f, "already initialized"),
-            MultisigError::NotInitialized => write!(f, "not initialized"),
-            MultisigError::InvalidThreshold => write!(f, "invalid threshold"),
-            MultisigError::InvalidSigners => write!(f, "invalid signers"),
-            MultisigError::NotSigner => write!(f, "not signer"),
-            MultisigError::TransactionNotFound => write!(f, "transaction not found"),
-            MultisigError::AlreadyExecuted => write!(f, "already executed"),
-            MultisigError::AlreadySigned => write!(f, "already signed"),
-            MultisigError::ThresholdNotMet => write!(f, "threshold not met"),
-            MultisigError::InsufficientApprovals => write!(f, "insufficient approvals"),
-        }
-    }
-}
+impl_display_error!(
+    MultisigError,
+    AlreadyInitialized  => "already initialized",
+    NotInitialized      => "not initialized",
+    InvalidThreshold    => "invalid threshold",
+    InvalidSigners      => "invalid signers",
+    NotSigner           => "not signer",
+    TransactionNotFound => "transaction not found",
+    AlreadyExecuted     => "already executed",
+    AlreadySigned       => "already signed",
+    ThresholdNotMet     => "threshold not met",
+    InsufficientApprovals => "insufficient approvals",
+);

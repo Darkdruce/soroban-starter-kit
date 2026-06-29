@@ -1,3 +1,4 @@
+use soroban_common::impl_display_error;
 use soroban_sdk::contracterror;
 
 #[contracterror]
@@ -14,18 +15,15 @@ pub enum NftError {
     InvalidTokenId = 9,
 }
 
-impl core::fmt::Display for NftError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            NftError::NotAuthorized => write!(f, "not authorized"),
-            NftError::AlreadyInitialized => write!(f, "already initialized"),
-            NftError::NotInitialized => write!(f, "not initialized"),
-            NftError::TokenNotFound => write!(f, "token not found"),
-            NftError::TokenAlreadyMinted => write!(f, "token already minted"),
-            NftError::NotOwner => write!(f, "not the token owner"),
-            NftError::NotApproved => write!(f, "not approved for this token"),
-            NftError::SupplyCapReached => write!(f, "supply cap reached"),
-            NftError::InvalidTokenId => write!(f, "invalid token id"),
-        }
-    }
-}
+impl_display_error!(
+    NftError,
+    NotAuthorized      => "not authorized",
+    AlreadyInitialized => "already initialized",
+    NotInitialized     => "not initialized",
+    TokenNotFound      => "token not found",
+    TokenAlreadyMinted => "token already minted",
+    NotOwner           => "not the token owner",
+    NotApproved        => "not approved for this token",
+    SupplyCapReached   => "supply cap reached",
+    InvalidTokenId     => "invalid token id",
+);

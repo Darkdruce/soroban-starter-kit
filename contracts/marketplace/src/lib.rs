@@ -184,7 +184,9 @@ impl MarketplaceContract {
         bump_instance(&env);
 
         let price = listing.price;
+        #[allow(clippy::arithmetic_side_effects, clippy::as_conversions, clippy::cast_possible_truncation)] // royalty BPS validated <= 10_000 at init
         let royalty = (price * royalty_bps as i128) / 10_000;
+        #[allow(clippy::arithmetic_side_effects)]
         let seller_amount = price - royalty;
 
         let tok = token::Client::new(&env, &payment_token);

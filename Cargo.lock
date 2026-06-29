@@ -1867,6 +1867,7 @@ name = "soroban-token-fuzz"
 version = "0.1.0"
 dependencies = [
  "libfuzzer-sys",
+ "soroban-escrow-template",
  "soroban-sdk",
  "soroban-token-template",
 ]

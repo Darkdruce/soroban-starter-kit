@@ -194,6 +194,7 @@ impl AuctionContract {
 
         let seller: Address = get_instance(&env, &DataKey::Seller)?;
         let token: Address = get_instance(&env, &DataKey::Token)?;
+        #[allow(clippy::unwrap_used)] // winner.is_none() is checked two lines above
         let winner = winner.unwrap(); // safe: checked above
 
         token::Client::new(&env, &token)

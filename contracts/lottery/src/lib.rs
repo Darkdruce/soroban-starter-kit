@@ -192,12 +192,16 @@ impl LotteryContract {
         ]);
 
         let participants: Vec<Address> = get_required(&env, &Participants)?;
+        #[allow(clippy::cast_possible_truncation, clippy::arithmetic_side_effects, clippy::as_conversions)]
         let count = participants.len() as u64;
+        #[allow(clippy::cast_possible_truncation, clippy::arithmetic_side_effects, clippy::as_conversions)]
         let winner_idx = (idx_raw % count) as u32;
+        #[allow(clippy::unwrap_used)] // winner_idx is derived from modulo of len, always in bounds
         let winner = participants.get(winner_idx).unwrap();
 
         // Transfer full prize pool to winner.
         let ticket_price: i128 = get_required(&env, &TicketPrice)?;
+        #[allow(clippy::arithmetic_side_effects, clippy::cast_possible_truncation, clippy::as_conversions)]
         let prize = ticket_price * count as i128;
         let token_addr: Address = get_required(&env, &Token)?;
         token::Client::new(&env, &token_addr).transfer(

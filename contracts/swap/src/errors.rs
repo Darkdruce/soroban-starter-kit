@@ -1,3 +1,4 @@
+use soroban_common::impl_display_error;
 use soroban_sdk::contracterror;
 
 #[contracterror]
@@ -13,17 +14,14 @@ pub enum SwapError {
     AlreadyCancelled = 8,
 }
 
-impl core::fmt::Display for SwapError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            SwapError::NotAuthorized => write!(f, "not authorized"),
-            SwapError::SwapNotFound => write!(f, "swap not found"),
-            SwapError::InvalidState => write!(f, "invalid swap state"),
-            SwapError::DeadlineExpired => write!(f, "swap deadline has expired"),
-            SwapError::InvalidAmount => write!(f, "invalid amount"),
-            SwapError::InvalidDeadline => write!(f, "invalid deadline"),
-            SwapError::AlreadyCompleted => write!(f, "swap already completed"),
-            SwapError::AlreadyCancelled => write!(f, "swap already cancelled"),
-        }
-    }
-}
+impl_display_error!(
+    SwapError,
+    NotAuthorized    => "not authorized",
+    SwapNotFound     => "swap not found",
+    InvalidState     => "invalid swap state",
+    DeadlineExpired  => "swap deadline has expired",
+    InvalidAmount    => "invalid amount",
+    InvalidDeadline  => "invalid deadline",
+    AlreadyCompleted => "swap already completed",
+    AlreadyCancelled => "swap already cancelled",
+);

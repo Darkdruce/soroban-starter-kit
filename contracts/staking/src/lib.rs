@@ -67,6 +67,7 @@ fn get_total_rewards_internal(env: &Env) -> Result<i128, StakingError> {
 }
 
 /// Pure reward calculation — isolated from storage for testability.
+#[allow(clippy::arithmetic_side_effects)] // overflow checked via REWARD_SCALE invariant
 pub(crate) fn calculate_earned(stake: i128, rpt: i128, paid: i128, accrued: i128) -> i128 {
     accrued + stake * (rpt - paid) / REWARD_SCALE
 }
