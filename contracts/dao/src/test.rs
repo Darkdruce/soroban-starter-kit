@@ -2,9 +2,9 @@
 
 use super::*;
 use soroban_sdk::{
+    Address, Env, String,
     testutils::{Address as _, Ledger as _},
     token::StellarAssetClient,
-    Address, Env, String,
 };
 
 // ---------------------------------------------------------------------------

@@ -18,8 +18,6 @@ pub fn committed(env: &Env, admin: &Address) {
 }
 
 pub fn winner_drawn(env: &Env, winner: &Address, prize: i128) {
-    env.events().publish(
-        (Symbol::new(env, "winner_drawn"), winner.clone()),
-        prize,
-    );
+    env.events()
+        .publish((Symbol::new(env, "winner_drawn"), winner.clone()), prize);
 }

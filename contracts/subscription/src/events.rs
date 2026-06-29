@@ -22,7 +22,11 @@ pub fn subscribed(env: &Env, subscriber: &Address, amount: i128, interval_ledger
 /// Topics: (Symbol, Address, Address) — event name, subscriber, provider
 pub fn charged(env: &Env, subscriber: &Address, provider: &Address, amount: i128) {
     env.events().publish(
-        (Symbol::new(env, "charged"), subscriber.clone(), provider.clone()),
+        (
+            Symbol::new(env, "charged"),
+            subscriber.clone(),
+            provider.clone(),
+        ),
         amount,
     );
 }
@@ -30,8 +34,6 @@ pub fn charged(env: &Env, subscriber: &Address, provider: &Address, amount: i128
 /// Emitted when a subscriber cancels their subscription.
 /// Topics: (Symbol, Address) — event name, subscriber
 pub fn cancelled(env: &Env, subscriber: &Address) {
-    env.events().publish(
-        (Symbol::new(env, "cancelled"), subscriber.clone()),
-        (),
-    );
+    env.events()
+        .publish((Symbol::new(env, "cancelled"), subscriber.clone()), ());
 }

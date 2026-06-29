@@ -1,4 +1,7 @@
-use soroban_sdk::{contracttype, Address, Symbol, Val, Vec};
+// `#[contracttype]` generates undocumented public associated items.
+#![allow(missing_docs)]
+
+use soroban_sdk::{Address, Symbol, Val, Vec, contracttype};
 
 #[contracttype]
 #[derive(Clone)]

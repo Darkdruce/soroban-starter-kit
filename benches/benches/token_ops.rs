@@ -2,8 +2,8 @@
 //!
 //! Closes #224 – no benchmark / gas usage tests.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use soroban_sdk::{Address, Env, String, testutils::Address as _};
 
 use soroban_token_template::{TokenContract, TokenContractClient};
 
@@ -89,5 +89,11 @@ fn bench_burn(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_mint, bench_transfer, bench_approve_and_transfer_from, bench_burn);
+criterion_group!(
+    benches,
+    bench_mint,
+    bench_transfer,
+    bench_approve_and_transfer_from,
+    bench_burn
+);
 criterion_main!(benches);

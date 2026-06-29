@@ -6,17 +6,27 @@
 //! test environment, which is a stable proxy for on-chain compute unit (CU)
 //! consumption.  The CI threshold check lives in `.github/workflows/bench.yml`.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use soroban_sdk::{
+    Address, Env, String,
     testutils::{Address as _, Ledger as _},
     token::StellarAssetClient,
-    Address, Env, String,
 };
 
 use soroban_escrow_template::{EscrowContract, EscrowContractClient};
 use soroban_token_template::{TokenContract, TokenContractClient};
 
-fn setup(amount: i128) -> (Env, EscrowContractClient<'static>, Address, Address, Address, Address, u32) {
+fn setup(
+    amount: i128,
+) -> (
+    Env,
+    EscrowContractClient<'static>,
+    Address,
+    Address,
+    Address,
+    Address,
+    u32,
+) {
     // SAFETY: we leak the Env so that the 'static lifetime is satisfied for
     // the client references returned from this helper.  This is acceptable in
     // benchmark code where the process exits after each measurement.
@@ -44,7 +54,15 @@ fn setup(amount: i128) -> (Env, EscrowContractClient<'static>, Address, Address,
     let escrow_addr = env.register_contract(None, EscrowContract);
     let escrow = EscrowContractClient::new(env, &escrow_addr);
 
-    (env.clone(), escrow, buyer, seller, arbiter, token_addr, deadline)
+    (
+        env.clone(),
+        escrow,
+        buyer,
+        seller,
+        arbiter,
+        token_addr,
+        deadline,
+    )
 }
 
 fn bench_initialize(c: &mut Criterion) {
@@ -90,7 +108,14 @@ fn bench_fund(c: &mut Criterion) {
 
             let escrow_addr = env.register_contract(None, EscrowContract);
             let escrow = EscrowContractClient::new(&env, &escrow_addr);
-            escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &1_000i128, &deadline);
+            escrow.initialize(
+                &buyer,
+                &seller,
+                &arbiter,
+                &token_addr,
+                &1_000i128,
+                &deadline,
+            );
 
             escrow.fund();
         });
@@ -115,7 +140,14 @@ fn bench_approve_delivery(c: &mut Criterion) {
 
             let escrow_addr = env.register_contract(None, EscrowContract);
             let escrow = EscrowContractClient::new(&env, &escrow_addr);
-            escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &1_000i128, &deadline);
+            escrow.initialize(
+                &buyer,
+                &seller,
+                &arbiter,
+                &token_addr,
+                &1_000i128,
+                &deadline,
+            );
             escrow.fund();
             escrow.mark_delivered();
 
@@ -142,7 +174,14 @@ fn bench_resolve_dispute(c: &mut Criterion) {
 
             let escrow_addr = env.register_contract(None, EscrowContract);
             let escrow = EscrowContractClient::new(&env, &escrow_addr);
-            escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &1_000i128, &deadline);
+            escrow.initialize(
+                &buyer,
+                &seller,
+                &arbiter,
+                &token_addr,
+                &1_000i128,
+                &deadline,
+            );
             escrow.fund();
 
             escrow.resolve_dispute(black_box(&true));
@@ -168,8 +207,15 @@ fn bench_full_lifecycle(c: &mut Criterion) {
 
             let escrow_addr = env.register_contract(None, EscrowContract);
             let escrow = EscrowContractClient::new(&env, &escrow_addr);
-            escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &1_000i128, &deadline);
-            
+            escrow.initialize(
+                &buyer,
+                &seller,
+                &arbiter,
+                &token_addr,
+                &1_000i128,
+                &deadline,
+            );
+
             // Full lifecycle: fund → mark_delivered → approve_delivery
             escrow.fund();
             escrow.mark_delivered();

@@ -1,6 +1,6 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use soroban_sdk::{Address, Env, String, testutils::Address as _};
 use soroban_token_template::TokenContract;
 
 fn bytes_to_i128(data: &[u8], offset: usize) -> i128 {

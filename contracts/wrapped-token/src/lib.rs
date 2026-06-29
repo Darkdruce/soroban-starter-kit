@@ -1,4 +1,9 @@
 #![no_std]
+#![deny(missing_docs)]
+//! Wrapped-token contract template.
+//!
+//! Wraps an underlying asset 1:1, minting wrapped tokens on deposit and
+//! burning them on withdrawal.
 
 use soroban_sdk::{contract, contractimpl, token, Address, Env};
 
@@ -27,8 +32,17 @@ fn bump(env: &Env) {
 /// 1. Admin calls `initialize` — sets up the wrapped token address.
 /// 2. Users call `wrap` to deposit XLM and mint wrapped tokens (1:1 peg).
 /// 3. Users call `unwrap` to burn wrapped tokens and receive XLM (1:1 peg).
-#[contract]
-pub struct WrappedTokenContract;
+pub use contract::*;
+
+// The `#[contract]` / `#[contractimpl]` macros generate an undocumented public
+// client type. Confine the missing_docs allowance to this module and re-export
+// the public contract API above, keeping the rest of the crate enforced.
+mod contract {
+    #![allow(missing_docs)]
+    use super::*;
+
+    #[contract]
+    pub struct WrappedTokenContract;
 
 #[contractimpl]
 impl WrappedTokenContract {
@@ -144,6 +158,7 @@ impl WrappedTokenContract {
             .get(&DataKey::TotalWrapped)
             .unwrap_or(0i128)
     }
+}
 }
 
 #[cfg(test)]

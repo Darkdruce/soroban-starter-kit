@@ -1,6 +1,11 @@
 #![no_std]
+#![deny(missing_docs)]
+//! Non-fungible token (NFT) contract template.
+//!
+//! Admin-controlled minting with per-token owners, approved spenders, metadata
+//! URIs, and an optional supply cap.
 
-use soroban_sdk::{contract, contractimpl, Address, Env, String};
+use soroban_sdk::{Address, Env, String, contract, contractimpl};
 
 mod errors;
 mod events;
@@ -27,295 +32,353 @@ fn bump_token(env: &Env, key: &TokenKey) {
 ///
 /// Each token has a unique `token_id` (`u32`), an owner, an optional approved spender,
 /// and a URI pointing to off-chain metadata.
-#[contract]
-pub struct NftContract;
+pub use contract::*;
 
-#[contractimpl]
-impl NftContract {
-    /// Initialize the NFT collection.
-    ///
-    /// `max_supply` of `0` means no cap.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NftError::AlreadyInitialized`] if called a second time.
-    pub fn initialize(
-        env: Env,
-        admin: Address,
-        name: String,
-        symbol: String,
-        max_supply: u32,
-    ) -> Result<(), NftError> {
-        if env.storage().instance().has(&DataKey::Initialized) {
-            return Err(NftError::AlreadyInitialized);
-        }
+// The `#[contract]` / `#[contractimpl]` macros generate an undocumented public
+// client type. Confine the missing_docs allowance to this module and re-export
+// the public contract API above, keeping the rest of the crate enforced.
+mod contract {
+    #![allow(missing_docs)]
+    use super::*;
 
-        admin.require_auth();
+    #[contract]
+    pub struct NftContract;
 
-        env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::Name, &name);
-        env.storage().instance().set(&DataKey::Symbol, &symbol);
-        env.storage().instance().set(&DataKey::TotalSupply, &0u32);
-        if max_supply > 0 {
-            env.storage().instance().set(&DataKey::MaxSupply, &max_supply);
-        }
-        env.storage().instance().set(&DataKey::Initialized, &true);
-
-        bump_instance(&env);
-        events::initialized(&env, &admin, &name, &symbol);
-
-        Ok(())
-    }
-
-    /// Mint a new token to `to` with the given `token_id` and `token_uri`. Admin only.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NftError::NotInitialized`] if the contract has not been set up.
-    /// Returns [`NftError::NotAuthorized`] if the caller is not the admin.
-    /// Returns [`NftError::TokenAlreadyMinted`] if `token_id` is already taken.
-    /// Returns [`NftError::SupplyCapReached`] if minting would exceed the max supply.
-    pub fn mint(
-        env: Env,
-        to: Address,
-        token_id: u32,
-        token_uri: String,
-    ) -> Result<(), NftError> {
-        Self::require_initialized(&env)?;
-
-        let admin: Address = env.storage().instance().get(&DataKey::Admin)
-            .ok_or(NftError::NotInitialized)?;
-        admin.require_auth();
-
-        if env.storage().persistent().has(&TokenKey::Owner(token_id)) {
-            return Err(NftError::TokenAlreadyMinted);
-        }
-
-        let total: u32 = env.storage().instance().get(&DataKey::TotalSupply).unwrap_or(0);
-        if let Some(max) = env.storage().instance().get::<DataKey, u32>(&DataKey::MaxSupply) {
-            if total >= max {
-                return Err(NftError::SupplyCapReached);
+    #[contractimpl]
+    impl NftContract {
+        /// Initialize the NFT collection.
+        ///
+        /// `max_supply` of `0` means no cap.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`NftError::AlreadyInitialized`] if called a second time.
+        pub fn initialize(
+            env: Env,
+            admin: Address,
+            name: String,
+            symbol: String,
+            max_supply: u32,
+        ) -> Result<(), NftError> {
+            if env.storage().instance().has(&DataKey::Initialized) {
+                return Err(NftError::AlreadyInitialized);
             }
+
+            admin.require_auth();
+
+            env.storage().instance().set(&DataKey::Admin, &admin);
+            env.storage().instance().set(&DataKey::Name, &name);
+            env.storage().instance().set(&DataKey::Symbol, &symbol);
+            env.storage().instance().set(&DataKey::TotalSupply, &0u32);
+            if max_supply > 0 {
+                env.storage()
+                    .instance()
+                    .set(&DataKey::MaxSupply, &max_supply);
+            }
+            env.storage().instance().set(&DataKey::Initialized, &true);
+
+            bump_instance(&env);
+            events::initialized(&env, &admin, &name, &symbol);
+
+            Ok(())
         }
 
-        env.storage().persistent().set(&TokenKey::Owner(token_id), &to);
-        env.storage().persistent().set(&TokenKey::Uri(token_id), &token_uri);
-        env.storage().instance().set(&DataKey::TotalSupply, &(total + 1));
+        /// Mint a new token to `to` with the given `token_id` and `token_uri`. Admin only.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`NftError::NotInitialized`] if the contract has not been set up.
+        /// Returns [`NftError::NotAuthorized`] if the caller is not the admin.
+        /// Returns [`NftError::TokenAlreadyMinted`] if `token_id` is already taken.
+        /// Returns [`NftError::SupplyCapReached`] if minting would exceed the max supply.
+        pub fn mint(
+            env: Env,
+            to: Address,
+            token_id: u32,
+            token_uri: String,
+        ) -> Result<(), NftError> {
+            Self::require_initialized(&env)?;
 
-        bump_instance(&env);
-        bump_token(&env, &TokenKey::Owner(token_id));
-        bump_token(&env, &TokenKey::Uri(token_id));
-        events::minted(&env, &to, token_id);
+            let admin: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Admin)
+                .ok_or(NftError::NotInitialized)?;
+            admin.require_auth();
 
-        Ok(())
-    }
+            if env.storage().persistent().has(&TokenKey::Owner(token_id)) {
+                return Err(NftError::TokenAlreadyMinted);
+            }
 
-    /// Transfer token `token_id` from `from` to `to`. Requires auth from `from` (the owner).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NftError::TokenNotFound`] if the token does not exist.
-    /// Returns [`NftError::NotOwner`] if `from` is not the current owner.
-    pub fn transfer(
-        env: Env,
-        from: Address,
-        to: Address,
-        token_id: u32,
-    ) -> Result<(), NftError> {
-        Self::require_initialized(&env)?;
-        from.require_auth();
+            let total: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::TotalSupply)
+                .unwrap_or(0);
+            if let Some(max) = env
+                .storage()
+                .instance()
+                .get::<DataKey, u32>(&DataKey::MaxSupply)
+            {
+                if total >= max {
+                    return Err(NftError::SupplyCapReached);
+                }
+            }
 
-        let owner: Address = env
-            .storage()
-            .persistent()
-            .get(&TokenKey::Owner(token_id))
-            .ok_or(NftError::TokenNotFound)?;
+            env.storage()
+                .persistent()
+                .set(&TokenKey::Owner(token_id), &to);
+            env.storage()
+                .persistent()
+                .set(&TokenKey::Uri(token_id), &token_uri);
+            env.storage()
+                .instance()
+                .set(&DataKey::TotalSupply, &(total + 1));
 
-        if owner != from {
-            return Err(NftError::NotOwner);
+            bump_instance(&env);
+            bump_token(&env, &TokenKey::Owner(token_id));
+            bump_token(&env, &TokenKey::Uri(token_id));
+            events::minted(&env, &to, token_id);
+
+            Ok(())
         }
 
-        env.storage().persistent().set(&TokenKey::Owner(token_id), &to);
-        // Clear any existing approval on transfer.
-        env.storage().persistent().remove(&TokenKey::Approval(token_id));
+        /// Transfer token `token_id` from `from` to `to`. Requires auth from `from` (the owner).
+        ///
+        /// # Errors
+        ///
+        /// Returns [`NftError::TokenNotFound`] if the token does not exist.
+        /// Returns [`NftError::NotOwner`] if `from` is not the current owner.
+        pub fn transfer(
+            env: Env,
+            from: Address,
+            to: Address,
+            token_id: u32,
+        ) -> Result<(), NftError> {
+            Self::require_initialized(&env)?;
+            from.require_auth();
 
-        bump_token(&env, &TokenKey::Owner(token_id));
-        events::transferred(&env, &from, &to, token_id);
+            let owner: Address = env
+                .storage()
+                .persistent()
+                .get(&TokenKey::Owner(token_id))
+                .ok_or(NftError::TokenNotFound)?;
 
-        Ok(())
-    }
+            if owner != from {
+                return Err(NftError::NotOwner);
+            }
 
-    /// Burn (destroy) token `token_id`. Requires auth from the current owner.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NftError::TokenNotFound`] if the token does not exist.
-    /// Returns [`NftError::NotOwner`] if `from` is not the current owner.
-    pub fn burn(env: Env, from: Address, token_id: u32) -> Result<(), NftError> {
-        Self::require_initialized(&env)?;
-        from.require_auth();
+            env.storage()
+                .persistent()
+                .set(&TokenKey::Owner(token_id), &to);
+            // Clear any existing approval on transfer.
+            env.storage()
+                .persistent()
+                .remove(&TokenKey::Approval(token_id));
 
-        let owner: Address = env
-            .storage()
-            .persistent()
-            .get(&TokenKey::Owner(token_id))
-            .ok_or(NftError::TokenNotFound)?;
+            bump_token(&env, &TokenKey::Owner(token_id));
+            events::transferred(&env, &from, &to, token_id);
 
-        if owner != from {
-            return Err(NftError::NotOwner);
+            Ok(())
         }
 
-        env.storage().persistent().remove(&TokenKey::Owner(token_id));
-        env.storage().persistent().remove(&TokenKey::Uri(token_id));
-        env.storage().persistent().remove(&TokenKey::Approval(token_id));
+        /// Burn (destroy) token `token_id`. Requires auth from the current owner.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`NftError::TokenNotFound`] if the token does not exist.
+        /// Returns [`NftError::NotOwner`] if `from` is not the current owner.
+        pub fn burn(env: Env, from: Address, token_id: u32) -> Result<(), NftError> {
+            Self::require_initialized(&env)?;
+            from.require_auth();
 
-        let total: u32 = env.storage().instance().get(&DataKey::TotalSupply).unwrap_or(1);
-        env.storage().instance().set(&DataKey::TotalSupply, &total.saturating_sub(1));
+            let owner: Address = env
+                .storage()
+                .persistent()
+                .get(&TokenKey::Owner(token_id))
+                .ok_or(NftError::TokenNotFound)?;
 
-        bump_instance(&env);
-        events::burned(&env, &from, token_id);
+            if owner != from {
+                return Err(NftError::NotOwner);
+            }
 
-        Ok(())
-    }
+            env.storage()
+                .persistent()
+                .remove(&TokenKey::Owner(token_id));
+            env.storage().persistent().remove(&TokenKey::Uri(token_id));
+            env.storage()
+                .persistent()
+                .remove(&TokenKey::Approval(token_id));
 
-    /// Grant `spender` approval to transfer token `token_id`. Caller must be the owner.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NftError::TokenNotFound`] if the token does not exist.
-    /// Returns [`NftError::NotOwner`] if the caller is not the current owner.
-    pub fn approve(
-        env: Env,
-        token_id: u32,
-        spender: Address,
-    ) -> Result<(), NftError> {
-        Self::require_initialized(&env)?;
+            let total: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::TotalSupply)
+                .unwrap_or(1);
+            env.storage()
+                .instance()
+                .set(&DataKey::TotalSupply, &total.saturating_sub(1));
 
-        let owner: Address = env
-            .storage()
-            .persistent()
-            .get(&TokenKey::Owner(token_id))
-            .ok_or(NftError::TokenNotFound)?;
+            bump_instance(&env);
+            events::burned(&env, &from, token_id);
 
-        owner.require_auth();
-
-        env.storage().persistent().set(&TokenKey::Approval(token_id), &spender);
-        bump_token(&env, &TokenKey::Approval(token_id));
-        events::approved(&env, &owner, &spender, token_id);
-
-        Ok(())
-    }
-
-    /// Transfer token `token_id` from `from` to `to` using a prior approval. Auth from `spender`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NftError::TokenNotFound`] if the token does not exist.
-    /// Returns [`NftError::NotOwner`] if `from` is not the current owner.
-    /// Returns [`NftError::NotApproved`] if `spender` is not approved for this token.
-    pub fn transfer_from(
-        env: Env,
-        spender: Address,
-        from: Address,
-        to: Address,
-        token_id: u32,
-    ) -> Result<(), NftError> {
-        Self::require_initialized(&env)?;
-        spender.require_auth();
-
-        let owner: Address = env
-            .storage()
-            .persistent()
-            .get(&TokenKey::Owner(token_id))
-            .ok_or(NftError::TokenNotFound)?;
-
-        if owner != from {
-            return Err(NftError::NotOwner);
+            Ok(())
         }
 
-        let approved: Option<Address> = env
-            .storage()
-            .persistent()
-            .get(&TokenKey::Approval(token_id));
+        /// Grant `spender` approval to transfer token `token_id`. Caller must be the owner.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`NftError::TokenNotFound`] if the token does not exist.
+        /// Returns [`NftError::NotOwner`] if the caller is not the current owner.
+        pub fn approve(env: Env, token_id: u32, spender: Address) -> Result<(), NftError> {
+            Self::require_initialized(&env)?;
 
-        match approved {
-            Some(ref a) if *a == spender => {}
-            _ => return Err(NftError::NotApproved),
+            let owner: Address = env
+                .storage()
+                .persistent()
+                .get(&TokenKey::Owner(token_id))
+                .ok_or(NftError::TokenNotFound)?;
+
+            owner.require_auth();
+
+            env.storage()
+                .persistent()
+                .set(&TokenKey::Approval(token_id), &spender);
+            bump_token(&env, &TokenKey::Approval(token_id));
+            events::approved(&env, &owner, &spender, token_id);
+
+            Ok(())
         }
 
-        env.storage().persistent().set(&TokenKey::Owner(token_id), &to);
-        env.storage().persistent().remove(&TokenKey::Approval(token_id));
+        /// Transfer token `token_id` from `from` to `to` using a prior approval. Auth from `spender`.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`NftError::TokenNotFound`] if the token does not exist.
+        /// Returns [`NftError::NotOwner`] if `from` is not the current owner.
+        /// Returns [`NftError::NotApproved`] if `spender` is not approved for this token.
+        pub fn transfer_from(
+            env: Env,
+            spender: Address,
+            from: Address,
+            to: Address,
+            token_id: u32,
+        ) -> Result<(), NftError> {
+            Self::require_initialized(&env)?;
+            spender.require_auth();
 
-        bump_token(&env, &TokenKey::Owner(token_id));
-        events::transferred(&env, &from, &to, token_id);
+            let owner: Address = env
+                .storage()
+                .persistent()
+                .get(&TokenKey::Owner(token_id))
+                .ok_or(NftError::TokenNotFound)?;
 
-        Ok(())
-    }
+            if owner != from {
+                return Err(NftError::NotOwner);
+            }
 
-    /// Return the owner of `token_id`.
-    #[must_use]
-    pub fn owner_of(env: Env, token_id: u32) -> Result<Address, NftError> {
-        env.storage()
-            .persistent()
-            .get(&TokenKey::Owner(token_id))
-            .ok_or(NftError::TokenNotFound)
-    }
+            let approved: Option<Address> = env
+                .storage()
+                .persistent()
+                .get(&TokenKey::Approval(token_id));
 
-    /// Return the approved spender for `token_id`, if any.
-    #[must_use]
-    pub fn get_approved(env: Env, token_id: u32) -> Option<Address> {
-        env.storage().persistent().get(&TokenKey::Approval(token_id))
-    }
+            match approved {
+                Some(ref a) if *a == spender => {}
+                _ => return Err(NftError::NotApproved),
+            }
 
-    /// Return the token URI for `token_id`.
-    #[must_use]
-    pub fn token_uri(env: Env, token_id: u32) -> Result<String, NftError> {
-        env.storage()
-            .persistent()
-            .get(&TokenKey::Uri(token_id))
-            .ok_or(NftError::TokenNotFound)
-    }
+            env.storage()
+                .persistent()
+                .set(&TokenKey::Owner(token_id), &to);
+            env.storage()
+                .persistent()
+                .remove(&TokenKey::Approval(token_id));
 
-    /// Return collection metadata as a [`TokenMetadata`] struct.
-    #[must_use]
-    pub fn metadata(env: Env) -> Result<TokenMetadata, NftError> {
-        Self::require_initialized(&env)?;
-        Ok(TokenMetadata {
-            name: env.storage().instance().get(&DataKey::Name).ok_or(NftError::NotInitialized)?,
-            symbol: env.storage().instance().get(&DataKey::Symbol).ok_or(NftError::NotInitialized)?,
-            token_uri: String::from_str(&env, ""),
-        })
-    }
+            bump_token(&env, &TokenKey::Owner(token_id));
+            events::transferred(&env, &from, &to, token_id);
 
-    /// Return the collection name.
-    #[must_use]
-    pub fn name(env: Env) -> Result<String, NftError> {
-        env.storage()
-            .instance()
-            .get(&DataKey::Name)
-            .ok_or(NftError::NotInitialized)
-    }
-
-    /// Return the collection symbol.
-    #[must_use]
-    pub fn symbol(env: Env) -> Result<String, NftError> {
-        env.storage()
-            .instance()
-            .get(&DataKey::Symbol)
-            .ok_or(NftError::NotInitialized)
-    }
-
-    /// Return the total number of minted (non-burned) tokens.
-    #[must_use]
-    pub fn total_supply(env: Env) -> u32 {
-        env.storage().instance().get(&DataKey::TotalSupply).unwrap_or(0)
-    }
-
-    fn require_initialized(env: &Env) -> Result<(), NftError> {
-        if !env.storage().instance().has(&DataKey::Initialized) {
-            return Err(NftError::NotInitialized);
+            Ok(())
         }
-        Ok(())
+
+        /// Return the owner of `token_id`.
+        #[must_use]
+        pub fn owner_of(env: Env, token_id: u32) -> Result<Address, NftError> {
+            env.storage()
+                .persistent()
+                .get(&TokenKey::Owner(token_id))
+                .ok_or(NftError::TokenNotFound)
+        }
+
+        /// Return the approved spender for `token_id`, if any.
+        #[must_use]
+        pub fn get_approved(env: Env, token_id: u32) -> Option<Address> {
+            env.storage()
+                .persistent()
+                .get(&TokenKey::Approval(token_id))
+        }
+
+        /// Return the token URI for `token_id`.
+        #[must_use]
+        pub fn token_uri(env: Env, token_id: u32) -> Result<String, NftError> {
+            env.storage()
+                .persistent()
+                .get(&TokenKey::Uri(token_id))
+                .ok_or(NftError::TokenNotFound)
+        }
+
+        /// Return collection metadata as a [`TokenMetadata`] struct.
+        #[must_use]
+        pub fn metadata(env: Env) -> Result<TokenMetadata, NftError> {
+            Self::require_initialized(&env)?;
+            Ok(TokenMetadata {
+                name: env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::Name)
+                    .ok_or(NftError::NotInitialized)?,
+                symbol: env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::Symbol)
+                    .ok_or(NftError::NotInitialized)?,
+                token_uri: String::from_str(&env, ""),
+            })
+        }
+
+        /// Return the collection name.
+        #[must_use]
+        pub fn name(env: Env) -> Result<String, NftError> {
+            env.storage()
+                .instance()
+                .get(&DataKey::Name)
+                .ok_or(NftError::NotInitialized)
+        }
+
+        /// Return the collection symbol.
+        #[must_use]
+        pub fn symbol(env: Env) -> Result<String, NftError> {
+            env.storage()
+                .instance()
+                .get(&DataKey::Symbol)
+                .ok_or(NftError::NotInitialized)
+        }
+
+        /// Return the total number of minted (non-burned) tokens.
+        #[must_use]
+        pub fn total_supply(env: Env) -> u32 {
+            env.storage()
+                .instance()
+                .get(&DataKey::TotalSupply)
+                .unwrap_or(0)
+        }
+
+        fn require_initialized(env: &Env) -> Result<(), NftError> {
+            if !env.storage().instance().has(&DataKey::Initialized) {
+                return Err(NftError::NotInitialized);
+            }
+            Ok(())
+        }
     }
 }
 
