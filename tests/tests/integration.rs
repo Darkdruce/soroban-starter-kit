@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 //! Integration tests: deploys both TokenContract and EscrowContract in the
 //! same Soroban test environment and exercises the full escrow lifecycle.
 //!

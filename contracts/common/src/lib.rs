@@ -63,6 +63,7 @@ mod admin_key {
 /// ```
 #[must_use]
 pub fn get_admin(env: &Env) -> Address {
+    #[allow(clippy::expect_used)] // intentional panic: contract invariant
     env.storage()
         .instance()
         .get(&AdminKey::Admin)
@@ -122,6 +123,7 @@ where
     K: soroban_sdk::TryIntoVal<Env, soroban_sdk::Val> + soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
     V: soroban_sdk::TryFromVal<Env, soroban_sdk::Val>,
 {
+    #[allow(clippy::expect_used)] // intentional panic: contract invariant
     env.storage().instance().get(key).expect("key not found")
 }
 
@@ -180,6 +182,39 @@ pub const LEDGER_LIFETIME_THRESHOLD: u32 = 120_960;
 
 /// Target TTL (in ledgers) after each extension (~60 days at `LEDGER_SECONDS` seconds per ledger).
 pub const LEDGER_BUMP_AMOUNT: u32 = 518_400;
+
+/// Generates a `core::fmt::Display` implementation for a `#[contracterror]` enum.
+///
+/// Soroban contracts are compiled with `#![no_std]`, so `thiserror` (which
+/// requires `std`) cannot be used. This macro eliminates the repetitive
+/// `match` arms that would otherwise appear in every error module.
+///
+/// # Usage
+///
+/// ```ignore
+/// use soroban_common::impl_display_error;
+///
+/// #[contracterror]
+/// #[derive(Clone, Copy, Debug)]
+/// pub enum MyError {
+///     Foo = 1,
+///     Bar = 2,
+/// }
+///
+/// impl_display_error!(MyError, Foo => "foo happened", Bar => "bar happened");
+/// ```
+#[macro_export]
+macro_rules! impl_display_error {
+    ($err:ty, $($variant:ident => $msg:literal),+ $(,)?) => {
+        impl core::fmt::Display for $err {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                match self {
+                    $( <$err>::$variant => f.write_str($msg), )+
+                }
+            }
+        }
+    };
+}
 
 /// Validates that a deadline is sufficiently far in the future.
 ///

@@ -1,3 +1,4 @@
+use soroban_common::impl_display_error;
 // `#[contracterror]` generates undocumented public associated items.
 #![allow(missing_docs)]
 
@@ -19,20 +20,17 @@ pub enum AuctionError {
     NothingToWithdraw = 11,
 }
 
-impl core::fmt::Display for AuctionError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            AuctionError::AlreadyInitialized => write!(f, "already initialized"),
-            AuctionError::NotInitialized => write!(f, "not initialized"),
-            AuctionError::AuctionEnded => write!(f, "auction has ended"),
-            AuctionError::AuctionNotEnded => write!(f, "auction has not ended"),
-            AuctionError::BidTooLow => write!(f, "bid too low"),
-            AuctionError::AlreadyEnded => write!(f, "auction already settled"),
-            AuctionError::NoBids => write!(f, "no bids placed"),
-            AuctionError::NotAuthorized => write!(f, "not authorized"),
-            AuctionError::InvalidAmount => write!(f, "invalid amount"),
-            AuctionError::InvalidDeadline => write!(f, "invalid deadline"),
-            AuctionError::NothingToWithdraw => write!(f, "nothing to withdraw"),
-        }
-    }
-}
+impl_display_error!(
+    AuctionError,
+    AlreadyInitialized => "already initialized",
+    NotInitialized     => "not initialized",
+    AuctionEnded       => "auction has ended",
+    AuctionNotEnded    => "auction has not ended",
+    BidTooLow          => "bid too low",
+    AlreadyEnded       => "auction already settled",
+    NoBids             => "no bids placed",
+    NotAuthorized      => "not authorized",
+    InvalidAmount      => "invalid amount",
+    InvalidDeadline    => "invalid deadline",
+    NothingToWithdraw  => "nothing to withdraw",
+);

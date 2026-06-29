@@ -1,3 +1,4 @@
+use soroban_common::impl_display_error;
 // `#[contracterror]` generates undocumented public associated items.
 #![allow(missing_docs)]
 
@@ -18,19 +19,16 @@ pub enum DaoError {
     InsufficientVotingPower = 10,
 }
 
-impl core::fmt::Display for DaoError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            DaoError::NotAuthorized => write!(f, "not authorized"),
-            DaoError::AlreadyInitialized => write!(f, "already initialized"),
-            DaoError::NotInitialized => write!(f, "not initialized"),
-            DaoError::ProposalNotFound => write!(f, "proposal not found"),
-            DaoError::InvalidState => write!(f, "invalid proposal state"),
-            DaoError::DeadlineNotReached => write!(f, "voting deadline not yet reached"),
-            DaoError::AlreadyVoted => write!(f, "already voted on this proposal"),
-            DaoError::QuorumNotMet => write!(f, "quorum not met"),
-            DaoError::ProposalRejected => write!(f, "proposal rejected by majority"),
-            DaoError::InsufficientVotingPower => write!(f, "insufficient voting power"),
-        }
-    }
-}
+impl_display_error!(
+    DaoError,
+    NotAuthorized           => "not authorized",
+    AlreadyInitialized      => "already initialized",
+    NotInitialized          => "not initialized",
+    ProposalNotFound        => "proposal not found",
+    InvalidState            => "invalid proposal state",
+    DeadlineNotReached      => "voting deadline not yet reached",
+    AlreadyVoted            => "already voted on this proposal",
+    QuorumNotMet            => "quorum not met",
+    ProposalRejected        => "proposal rejected by majority",
+    InsufficientVotingPower => "insufficient voting power",
+);

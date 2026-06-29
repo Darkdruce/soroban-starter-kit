@@ -38,6 +38,9 @@ fn validate_parties(
     Ok(())
 }
 
+fn validate_parties_multi(buyer: &Address, seller: &Address, arbiters: &Vec<Address>, required_signatures: u32) -> Result<(), EscrowError> {
+    #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
+    if arbiters.is_empty() || required_signatures == 0 || required_signatures > arbiters.len() as u32 {
 fn validate_parties_multi(
     buyer: &Address,
     seller: &Address,
@@ -137,6 +140,7 @@ pub fn initialize_with_arbiters(
     validate_parties_multi(&buyer, &seller, &arbiters, required_signatures)?;
     validate_deadline::<EscrowError>(&env, deadline_ledger)?;
     token::Client::new(&env, &token_contract).decimals();
+    #[allow(clippy::unwrap_used)] // arbiters is validated non-empty before this point
     let primary_arbiter = arbiters.get(0).unwrap();
     store_escrow_data(
         &env,

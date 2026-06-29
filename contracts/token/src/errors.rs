@@ -1,3 +1,4 @@
+use soroban_common::impl_display_error;
 use soroban_sdk::contracterror;
 
 #[contracterror]
@@ -12,19 +13,16 @@ pub enum TokenError {
     Overflow = 7,
 }
 
-impl core::fmt::Display for TokenError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            TokenError::InsufficientBalance => write!(f, "insufficient balance"),
-            TokenError::InsufficientAllowance => write!(f, "insufficient allowance"),
-            TokenError::Unauthorized => write!(f, "unauthorized"),
-            TokenError::AlreadyInitialized => write!(f, "already initialized"),
-            TokenError::NotInitialized => write!(f, "not initialized"),
-            TokenError::InvalidAmount => write!(f, "invalid amount"),
-            TokenError::Overflow => write!(f, "arithmetic overflow"),
-        }
-    }
-}
+impl_display_error!(
+    TokenError,
+    InsufficientBalance  => "insufficient balance",
+    InsufficientAllowance => "insufficient allowance",
+    Unauthorized         => "unauthorized",
+    AlreadyInitialized   => "already initialized",
+    NotInitialized       => "not initialized",
+    InvalidAmount        => "invalid amount",
+    Overflow             => "arithmetic overflow",
+);
 
 #[cfg(test)]
 mod tests {
@@ -34,6 +32,7 @@ mod tests {
     use std::format;
     use std::string::String;
 
+    #[allow(clippy::as_conversions)] // reading enum discriminants for snapshot verification
     fn render_error_code_snapshot() -> String {
         format!(
             "\

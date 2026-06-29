@@ -97,6 +97,7 @@ pub fn require_state(env: &Env, expected: EscrowState) -> Result<(), crate::erro
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::panic)]
 mod tests {
     use super::{EscrowInfo, EscrowState};
     use std::string::ToString;

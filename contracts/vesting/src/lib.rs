@@ -35,7 +35,9 @@ pub(crate) fn vested_amount(amount: i128, cliff_ledger: u32, end_ledger: u32, le
         return amount;
     }
     // Linear interpolation between cliff and end.
+    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)] // u32 ledger difference fits in i128
     let elapsed = (ledger - cliff_ledger) as i128;
+    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)] // u32 ledger difference fits in i128
     let total = (end_ledger - cliff_ledger) as i128;
     amount * elapsed / total
 }

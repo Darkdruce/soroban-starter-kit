@@ -26,9 +26,6 @@ resolver = "2"
 [workspace.dependencies]
 soroban-sdk = "=21.7.7"
 soroban-common = { path = "contracts/common", version = "0.1.0" }
-serde = "=1.0.228"
-proc-macro2 = "=1.0.106"
-quote = "=1.0.45"
 soroban-sdk-testutils = { version = "=21.7.7", package = "soroban-sdk", features = ["testutils"] }
 proptest = "=1.6.0"
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -52,3 +49,13 @@ unused_variables = "warn"
 [workspace.lints.clippy]
 all = "warn"
 pedantic = "warn"
+# restriction lints relevant to smart contract safety (issue #704)
+panic = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+indexing_slicing = "warn"
+arithmetic_side_effects = "warn"
+integer_division = "warn"
+as_conversions = "warn"
+cast_possible_truncation = "warn"
+std_instead_of_core = "warn"

@@ -270,6 +270,33 @@ mod contract {
             })
         }
 
+        let seller: Address = get_instance(&env, &DataKey::Seller)?;
+        let token: Address = get_instance(&env, &DataKey::Token)?;
+        #[allow(clippy::unwrap_used)] // winner.is_none() is checked two lines above
+        let winner = winner.unwrap(); // safe: checked above
+
+        token::Client::new(&env, &token)
+            .transfer(&env.current_contract_address(), &seller, &highest_bid);
+
+        events::ended(&env, &winner, highest_bid);
+        Ok(())
+    }
+
+    /// Withdraw a pending refund (available for outbid bidders).
+    ///
+    /// # Errors
+    ///
+    /// - [`AuctionError::NothingToWithdraw`] if caller has no pending refund.
+    pub fn withdraw(env: Env, bidder: Address) -> Result<(), AuctionError> {
+        bidder.require_auth();
+
+        let pending: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Pending(bidder.clone()))
+            .unwrap_or(0);
+        if pending <= 0 {
+            return Err(AuctionError::NothingToWithdraw);
         /// Return a bidder's pending refund amount.
         #[must_use]
         pub fn get_pending(env: Env, bidder: Address) -> i128 {

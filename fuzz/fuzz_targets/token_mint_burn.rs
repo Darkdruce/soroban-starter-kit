@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 #![no_main]
 use libfuzzer_sys::fuzz_target;
 use soroban_sdk::{Address, Env, String, testutils::Address as _};

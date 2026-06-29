@@ -1,3 +1,4 @@
+#![allow(clippy::expect_used, clippy::panic)]
 //! Deploy helper for soroban-token-template.
 //!
 //! Usage:

@@ -464,6 +464,233 @@ const escrows = events.filter(e =>
 
 ---
 
+## 8b. Subscribing to Contract Events via RPC
+
+The Stellar RPC exposes a `getEvents` endpoint that lets you query and poll for
+contract events. This section shows how to subscribe to escrow and token events
+from TypeScript using `@stellar/stellar-sdk`.
+
+### How `getEvents` Works
+
+`getEvents` returns events emitted within a ledger range. It accepts:
+
+- `startLedger` — the first ledger to include (required on first call)
+- `filters` — one or more filter objects, each specifying:
+  - `type` — `"contract"` for `env.events().publish(...)` calls
+  - `contractIds` — list of contract addresses to match
+  - `topics` — ordered list of topic matchers; use `null` to wildcard a position
+- `limit` — maximum events returned per call (default 20, max 10 000)
+- `cursor` — opaque pagination cursor returned by the previous response
+
+> **Ledger range limit**: `getEvents` can span at most ~17,280 ledgers (~24 h)
+> per request. For longer ranges, paginate using the `cursor` field.
+
+### Basic Snippet — Fetch Recent Events
+
+```ts
+import { SorobanRpc, Networks, xdr, scValToNative } from '@stellar/stellar-sdk';
+
+const RPC_URL = 'https://soroban-testnet.stellar.org';
+const server = new SorobanRpc.Server(RPC_URL, { allowHttp: false });
+
+const TOKEN_CONTRACT_ID  = process.env.TOKEN_CONTRACT_ID!;
+const ESCROW_CONTRACT_ID = process.env.ESCROW_CONTRACT_ID!;
+
+/**
+ * Fetch recent contract events from both the token and escrow contracts.
+ * Returns raw event records from the RPC.
+ */
+async function fetchRecentEvents(startLedger: number) {
+  const response = await server.getEvents({
+    startLedger,
+    filters: [
+      {
+        type: 'contract',
+        contractIds: [TOKEN_CONTRACT_ID, ESCROW_CONTRACT_ID],
+      },
+    ],
+    limit: 100,
+  });
+
+  return response.events;
+}
+```
+
+### Filter by Contract ID and Event Topic
+
+Use the `topics` array inside a filter to narrow results. Each element is either
+a hex-encoded XDR `ScVal` or `null` (wildcard). The helper below builds topic
+matchers for the common `Symbol` topic format used by these contracts.
+
+```ts
+import { xdr, ScVal, nativeToScVal } from '@stellar/stellar-sdk';
+
+/** Encode a contract event name as a topic-filter string. */
+function topicSymbol(name: string): string {
+  // Topics in getEvents filters are hex-encoded XDR ScVal strings.
+  return nativeToScVal(name, { type: 'symbol' }).toXDR('hex');
+}
+
+/** Encode an address as a topic-filter string. */
+function topicAddress(address: string): string {
+  return xdr.ScVal.scvAddress(
+    xdr.ScAddress.scAddressTypeAccount(
+      xdr.PublicKey.publicKeyTypeEd25519(
+        Buffer.from(address, 'base64'), // adjust encoding for your SDK version
+      ),
+    ),
+  ).toXDR('hex');
+}
+
+/**
+ * Fetch all `transfer` events where `from` == senderAddress.
+ * Topic layout: [Symbol("transfer"), Address(from), Address(to)]
+ */
+async function fetchTokenTransfers(startLedger: number, senderAddress: string) {
+  const response = await server.getEvents({
+    startLedger,
+    filters: [
+      {
+        type: 'contract',
+        contractIds: [TOKEN_CONTRACT_ID],
+        topics: [
+          [topicSymbol('transfer'), null, null], // match any transfer event
+        ],
+      },
+    ],
+    limit: 200,
+  });
+
+  // Decode topics and data from XDR
+  return response.events.map((event) => {
+    const topics = event.topic.map((t) => scValToNative(xdr.ScVal.fromXDR(t, 'hex')));
+    const data   = scValToNative(xdr.ScVal.fromXDR(event.value, 'hex'));
+    return { topics, data, ledger: event.ledger, id: event.id };
+  });
+}
+
+/**
+ * Fetch all `escrow_created` events (any buyer).
+ * Topic layout: [Symbol("escrow_created"), Address(buyer), Address(seller)]
+ */
+async function fetchEscrowCreatedEvents(startLedger: number) {
+  const response = await server.getEvents({
+    startLedger,
+    filters: [
+      {
+        type: 'contract',
+        contractIds: [ESCROW_CONTRACT_ID],
+        topics: [
+          [topicSymbol('escrow_created'), null, null],
+        ],
+      },
+    ],
+    limit: 200,
+  });
+
+  return response.events.map((event) => {
+    const topics = event.topic.map((t) => scValToNative(xdr.ScVal.fromXDR(t, 'hex')));
+    const data   = scValToNative(xdr.ScVal.fromXDR(event.value, 'hex'));
+    return {
+      buyer:  topics[1] as string,
+      seller: topics[2] as string,
+      data,
+      ledger: event.ledger,
+    };
+  });
+}
+```
+
+### Polling for New Events
+
+`getEvents` is a point-in-time query, not a push subscription. Poll on an
+interval and advance `cursor` or `startLedger` each round:
+
+```ts
+/**
+ * Poll the RPC every `intervalMs` milliseconds for new events.
+ * Calls `onEvent` for each new event in order.
+ */
+async function pollEvents(
+  startLedger: number,
+  onEvent: (event: SorobanRpc.Api.RawEventResponse) => void,
+  intervalMs = 5_000,
+): Promise<void> {
+  let cursor: string | undefined;
+
+  while (true) {
+    const params: SorobanRpc.Server.GetEventsRequest = {
+      startLedger: cursor ? undefined : startLedger,
+      filters: [
+        {
+          type: 'contract',
+          contractIds: [TOKEN_CONTRACT_ID, ESCROW_CONTRACT_ID],
+        },
+      ],
+      limit: 200,
+      ...(cursor ? { cursor } : {}),
+    };
+
+    const response = await server.getEvents(params);
+
+    for (const event of response.events) {
+      onEvent(event);
+      cursor = event.id; // advance cursor past this event
+    }
+
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
+// Usage
+const latestLedger = await server.getLatestLedger();
+pollEvents(latestLedger.sequence, (event) => {
+  const topics = event.topic.map((t) => scValToNative(xdr.ScVal.fromXDR(t, 'hex')));
+  console.log('New event:', topics[0], 'ledger:', event.ledger);
+});
+```
+
+### Decode a Specific Event Payload
+
+Each contract's topic and data layout is documented in section 8 above. Here is
+a complete decode example for the token `mint` event:
+
+```ts
+/**
+ * Decode a raw token `mint` event into a typed record.
+ * Topic layout: [Symbol("mint"), Address(admin), Address(to)]
+ * Data:         i128 amount
+ */
+function decodeMintEvent(event: SorobanRpc.Api.RawEventResponse) {
+  const [name, admin, to] = event.topic.map(
+    (t) => scValToNative(xdr.ScVal.fromXDR(t, 'hex')),
+  );
+  const amount = scValToNative(xdr.ScVal.fromXDR(event.value, 'hex')) as bigint;
+  return { name, admin, to, amount, ledger: event.ledger };
+}
+```
+
+### CLI — Quick Event Inspection
+
+The Stellar CLI `contract events` command is useful for debugging without
+writing code:
+
+```bash
+# Fetch the last 10 events from the token contract
+stellar contract events \
+  --id "$TOKEN_CONTRACT_ID" \
+  --network testnet \
+  --count 10
+
+# Filter to transfer events only
+stellar contract events \
+  --id "$TOKEN_CONTRACT_ID" \
+  --network testnet \
+  --filter-topics transfer
+```
+
+---
+
 ## 9. React / Frontend Integration
 
 ```tsx

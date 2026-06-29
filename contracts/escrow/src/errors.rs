@@ -1,3 +1,4 @@
+use soroban_common::impl_display_error;
 // #[contracterror] generates undocumented public associated items.
 #![allow(missing_docs)]
 
@@ -38,27 +39,30 @@ pub enum EscrowError {
     InvalidParties = 9,
 }
 
+/// Converts the unit error returned by `soroban_common::validate_deadline`
+/// into [`EscrowError::DeadlinePassed`].
+///
+/// `validate_deadline` is generic over `E: From<()>` so that callers do not
+/// need to map the error manually. This impl satisfies that bound for
+/// `EscrowError`. It cannot be expressed with `#[derive]`.
 impl From<()> for EscrowError {
     fn from(_: ()) -> Self {
         Self::DeadlinePassed
     }
 }
 
-impl core::fmt::Display for EscrowError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            EscrowError::NotAuthorized => write!(f, "not authorized"),
-            EscrowError::InvalidState => write!(f, "invalid state"),
-            EscrowError::DeadlinePassed => write!(f, "deadline passed"),
-            EscrowError::DeadlineNotReached => write!(f, "deadline not reached"),
-            EscrowError::AlreadyInitialized => write!(f, "already initialized"),
-            EscrowError::NotInitialized => write!(f, "not initialized"),
-            EscrowError::InsufficientFunds => write!(f, "insufficient funds"),
-            EscrowError::InvalidAmount => write!(f, "invalid amount"),
-            EscrowError::InvalidParties => write!(f, "invalid parties"),
-        }
-    }
-}
+impl_display_error!(
+    EscrowError,
+    NotAuthorized      => "not authorized",
+    InvalidState       => "invalid state",
+    DeadlinePassed     => "deadline passed",
+    DeadlineNotReached => "deadline not reached",
+    AlreadyInitialized => "already initialized",
+    NotInitialized     => "not initialized",
+    InsufficientFunds  => "insufficient funds",
+    InvalidAmount      => "invalid amount",
+    InvalidParties     => "invalid parties",
+);
 
 #[cfg(test)]
 mod tests {
@@ -68,6 +72,7 @@ mod tests {
     use std::format;
     use std::string::String;
 
+    #[allow(clippy::as_conversions)] // reading enum discriminants for snapshot verification
     fn render_error_code_snapshot() -> String {
         format!(
             "\
