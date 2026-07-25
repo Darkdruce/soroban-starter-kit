@@ -22,6 +22,8 @@ pub enum DataKey {
     Revoked,
     /// Admin address.
     Admin,
+    /// Total tokens released early by admin (audit log).
+    AdminReleased,
 }
 
 /// Snapshot returned by `get_info`.

@@ -22,3 +22,8 @@ pub fn revoked(env: &Env, admin: &Address, returned: i128) {
     env.events()
         .publish((Symbol::new(env, "revoked"), admin.clone()), returned);
 }
+
+pub fn admin_released(env: &Env, admin: &Address, amount: i128) {
+    env.events()
+        .publish((Symbol::new(env, "admin_released"), admin.clone()), amount);
+}

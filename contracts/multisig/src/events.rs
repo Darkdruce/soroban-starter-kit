@@ -31,3 +31,8 @@ pub fn transaction_executed(env: &Env, tx_id: u64) {
     env.events()
         .publish((Symbol::new(env, "executed"), tx_id), ());
 }
+
+pub fn proposal_expired(env: &Env, tx_id: u64) {
+    env.events()
+        .publish((Symbol::new(env, "expired"), tx_id), ());
+}

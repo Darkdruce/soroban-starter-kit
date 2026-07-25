@@ -20,4 +20,6 @@ pub enum VestingError {
     NothingToClaim = 6,
     /// The vesting schedule has already been revoked.
     AlreadyRevoked = 7,
+    /// admin_release was called after the cliff has already passed.
+    CliffAlreadyPassed = 8,
 }

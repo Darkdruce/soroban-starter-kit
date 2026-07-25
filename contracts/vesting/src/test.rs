@@ -320,3 +320,58 @@ proptest! {
         }
     }
 }
+
+// ── #712 admin_release tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_admin_release_before_cliff_sends_all_to_beneficiary() {
+    let env = setup_env();
+    let (client, _admin, beneficiary, token, _cliff, _end, amount) = setup(&env);
+    // Still before cliff (ledger = 100, cliff = 110)
+    let released = client.admin_release();
+    assert_eq!(released, amount);
+    let token_client = soroban_sdk::token::Client::new(&env, &token);
+    assert_eq!(token_client.balance(&beneficiary), amount);
+}
+
+#[test]
+fn test_admin_release_marks_revoked() {
+    let env = setup_env();
+    let (client, ..) = setup(&env);
+    client.admin_release();
+    let info = client.get_info().unwrap();
+    assert!(info.revoked);
+}
+
+#[test]
+fn test_admin_release_after_cliff_fails() {
+    let env = setup_env();
+    let (client, _admin, _beneficiary, _token, cliff, _end, _amount) = setup(&env);
+    // Advance past cliff
+    env.ledger().with_mut(|l| l.sequence_number = cliff);
+    let result = client.try_admin_release();
+    assert_eq!(result, Err(Ok(VestingError::CliffAlreadyPassed)));
+}
+
+#[test]
+fn test_admin_release_twice_fails() {
+    let env = setup_env();
+    let (client, ..) = setup(&env);
+    client.admin_release();
+    let result = client.try_admin_release();
+    assert_eq!(result, Err(Ok(VestingError::AlreadyRevoked)));
+}
+
+#[test]
+fn test_admin_release_emits_event() {
+    let env = setup_env();
+    let (client, admin, _beneficiary, _token, _cliff, _end, amount) = setup(&env);
+    client.admin_release();
+    use soroban_sdk::{IntoVal, Symbol, testutils::Events as _};
+    let all = env.events().all();
+    let found = all.iter().any(|(_, topics, data)| {
+        topics == (Symbol::new(&env, "admin_released"), admin.clone()).into_val(&env)
+            && data == amount.into_val(&env)
+    });
+    assert!(found, "admin_released event not emitted");
+}

@@ -1019,3 +1019,93 @@ fn test_cancel_admin_proposal_by_non_admin_fails() {
     }]);
     client.cancel_admin_proposal();
 }
+
+// ── #714 transfer hook tests ─────────────────────────────────────────────────
+
+#[cfg(feature = "transfer-hook")]
+mod transfer_hook_tests {
+    use super::*;
+    use soroban_sdk::{contract, contractimpl, Symbol, IntoVal, testutils::Events as _};
+
+    /// Minimal mock hook contract that records calls via an event.
+    #[contract]
+    pub struct MockHook;
+
+    #[contractimpl]
+    impl MockHook {
+        pub fn on_transfer(env: Env, from: Address, to: Address, amount: i128) {
+            env.events().publish(
+                (Symbol::new(&env, "hook_called"), from, to),
+                amount,
+            );
+        }
+    }
+
+    #[test]
+    fn set_transfer_hook_stores_address() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let client = init_token(&env, &admin);
+        let hook_addr = env.register_contract(None, MockHook);
+
+        client.set_transfer_hook(&Some(hook_addr.clone()));
+        assert_eq!(client.get_transfer_hook(), Some(hook_addr));
+    }
+
+    #[test]
+    fn clear_transfer_hook_removes_address() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let client = init_token(&env, &admin);
+        let hook_addr = env.register_contract(None, MockHook);
+
+        client.set_transfer_hook(&Some(hook_addr));
+        client.set_transfer_hook(&None);
+        assert_eq!(client.get_transfer_hook(), None);
+    }
+
+    #[test]
+    fn transfer_calls_hook_and_does_not_revert() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let from = Address::generate(&env);
+        let to = Address::generate(&env);
+        let client = init_token(&env, &admin);
+        let hook_addr = env.register_contract(None, MockHook);
+
+        client.mint(&from, &1_000i128);
+        client.set_transfer_hook(&Some(hook_addr.clone()));
+        client.transfer(&from, &to, &500i128);
+
+        // Balances updated correctly
+        assert_eq!(client.balance(&from), 500);
+        assert_eq!(client.balance(&to), 500);
+
+        // Hook was called
+        let found = env.events().all().iter().any(|(addr, topics, _)| {
+            *addr == hook_addr
+                && topics
+                    == (Symbol::new(&env, "hook_called"), from.clone(), to.clone())
+                        .into_val(&env)
+        });
+        assert!(found, "hook_called event not emitted");
+    }
+
+    #[test]
+    fn transfer_without_hook_set_does_not_revert() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let from = Address::generate(&env);
+        let to = Address::generate(&env);
+        let client = init_token(&env, &admin);
+
+        client.mint(&from, &1_000i128);
+        // No hook set — transfer should still succeed
+        client.transfer(&from, &to, &300i128);
+        assert_eq!(client.balance(&to), 300);
+    }
+}

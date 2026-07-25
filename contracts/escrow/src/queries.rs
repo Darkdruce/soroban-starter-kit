@@ -15,6 +15,7 @@ pub fn get_escrow_info(env: Env) -> Result<EscrowInfo, EscrowError> {
         amount: get_required(&env, &Amount)?,
         deadline: get_required(&env, &Deadline)?,
         state: get_required(&env, &State)?,
+        metadata_hash: env.storage().instance().get(&MetadataHash),
     })
 }
 

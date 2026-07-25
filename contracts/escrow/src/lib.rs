@@ -50,6 +50,7 @@ mod contract {
             token_contract: Address,
             amount: i128,
             deadline_ledger: u32,
+            metadata_hash: Option<soroban_sdk::BytesN<32>>,
         ) -> Result<(), EscrowError> {
             lifecycle::initialize(
                 env,
@@ -59,6 +60,7 @@ mod contract {
                 token_contract,
                 amount,
                 deadline_ledger,
+                metadata_hash,
             )
         }
 
@@ -71,6 +73,7 @@ mod contract {
             amount: i128,
             deadline_ledger: u32,
             required_signatures: u32,
+            metadata_hash: Option<soroban_sdk::BytesN<32>>,
         ) -> Result<(), EscrowError> {
             lifecycle::initialize_with_arbiters(
                 env,
@@ -81,6 +84,7 @@ mod contract {
                 amount,
                 deadline_ledger,
                 required_signatures,
+                metadata_hash,
             )
         }
 
