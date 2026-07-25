@@ -30,7 +30,7 @@ fn setup_escrow<'a>(
     let escrow_addr = env.register_contract(None, EscrowContract);
     let client = EscrowContractClient::new(env, &escrow_addr);
     let deadline = env.ledger().sequence() + MIN_DEADLINE_BUFFER + 10;
-    client.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline);
+    client.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline, &None);
 
     (client, buyer, seller, arbiter, token_addr)
 }
@@ -129,7 +129,7 @@ proptest! {
         let bad_deadline = env.ledger().sequence() + offset; // < MIN_DEADLINE_BUFFER
 
         let result = client.try_initialize(
-            &buyer, &seller, &arbiter, &token_addr, &1000i128, &bad_deadline,
+            &buyer, &seller, &arbiter, &token_addr, &1000i128, &bad_deadline, &None,
         );
         prop_assert!(result.is_err());
     }

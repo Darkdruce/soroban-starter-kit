@@ -24,4 +24,6 @@ pub struct Transaction {
     pub args: Vec<Val>,
     pub signatures: Vec<Address>,
     pub executed: bool,
+    /// Ledger sequence after which this proposal is considered expired.
+    pub expiry_ledger: u32,
 }

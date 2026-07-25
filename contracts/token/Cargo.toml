@@ -11,6 +11,7 @@ pausable = []
 upgradeable = []
 capped-supply = []
 freeze = []
+transfer-hook = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]

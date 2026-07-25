@@ -35,6 +35,8 @@ pub enum DataKey {
     RequiredSignatures,
     /// Arbiter votes for dispute resolution (`Vec<Address>`).
     ArbiterVotes,
+    /// Optional off-chain deal reference hash (`BytesN<32>`).
+    MetadataHash,
 }
 
 /// Lifecycle states of an escrow.
@@ -130,6 +132,7 @@ mod tests {
             amount: 1_000i128,
             deadline: 500u32,
             state: EscrowState::Created,
+            metadata_hash: None,
         };
 
         // Round-trip: encode → decode must produce the same value.
@@ -167,6 +170,7 @@ mod tests {
                 "arbiter",
                 "buyer",
                 "deadline",
+                "metadata_hash",
                 "seller",
                 "state",
                 "token_contract"
@@ -226,6 +230,7 @@ mod discriminant_tests {
             DataKey::Arbiters => 10,
             DataKey::RequiredSignatures => 11,
             DataKey::ArbiterVotes => 12,
+            DataKey::MetadataHash => 13,
         }
     }
 
@@ -244,6 +249,7 @@ mod discriminant_tests {
         assert_eq!(escrow_data_key_index(&DataKey::Arbiters), 10);
         assert_eq!(escrow_data_key_index(&DataKey::RequiredSignatures), 11);
         assert_eq!(escrow_data_key_index(&DataKey::ArbiterVotes), 12);
+        assert_eq!(escrow_data_key_index(&DataKey::MetadataHash), 13);
     }
 }
 
@@ -255,7 +261,7 @@ mod discriminant_tests {
 /// `EscrowInfo` is serialised on-chain as an XDR map whose entries are keyed by
 /// field name and sorted alphabetically.  The stable key order is:
 ///
-/// `amount`, `arbiter`, `buyer`, `deadline`, `seller`, `state`, `token_contract`
+/// `amount`, `arbiter`, `buyer`, `deadline`, `metadata_hash`, `seller`, `state`, `token_contract`
 ///
 /// **Renaming, adding, or removing any field is a breaking on-chain ABI change.**
 /// Off-chain clients (SDKs, indexers, test harnesses) that decode this type from
@@ -279,4 +285,6 @@ pub struct EscrowInfo {
     pub deadline: u32,
     /// Current lifecycle state.
     pub state: EscrowState,
+    /// Optional off-chain deal reference hash (32 bytes).
+    pub metadata_hash: Option<soroban_sdk::BytesN<32>>,
 }

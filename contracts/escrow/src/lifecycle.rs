@@ -38,9 +38,6 @@ fn validate_parties(
     Ok(())
 }
 
-fn validate_parties_multi(buyer: &Address, seller: &Address, arbiters: &Vec<Address>, required_signatures: u32) -> Result<(), EscrowError> {
-    #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
-    if arbiters.is_empty() || required_signatures == 0 || required_signatures > arbiters.len() as u32 {
 fn validate_parties_multi(
     buyer: &Address,
     seller: &Address,
@@ -101,6 +98,7 @@ pub fn initialize(
     token_contract: Address,
     amount: i128,
     deadline_ledger: u32,
+    metadata_hash: Option<soroban_sdk::BytesN<32>>,
 ) -> Result<(), EscrowError> {
     if env.storage().instance().has(&State) {
         return Err(EscrowError::AlreadyInitialized);
@@ -119,6 +117,9 @@ pub fn initialize(
         deadline_ledger,
         1u32,
     );
+    if let Some(hash) = metadata_hash {
+        env.storage().instance().set(&DataKey::MetadataHash, &hash);
+    }
     extend_ttl(&env);
     emit_init_events(&env, &buyer, &seller, &arbiter, amount);
     Ok(())
@@ -133,6 +134,7 @@ pub fn initialize_with_arbiters(
     amount: i128,
     deadline_ledger: u32,
     required_signatures: u32,
+    metadata_hash: Option<soroban_sdk::BytesN<32>>,
 ) -> Result<(), EscrowError> {
     if env.storage().instance().has(&State) {
         return Err(EscrowError::AlreadyInitialized);
@@ -154,6 +156,9 @@ pub fn initialize_with_arbiters(
         required_signatures,
     );
     env.storage().instance().set(&Arbiters, &arbiters);
+    if let Some(hash) = metadata_hash {
+        env.storage().instance().set(&DataKey::MetadataHash, &hash);
+    }
     extend_ttl(&env);
     emit_init_events(&env, &buyer, &seller, &primary_arbiter, amount);
     Ok(())

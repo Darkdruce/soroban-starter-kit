@@ -114,3 +114,12 @@ pub fn upgraded(env: &Env, admin: &Address, new_wasm_hash: &soroban_sdk::BytesN<
         new_wasm_hash.clone(),
     );
 }
+
+/// Emitted when the transfer hook address is changed.
+/// Topics: (Symbol, Address) — event name, admin
+pub fn transfer_hook_set(env: &Env, admin: &Address, hook: Option<&Address>) {
+    env.events().publish(
+        (Symbol::new(env, "hook_set"), admin.clone()),
+        hook.cloned(),
+    );
+}

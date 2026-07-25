@@ -460,6 +460,42 @@ mod contract {
         }
     }
 
+    /// Transfer hook — only compiled when the `transfer-hook` feature is enabled.
+    #[cfg(feature = "transfer-hook")]
+    #[contractimpl]
+    impl TokenContract {
+        /// Set (or clear) the optional transfer hook contract address. Admin only.
+        ///
+        /// Pass `None` to disable the hook. When set, every transfer will attempt
+        /// to call `on_transfer(from, to, amount)` on the hook contract. A failure
+        /// in the hook does NOT revert the transfer.
+        pub fn set_transfer_hook(
+            env: Env,
+            hook: Option<Address>,
+        ) -> Result<(), TokenError> {
+            let admin = require_admin(&env)?;
+            admin.require_auth();
+            match hook {
+                Some(ref addr) => {
+                    env.storage()
+                        .instance()
+                        .set(&DataKey::TransferHook, addr);
+                }
+                None => {
+                    env.storage().instance().remove(&DataKey::TransferHook);
+                }
+            }
+            extend_ttl_instance(&env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+            events::transfer_hook_set(&env, &admin, hook.as_ref());
+            Ok(())
+        }
+
+        /// Return the current transfer hook address, if any.
+        pub fn get_transfer_hook(env: Env) -> Option<Address> {
+            env.storage().instance().get(&DataKey::TransferHook)
+        }
+    }
+
     impl TokenContract {
         pub(crate) fn update_balance(
             env: &Env,
@@ -502,6 +538,30 @@ mod contract {
             Self::update_balance(env, &from, -amount)?;
             Self::update_balance(env, &to, amount)?;
             events::transferred(env, &from, &to, amount);
+
+            // Transfer hook: fire-and-forget, failure does NOT revert the transfer.
+            #[cfg(feature = "transfer-hook")]
+            {
+                if let Some(hook_addr) = env
+                    .storage()
+                    .instance()
+                    .get::<DataKey, Address>(&DataKey::TransferHook)
+                {
+                    let args = soroban_sdk::vec![
+                        env,
+                        soroban_sdk::IntoVal::<soroban_sdk::Env, soroban_sdk::Val>::into_val(&from, env),
+                        soroban_sdk::IntoVal::<soroban_sdk::Env, soroban_sdk::Val>::into_val(&to, env),
+                        soroban_sdk::IntoVal::<soroban_sdk::Env, soroban_sdk::Val>::into_val(&amount, env),
+                    ];
+                    // Ignore the return value and any error from the hook.
+                    let _ = env.try_invoke_contract::<soroban_sdk::Val, soroban_sdk::Error>(
+                        &hook_addr,
+                        &soroban_sdk::Symbol::new(env, "on_transfer"),
+                        args,
+                    );
+                }
+            }
+
             Ok(())
         }
     }

@@ -281,6 +281,105 @@ mod contract {
             Ok(returnable)
         }
 
+        /// Emergency unlock: admin releases all tokens to the beneficiary before the cliff.
+        ///
+        /// Only callable before the cliff ledger. Transfers the full unvested amount
+        /// to the beneficiary, emits an `admin_released` event, and records the
+        /// released amount in an on-chain audit-log entry.
+        ///
+        /// # Errors
+        /// - [`VestingError::NotInitialized`] if the contract has not been initialized.
+        /// - [`VestingError::Unauthorized`] if the caller is not the admin.
+        /// - [`VestingError::AlreadyRevoked`] if the schedule has already been revoked.
+        /// - [`VestingError::CliffAlreadyPassed`] if the cliff has already been reached.
+        /// - [`VestingError::NothingToClaim`] if there are no tokens left to release.
+        pub fn admin_release(env: Env) -> Result<i128, VestingError> {
+            if !env.storage().instance().has(&DataKey::Admin) {
+                return Err(VestingError::NotInitialized);
+            }
+
+            let revoked: bool = env
+                .storage()
+                .instance()
+                .get(&DataKey::Revoked)
+                .unwrap_or(false);
+            if revoked {
+                return Err(VestingError::AlreadyRevoked);
+            }
+
+            let admin: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Admin)
+                .ok_or(VestingError::NotInitialized)?;
+            admin.require_auth();
+
+            let cliff_ledger: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::CliffLedger)
+                .ok_or(VestingError::NotInitialized)?;
+
+            // Only callable before the cliff.
+            if env.ledger().sequence() >= cliff_ledger {
+                return Err(VestingError::CliffAlreadyPassed);
+            }
+
+            let amount: i128 = env
+                .storage()
+                .instance()
+                .get(&DataKey::Amount)
+                .ok_or(VestingError::NotInitialized)?;
+            let claimed: i128 = env
+                .storage()
+                .instance()
+                .get(&DataKey::Claimed)
+                .ok_or(VestingError::NotInitialized)?;
+
+            let releasable = amount - claimed;
+            if releasable <= 0 {
+                return Err(VestingError::NothingToClaim);
+            }
+
+            let beneficiary: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Beneficiary)
+                .ok_or(VestingError::NotInitialized)?;
+            let token: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Token)
+                .ok_or(VestingError::NotInitialized)?;
+
+            // Mark as revoked, cap amount to zero (nothing more to claim).
+            env.storage().instance().set(&DataKey::Revoked, &true);
+            env.storage().instance().set(&DataKey::Amount, &releasable);
+            env.storage()
+                .instance()
+                .set(&DataKey::Claimed, &releasable);
+
+            // Audit log: accumulate total admin-released tokens.
+            let prev_released: i128 = env
+                .storage()
+                .instance()
+                .get(&DataKey::AdminReleased)
+                .unwrap_or(0);
+            env.storage()
+                .instance()
+                .set(&DataKey::AdminReleased, &(prev_released + releasable));
+
+            token::Client::new(&env, &token).transfer(
+                &env.current_contract_address(),
+                &beneficiary,
+                &releasable,
+            );
+
+            bump(&env);
+            events::admin_released(&env, &admin, releasable);
+            Ok(releasable)
+        }
+
         /// Returns a snapshot of the vesting schedule, or `None` if uninitialized.
         pub fn get_info(env: Env) -> Option<VestingInfo> {
             if !env.storage().instance().has(&DataKey::Admin) {

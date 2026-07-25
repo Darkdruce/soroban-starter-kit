@@ -21,6 +21,8 @@ pub enum DataKey {
     Version,
     /// Instance storage – frozen accounts set (`bool` per address).
     Frozen(Address),
+    /// Instance storage – optional transfer hook contract address (`Address`).
+    TransferHook,
 }
 
 #[contracttype]
@@ -69,6 +71,7 @@ mod discriminant_tests {
             DataKey::PendingUpgrade => 8,
             DataKey::Version => 9,
             DataKey::Frozen(_) => 10,
+            DataKey::TransferHook => 11,
         }
     }
 
@@ -103,6 +106,7 @@ mod discriminant_tests {
         assert_eq!(token_data_key_index(&DataKey::PendingUpgrade), 8);
         assert_eq!(token_data_key_index(&DataKey::Version), 9);
         assert_eq!(token_data_key_index(&DataKey::Frozen(addr)), 10);
+        assert_eq!(token_data_key_index(&DataKey::TransferHook), 11);
     }
 
     #[test]

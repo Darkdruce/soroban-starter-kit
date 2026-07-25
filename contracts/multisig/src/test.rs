@@ -157,6 +157,7 @@ fn propose_transaction_stores_transaction_and_auto_signature() {
         &target,
         &Symbol::new(&env, "increment"),
         &vec![&env, 7u32.into_val(&env)],
+        &100u32,
     );
 
     let transaction = client.get_transaction(&tx_id).expect("transaction exists");
@@ -182,6 +183,7 @@ fn non_signer_cannot_propose_transaction() {
         &target,
         &Symbol::new(&env, "increment"),
         &vec![&env, 1u32.into_val(&env)],
+        &100u32,
     );
 }
 
@@ -197,6 +199,7 @@ fn signer_cannot_sign_same_transaction_twice() {
         &target,
         &Symbol::new(&env, "increment"),
         &vec![&env, 1u32.into_val(&env)],
+        &100u32,
     );
 
     client.sign_transaction(&alice, &tx_id);
@@ -214,6 +217,7 @@ fn execute_rejects_when_threshold_not_met() {
         &target,
         &Symbol::new(&env, "increment"),
         &vec![&env, 1u32.into_val(&env)],
+        &100u32,
     );
 
     client.execute_transaction(&tx_id);
@@ -231,6 +235,7 @@ fn execute_runs_target_call_once_when_threshold_met() {
         &target,
         &Symbol::new(&env, "increment"),
         &vec![&env, 5u32.into_val(&env)],
+        &100u32,
     );
 
     client.sign_transaction(&bob, &tx_id);
@@ -259,9 +264,123 @@ fn execute_rejects_second_execution() {
         &target,
         &Symbol::new(&env, "increment"),
         &vec![&env, 5u32.into_val(&env)],
+        &100u32,
     );
 
     client.sign_transaction(&bob, &tx_id);
     client.execute_transaction(&tx_id);
     client.execute_transaction(&tx_id);
+}
+
+// ── #715 proposal expiry tests ───────────────────────────────────────────────
+
+#[test]
+fn proposal_stores_expiry_ledger() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, alice, _, _, _) = create_multisig(&env);
+    let target = env.register_contract(None, CounterContract);
+
+    let tx_id = client.propose_transaction(
+        &alice,
+        &target,
+        &Symbol::new(&env, "increment"),
+        &vec![&env, 1u32.into_val(&env)],
+        &50u32,
+    );
+
+    let tx = client.get_transaction(&tx_id).expect("transaction exists");
+    assert_eq!(tx.expiry_ledger, env.ledger().sequence() + 50);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #11)")]
+fn sign_after_expiry_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, alice, bob, _, _) = create_multisig(&env);
+    let target = env.register_contract(None, CounterContract);
+
+    let tx_id = client.propose_transaction(
+        &alice,
+        &target,
+        &Symbol::new(&env, "increment"),
+        &vec![&env, 1u32.into_val(&env)],
+        &10u32,
+    );
+
+    // Advance ledger past expiry
+    env.ledger().with_mut(|l| l.sequence_number += 11);
+    client.sign_transaction(&bob, &tx_id);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #11)")]
+fn execute_after_expiry_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, alice, bob, _, _) = create_multisig(&env);
+    let target = env.register_contract(None, CounterContract);
+
+    let tx_id = client.propose_transaction(
+        &alice,
+        &target,
+        &Symbol::new(&env, "increment"),
+        &vec![&env, 1u32.into_val(&env)],
+        &10u32,
+    );
+    client.sign_transaction(&bob, &tx_id);
+
+    // Advance ledger past expiry
+    env.ledger().with_mut(|l| l.sequence_number += 11);
+    client.execute_transaction(&tx_id);
+}
+
+#[test]
+fn cleanup_expired_removes_proposal_and_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, alice, _, _, contract_address) = create_multisig(&env);
+    let target = env.register_contract(None, CounterContract);
+
+    let tx_id = client.propose_transaction(
+        &alice,
+        &target,
+        &Symbol::new(&env, "increment"),
+        &vec![&env, 1u32.into_val(&env)],
+        &10u32,
+    );
+
+    // Advance past expiry
+    env.ledger().with_mut(|l| l.sequence_number += 11);
+    client.cleanup_expired(&tx_id);
+
+    // Proposal should be gone
+    assert_eq!(client.get_transaction(&tx_id), None);
+
+    // expired event emitted
+    let found = env.events().all().iter().any(|(_, topics, _)| {
+        topics == (Symbol::new(&env, "expired"), tx_id).into_val(&env)
+    });
+    assert!(found, "expired event not emitted");
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #11)")]
+fn cleanup_not_yet_expired_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, alice, _, _, _) = create_multisig(&env);
+    let target = env.register_contract(None, CounterContract);
+
+    let tx_id = client.propose_transaction(
+        &alice,
+        &target,
+        &Symbol::new(&env, "increment"),
+        &vec![&env, 1u32.into_val(&env)],
+        &100u32,
+    );
+
+    // Not yet expired — should fail
+    client.cleanup_expired(&tx_id);
 }

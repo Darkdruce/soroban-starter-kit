@@ -187,11 +187,12 @@ mod contract {
             target: Address,
             function: Symbol,
             args: Vec<Val>,
+            expiry_ledgers: u32,
         ) -> Result<u64, MultisigError> {
             Self::require_signer(&env, &proposer)?;
             proposer.require_auth();
 
-            let tx_id = Self::propose_phase(&env, &proposer, target, function, args)?;
+            let tx_id = Self::propose_phase(&env, &proposer, target, function, args, expiry_ledgers)?;
             events::transaction_proposed(&env, tx_id, &proposer);
             Ok(tx_id)
         }
@@ -245,6 +246,27 @@ mod contract {
             Self::get_transaction(env, tx_id).map(|tx| tx.signatures.len())
         }
 
+        /// Remove an expired proposal from storage. Anyone may call this.
+        ///
+        /// Returns `Ok(())` when the proposal was found and expired.
+        /// Returns `Err(TransactionNotFound)` if the proposal does not exist.
+        /// Returns `Err(AlreadyExecuted)` if the proposal was already executed.
+        /// Returns `Err(ProposalExpired)` — actually succeeds silently if not yet expired
+        ///   (to avoid griefing); callers should check `get_transaction` themselves.
+        pub fn cleanup_expired(env: Env, tx_id: u64) -> Result<(), MultisigError> {
+            let transaction = Self::get_required_transaction(&env, tx_id)?;
+            if transaction.executed {
+                return Err(MultisigError::AlreadyExecuted);
+            }
+            if env.ledger().sequence() <= transaction.expiry_ledger {
+                // Not yet expired — nothing to clean up.
+                return Err(MultisigError::ProposalExpired);
+            }
+            env.storage()
+                .persistent()
+                .remove(&DataKey::Transaction(tx_id));
+            events::proposal_expired(&env, tx_id);
+            Ok(())
         /// Return the on-chain contract version number.
         pub fn contract_version(env: Env) -> u32 {
             env.storage()
@@ -263,6 +285,7 @@ mod contract {
             target: Address,
             function: Symbol,
             args: Vec<Val>,
+            expiry_ledgers: u32,
         ) -> Result<u64, MultisigError> {
             let tx_id: u64 = env
                 .storage()
@@ -272,6 +295,8 @@ mod contract {
             let mut signatures = Vec::new(env);
             signatures.push_back(proposer.clone());
 
+            let expiry_ledger = env.ledger().sequence().saturating_add(expiry_ledgers);
+
             let transaction = Transaction {
                 id: tx_id,
                 proposer: proposer.clone(),
@@ -280,6 +305,7 @@ mod contract {
                 args,
                 signatures,
                 executed: false,
+                expiry_ledger,
             };
 
             env.storage()
@@ -300,6 +326,9 @@ mod contract {
             if transaction.executed {
                 return Err(MultisigError::AlreadyExecuted);
             }
+            if env.ledger().sequence() > transaction.expiry_ledger {
+                return Err(MultisigError::ProposalExpired);
+            }
             if contains(&transaction.signatures, signer) {
                 return Err(MultisigError::AlreadySigned);
             }
@@ -319,6 +348,9 @@ mod contract {
             let mut transaction = Self::get_required_transaction(env, tx_id)?;
             if transaction.executed {
                 return Err(MultisigError::AlreadyExecuted);
+            }
+            if env.ledger().sequence() > transaction.expiry_ledger {
+                return Err(MultisigError::ProposalExpired);
             }
 
             let threshold: u32 = env

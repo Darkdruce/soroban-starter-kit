@@ -28,6 +28,8 @@ pub enum MultisigError {
     ThresholdNotMet = 9,
     /// Signer-management approval list does not satisfy the threshold.
     InsufficientApprovals = 10,
+    /// The proposal has expired and can no longer be signed or executed.
+    ProposalExpired = 11,
 }
 
 impl_display_error!(
@@ -42,4 +44,5 @@ impl_display_error!(
     AlreadySigned       => "already signed",
     ThresholdNotMet     => "threshold not met",
     InsufficientApprovals => "insufficient approvals",
+    ProposalExpired     => "proposal expired",
 );
