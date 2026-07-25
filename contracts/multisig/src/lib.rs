@@ -267,6 +267,12 @@ mod contract {
                 .remove(&DataKey::Transaction(tx_id));
             events::proposal_expired(&env, tx_id);
             Ok(())
+        /// Return the on-chain contract version number.
+        pub fn contract_version(env: Env) -> u32 {
+            env.storage()
+                .instance()
+                .get(&DataKey::Version)
+                .unwrap_or(0)
         }
 
         // ── Phase helpers ────────────────────────────────────────────────────────

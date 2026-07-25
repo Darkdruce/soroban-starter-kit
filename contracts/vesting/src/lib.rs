@@ -116,6 +116,7 @@ mod contract {
             env.storage().instance().set(&DataKey::Amount, &amount);
             env.storage().instance().set(&DataKey::Claimed, &0i128);
             env.storage().instance().set(&DataKey::Revoked, &false);
+            env.storage().instance().set(&DataKey::Version, &1u32);
 
             bump(&env);
             events::initialized(&env, &beneficiary, amount, cliff_ledger, end_ledger);
@@ -471,6 +472,14 @@ mod contract {
                 vested_amount(amount, cliff_ledger, end_ledger, env.ledger().sequence())
             };
             (vested - claimed).max(0)
+        }
+
+        /// Return the on-chain contract version number.
+        pub fn contract_version(env: Env) -> u32 {
+            env.storage()
+                .instance()
+                .get(&DataKey::Version)
+                .unwrap_or(0)
         }
     }
 }

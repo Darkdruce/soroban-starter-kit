@@ -24,6 +24,8 @@ pub enum DataKey {
     Admin,
     /// Total tokens released early by admin (audit log).
     AdminReleased,
+    /// Contract version number (`u32`).
+    Version,
 }
 
 /// Snapshot returned by `get_info`.

@@ -20,4 +20,6 @@ pub enum StakingError {
     InsufficientStake = 6,
     /// No rewards are available to claim.
     NoRewards = 7,
+    /// Stake and reward token must be the same to compound.
+    CompoundTokenMismatch = 8,
 }
