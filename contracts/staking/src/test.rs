@@ -236,6 +236,95 @@ fn test_full_unstake_then_restake_accrues_correctly() {
     assert_eq!(client.get_rewards(&staker), 300);
 }
 
+// ── compound tests ────────────────────────────────────────────────────────────
+
+/// Helper: sets up a contract where stake_token == reward_token (single-asset staking).
+fn setup_single_asset(env: &Env) -> (StakingContractClient, Address, Address) {
+    let admin = Address::generate(env);
+    let token = make_token(env, &admin, 10_000);
+    let addr = env.register_contract(None, StakingContract);
+    let client = StakingContractClient::new(env, &addr);
+    client.initialize(&admin, &token, &token);
+    (client, admin, token)
+}
+
+#[test]
+fn test_compound_adds_rewards_to_stake() {
+    let env = setup_env();
+    let (client, _admin, token) = setup_single_asset(&env);
+
+    let staker = Address::generate(&env);
+    StellarAssetClient::new(&env, &token).mint(&staker, &1_000);
+    client.stake(&staker, &1_000);
+    client.add_rewards(&500);
+
+    let compounded = client.compound(&staker);
+    assert_eq!(compounded, 500);
+
+    // Stake should grow by the compounded rewards.
+    assert_eq!(client.get_stake(&staker), 1_500);
+    // Pending rewards should be cleared.
+    assert_eq!(client.get_rewards(&staker), 0);
+    // No tokens left the contract.
+    let token_client = soroban_sdk::token::Client::new(&env, &token);
+    assert_eq!(token_client.balance(&staker), 0);
+}
+
+#[test]
+fn test_compound_vs_claim_same_value() {
+    // compound() and claim_rewards() should yield the same reward amount.
+    let env = setup_env();
+    let (client_a, _admin_a, token_a) = setup_single_asset(&env);
+    let (client_b, _admin_b, token_b) = setup_single_asset(&env);
+
+    let staker_a = Address::generate(&env);
+    let staker_b = Address::generate(&env);
+    StellarAssetClient::new(&env, &token_a).mint(&staker_a, &1_000);
+    StellarAssetClient::new(&env, &token_b).mint(&staker_b, &1_000);
+
+    client_a.stake(&staker_a, &1_000);
+    client_b.stake(&staker_b, &1_000);
+    client_a.add_rewards(&300);
+    client_b.add_rewards(&300);
+
+    let compounded = client_a.compound(&staker_a);
+    let claimed = client_b.claim_rewards(&staker_b);
+
+    // Both should get the same reward amount.
+    assert_eq!(compounded, claimed);
+    // Compounder has larger stake; claimer received tokens.
+    assert_eq!(client_a.get_stake(&staker_a), 1_000 + compounded);
+    assert_eq!(client_b.get_stake(&staker_b), 1_000);
+    let tok_b = soroban_sdk::token::Client::new(&env, &token_b);
+    assert_eq!(tok_b.balance(&staker_b), claimed);
+}
+
+#[test]
+fn test_compound_requires_same_token() {
+    let env = setup_env();
+    // Use different stake/reward tokens — compound must fail.
+    let (client, _admin, _stake_token, _reward_token) = setup(&env);
+    let staker = Address::generate(&env);
+    StellarAssetClient::new(&env, &_stake_token).mint(&staker, &1_000);
+    client.stake(&staker, &1_000);
+    client.add_rewards(&200);
+
+    let result = client.try_compound(&staker);
+    assert_eq!(result, Err(Ok(crate::StakingError::CompoundTokenMismatch)));
+}
+
+#[test]
+fn test_compound_no_rewards_fails() {
+    let env = setup_env();
+    let (client, _admin, token) = setup_single_asset(&env);
+    let staker = Address::generate(&env);
+    StellarAssetClient::new(&env, &token).mint(&staker, &500);
+    client.stake(&staker, &500);
+
+    let result = client.try_compound(&staker);
+    assert_eq!(result, Err(Ok(crate::StakingError::NoRewards)));
+}
+
 // ── property tests ────────────────────────────────────────────────────────────
 
 use proptest::prelude::*;
