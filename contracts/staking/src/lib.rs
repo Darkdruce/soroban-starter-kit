@@ -160,6 +160,7 @@ mod contract {
             env.storage()
                 .instance()
                 .set(&DataKey::RewardPerTokenStored, &0i128);
+            env.storage().instance().set(&DataKey::Version, &1u32);
 
             bump(&env);
             events::initialized(&env, &admin, &stake_token, &reward_token);
@@ -388,6 +389,98 @@ mod contract {
                 .instance()
                 .get(&DataKey::TotalRewards)
                 .unwrap_or(0i128)
+        }
+
+        /// Return the on-chain contract version number.
+        pub fn contract_version(env: Env) -> u32 {
+            env.storage()
+                .instance()
+                .get(&DataKey::Version)
+                .unwrap_or(0)
+        }
+
+        /// Enable or disable auto-compounding for `staker`.
+        ///
+        /// When compounding is enabled, calling [`compound`](Self::compound) will
+        /// re-stake accrued rewards instead of transferring them out.
+        /// Requires stake token == reward token.
+        pub fn set_compounding(env: Env, staker: Address, enabled: bool) -> Result<(), StakingError> {
+            if !env.storage().instance().has(&DataKey::Admin) {
+                return Err(StakingError::NotInitialized);
+            }
+            staker.require_auth();
+            env.storage()
+                .persistent()
+                .set(&DataKey::Compounding(staker), &enabled);
+            bump(&env);
+            Ok(())
+        }
+
+        /// Re-stake accrued rewards back into principal (compound).
+        ///
+        /// This transfers no tokens externally — rewards are simply moved from the
+        /// reward ledger back into the staker's principal stake.  Requires the stake
+        /// token and reward token to be the same contract (single-asset staking).
+        ///
+        /// # Errors
+        /// - [`StakingError::NotInitialized`] if the contract has not been initialized.
+        /// - [`StakingError::NoRewards`] if there are no rewards to compound.
+        /// - [`StakingError::CompoundTokenMismatch`] if stake token != reward token.
+        #[allow(clippy::arithmetic_side_effects)] // checked via overflow guards
+        pub fn compound(env: Env, staker: Address) -> Result<i128, StakingError> {
+            if !env.storage().instance().has(&DataKey::Admin) {
+                return Err(StakingError::NotInitialized);
+            }
+            staker.require_auth();
+
+            // Compound only makes sense when stake token == reward token.
+            let stake_token = get_stake_token(&env)?;
+            let reward_token = get_reward_token(&env)?;
+            if stake_token != reward_token {
+                return Err(StakingError::CompoundTokenMismatch);
+            }
+
+            update_reward(&env, &staker);
+
+            let reward: i128 = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Rewards(staker.clone()))
+                .unwrap_or(0i128);
+            if reward <= 0 {
+                return Err(StakingError::NoRewards);
+            }
+
+            // Clear the reward ledger entry.
+            env.storage()
+                .persistent()
+                .set(&DataKey::Rewards(staker.clone()), &0i128);
+
+            // Deduct from total rewards pool.
+            let total_rewards = get_total_rewards_internal(&env)?;
+            env.storage()
+                .instance()
+                .set(&DataKey::TotalRewards, &(total_rewards - reward));
+
+            // Add compounded reward to principal stake.
+            let prev: i128 = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Stake(staker.clone()))
+                .unwrap_or(0i128);
+            let new_stake = prev + reward;
+            env.storage()
+                .persistent()
+                .set(&DataKey::Stake(staker.clone()), &new_stake);
+
+            let total = get_total_staked_internal(&env)?;
+            env.storage()
+                .instance()
+                .set(&DataKey::TotalStaked, &(total + reward));
+
+            bump(&env);
+            events::compounded(&env, &staker, reward, new_stake);
+            Ok(reward)
         }
     }
 }

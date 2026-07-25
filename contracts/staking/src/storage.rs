@@ -24,6 +24,10 @@ pub enum DataKey {
     RewardPerTokenPaid(Address),
     /// Per-staker: accrued but unclaimed rewards.
     Rewards(Address),
+    /// Contract version number (`u32`).
+    Version,
+    /// Per-staker: whether auto-compounding is enabled (`bool`).
+    Compounding(Address),
 }
 
 /// Scaling factor for reward-per-token fixed-point arithmetic.

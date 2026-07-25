@@ -34,3 +34,10 @@ pub fn rewards_added(env: &Env, admin: &Address, amount: i128, new_total: i128) 
         (amount, new_total),
     );
 }
+
+pub fn compounded(env: &Env, staker: &Address, reward: i128, new_stake: i128) {
+    env.events().publish(
+        (Symbol::new(env, "compounded"), staker.clone()),
+        (reward, new_stake),
+    );
+}

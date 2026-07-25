@@ -146,6 +146,14 @@ mod contract {
         pub fn get_remaining_ledgers(env: Env) -> i64 {
             queries::get_remaining_ledgers(env)
         }
+
+        /// Return the on-chain contract version number.
+        pub fn contract_version(env: Env) -> u32 {
+            env.storage()
+                .instance()
+                .get(&DataKey::Version)
+                .unwrap_or(0)
+        }
     }
 
     /// Pause / unpause — only compiled when the `pausable` feature is enabled.

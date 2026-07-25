@@ -245,6 +245,14 @@ mod contract {
             Self::get_transaction(env, tx_id).map(|tx| tx.signatures.len())
         }
 
+        /// Return the on-chain contract version number.
+        pub fn contract_version(env: Env) -> u32 {
+            env.storage()
+                .instance()
+                .get(&DataKey::Version)
+                .unwrap_or(0)
+        }
+
         // ── Phase helpers ────────────────────────────────────────────────────────
 
         /// Phase 1 — create a new proposal and record the proposer's implicit vote.

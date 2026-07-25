@@ -85,6 +85,7 @@ fn store_escrow_data(
     env.storage()
         .instance()
         .set(&RequiredSignatures, &required_signatures);
+    env.storage().instance().set(&Version, &1u32);
 }
 
 fn emit_init_events(env: &Env, buyer: &Address, seller: &Address, arbiter: &Address, amount: i128) {

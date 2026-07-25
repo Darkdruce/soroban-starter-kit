@@ -22,6 +22,8 @@ pub enum DataKey {
     Revoked,
     /// Admin address.
     Admin,
+    /// Contract version number (`u32`).
+    Version,
 }
 
 /// Snapshot returned by `get_info`.
