@@ -151,23 +151,6 @@ mod contract {
             Ok(id)
         }
 
-        // Checks-effects-interactions: mark inactive before external calls.
-        listing.active = false;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Listing(listing_id), &listing);
-        bump_instance(&env);
-
-        let price = listing.price;
-        #[allow(clippy::arithmetic_side_effects, clippy::as_conversions, clippy::cast_possible_truncation)] // royalty BPS validated <= 10_000 at init
-        let royalty = (price * royalty_bps as i128) / 10_000;
-        #[allow(clippy::arithmetic_side_effects)]
-        let seller_amount = price - royalty;
-
-        let tok = token::Client::new(&env, &payment_token);
-        tok.transfer(&buyer, &listing.seller, &seller_amount);
-        if royalty > 0 {
-            tok.transfer(&buyer, &royalty_recipient, &royalty);
         /// Buy the NFT in listing `listing_id`.
         ///
         /// Transfers payment (minus royalty) to the seller and the royalty portion to the royalty
@@ -212,6 +195,7 @@ mod contract {
             env.storage()
                 .persistent()
                 .set(&DataKey::Listing(listing_id), &listing);
+            bump_listing(&env, listing_id);
             bump_instance(&env);
 
             let price = listing.price;
@@ -268,6 +252,7 @@ mod contract {
             env.storage()
                 .persistent()
                 .set(&DataKey::Listing(listing_id), &listing);
+            bump_listing(&env, listing_id);
             bump_instance(&env);
 
             events::cancelled(&env, listing_id, &seller);
