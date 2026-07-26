@@ -18,4 +18,6 @@ pub enum OracleError {
     StalePrice = 4,
     /// The provided staleness threshold is zero.
     InvalidStalenessThreshold = 5,
+    /// No authorized publisher has submitted a price yet.
+    NoPublisherData = 6,
 }

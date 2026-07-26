@@ -18,6 +18,10 @@ pub enum DataKey {
     StalenessThreshold,
     /// The unix timestamp at which the price was last updated.
     UpdatedAtTimestamp,
+    /// The admin-configured set of authorized publishers (persistent).
+    Publishers,
+    /// The latest submission from a given publisher (persistent).
+    Submission(Address),
 }
 
 /// Snapshot of the oracle state returned by read entry points.
@@ -32,4 +36,14 @@ pub struct PriceData {
     pub admin: Address,
     /// The configured staleness threshold, in ledgers.
     pub staleness_threshold: u32,
+}
+
+/// A single publisher's latest price submission.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PublisherSubmission {
+    /// The submitted price.
+    pub price: i128,
+    /// The unix timestamp at which the price was submitted.
+    pub timestamp: u64,
 }
