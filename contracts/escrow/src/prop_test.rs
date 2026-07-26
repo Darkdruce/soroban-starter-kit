@@ -30,7 +30,7 @@ fn setup_escrow<'a>(
     let escrow_addr = env.register_contract(None, EscrowContract);
     let client = EscrowContractClient::new(env, &escrow_addr);
     let deadline = env.ledger().sequence() + MIN_DEADLINE_BUFFER + 10;
-    client.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline, &None);
+    client.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline, &0, &None);
 
     (client, buyer, seller, arbiter, token_addr)
 }

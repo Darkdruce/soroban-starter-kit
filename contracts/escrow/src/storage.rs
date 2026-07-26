@@ -37,6 +37,11 @@ pub enum DataKey {
     ArbiterVotes,
     /// Optional off-chain deal reference hash (`BytesN<32>`).
     MetadataHash,
+    /// Number of ledgers after a dispute is raised before the buyer can auto-claim
+    /// a refund without arbiter resolution (`u32`). Zero means no timeout.
+    DisputeTimeoutLedgers,
+    /// Ledger sequence at which the current dispute was raised (`u32`).
+    DisputeRaisedAt,
 }
 
 /// Lifecycle states of an escrow.

@@ -86,6 +86,8 @@ fn bench_initialize(c: &mut Criterion) {
                 black_box(&token_addr),
                 black_box(&1_000i128),
                 black_box(&deadline),
+                black_box(&0u32),
+                black_box(&None),
             );
         });
     });
@@ -116,6 +118,8 @@ fn bench_fund(c: &mut Criterion) {
                 &token_addr,
                 &1_000i128,
                 &deadline,
+                &0u32,
+                &None,
             );
 
             escrow.fund();
@@ -148,6 +152,8 @@ fn bench_approve_delivery(c: &mut Criterion) {
                 &token_addr,
                 &1_000i128,
                 &deadline,
+                &0u32,
+                &None,
             );
             escrow.fund();
             escrow.mark_delivered();
@@ -182,6 +188,8 @@ fn bench_resolve_dispute(c: &mut Criterion) {
                 &token_addr,
                 &1_000i128,
                 &deadline,
+                &0u32,
+                &None,
             );
             escrow.fund();
 
@@ -215,6 +223,8 @@ fn bench_full_lifecycle(c: &mut Criterion) {
                 &token_addr,
                 &1_000i128,
                 &deadline,
+                &0u32,
+                &None,
             );
 
             // Full lifecycle: fund → mark_delivered → approve_delivery

@@ -23,6 +23,8 @@ pub enum DataKey {
     Frozen(Address),
     /// Instance storage – optional transfer hook contract address (`Address`).
     TransferHook,
+    /// Persistent storage – balance snapshot: key is `(Address, ledger: u32)` → `i128`.
+    Snapshot(Address, u32),
 }
 
 #[contracttype]
@@ -72,6 +74,7 @@ mod discriminant_tests {
             DataKey::Version => 9,
             DataKey::Frozen(_) => 10,
             DataKey::TransferHook => 11,
+            DataKey::Snapshot(_, _) => 12,
         }
     }
 
@@ -107,6 +110,10 @@ mod discriminant_tests {
         assert_eq!(token_data_key_index(&DataKey::Version), 9);
         assert_eq!(token_data_key_index(&DataKey::Frozen(addr)), 10);
         assert_eq!(token_data_key_index(&DataKey::TransferHook), 11);
+        assert_eq!(
+            token_data_key_index(&DataKey::Snapshot(Address::generate(&env), 0u32)),
+            12
+        );
     }
 
     #[test]

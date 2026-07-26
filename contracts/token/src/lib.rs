@@ -344,6 +344,32 @@ mod contract {
                 _ => None,
             }
         }
+
+        /// Record the caller's current balance at `ledger` sequence number.
+        ///
+        /// Stores `(caller, ledger) → balance` in persistent storage with TTL.
+        /// Useful for governance voting-power snapshots (issue #717).
+        pub fn snapshot(env: Env, caller: Address, ledger: u32) -> Result<(), TokenError> {
+            caller.require_auth();
+            let balance: i128 = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Balance(caller.clone()))
+                .unwrap_or(0);
+            let key = DataKey::Snapshot(caller.clone(), ledger);
+            env.storage().persistent().set(&key, &balance);
+            extend_ttl_persistent(&env, &key, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+            events::snapshot_taken(&env, &caller, ledger, balance);
+            Ok(())
+        }
+
+        /// Return the balance recorded for `account` at `ledger`, or `None` if no snapshot exists.
+        #[must_use]
+        pub fn balance_at(env: Env, account: Address, ledger: u32) -> Option<i128> {
+            env.storage()
+                .persistent()
+                .get(&DataKey::Snapshot(account, ledger))
+        }
     }
 
     /// Pause / unpause — only compiled when the `pausable` feature is enabled.

@@ -25,11 +25,48 @@ pub fn raise_dispute(env: Env, caller: Address) -> Result<(), EscrowError> {
     }
 
     env.storage().instance().set(&State, &EscrowState::Disputed);
+    // Record when the dispute was raised for timeout tracking (issue #709)
+    env.storage()
+        .instance()
+        .set(&DisputeRaisedAt, &env.ledger().sequence());
     extend_ttl(&env);
 
     events::dispute_raised(&env, &caller);
 
     Ok(())
+}
+
+pub fn claim_dispute_timeout(env: Env) -> Result<(), EscrowError> {
+    #[cfg(feature = "pausable")]
+    crate::EscrowContract::require_not_paused(&env)?;
+
+    let buyer: Address = get_required(&env, &Buyer)?;
+    buyer.require_auth();
+
+    let state: EscrowState = get_required(&env, &State)?;
+    if state != EscrowState::Disputed {
+        return Err(EscrowError::InvalidState);
+    }
+
+    let timeout: u32 = env
+        .storage()
+        .instance()
+        .get(&DisputeTimeoutLedgers)
+        .unwrap_or(0);
+    if timeout == 0 {
+        return Err(EscrowError::NoDisputeTimeout);
+    }
+
+    let raised_at: u32 = get_required(&env, &DisputeRaisedAt)?;
+    let elapsed = env.ledger().sequence().saturating_sub(raised_at);
+    if elapsed < timeout {
+        return Err(EscrowError::DisputeTimeoutNotReached);
+    }
+
+    // Auto-resolve in buyer's favour
+    env.storage().instance().set(&State, &EscrowState::Funded);
+    env.storage().instance().remove(&DisputeRaisedAt);
+    refund_to_buyer(env)
 }
 
 pub fn resolve_dispute(env: Env, release_to_seller_flag: bool) -> Result<(), EscrowError> {
