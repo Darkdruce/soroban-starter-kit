@@ -13,6 +13,8 @@ pub enum DataKey {
     State,
     Commit,
     Winner,
+    MaxTicketsPerAddress,
+    TicketCount(Address),
 }
 
 #[contracttype]
