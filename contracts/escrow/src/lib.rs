@@ -116,8 +116,12 @@ mod contract {
             dispute::raise_dispute(env, caller)
         }
 
-        pub fn resolve_dispute(env: Env, release_to_seller: bool) -> Result<(), EscrowError> {
-            dispute::resolve_dispute(env, release_to_seller)
+        pub fn resolve_dispute(
+            env: Env,
+            caller: Address,
+            release_to_seller: bool,
+        ) -> Result<(), EscrowError> {
+            dispute::resolve_dispute(env, caller, release_to_seller)
         }
 
         pub fn cancel(env: Env) -> Result<(), EscrowError> {
