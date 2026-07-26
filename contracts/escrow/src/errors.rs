@@ -36,6 +36,7 @@ pub enum EscrowError {
     InsufficientFunds = 7,
     /// The escrow amount must be greater than zero.
     InvalidAmount = 8,
+    /// The specified parties for the escrow are not valid.
     InvalidParties = 9,
 }
 
