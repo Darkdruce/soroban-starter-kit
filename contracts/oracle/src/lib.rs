@@ -91,8 +91,12 @@ mod contract {
             admin.require_auth();
 
             let ledger = env.ledger().sequence();
+            let timestamp = env.ledger().timestamp();
             env.storage().instance().set(&Price, &price);
             env.storage().instance().set(&UpdatedAt, &ledger);
+            env.storage()
+                .instance()
+                .set(&UpdatedAtTimestamp, &timestamp);
 
             bump_instance(&env);
             events::price_updated(&env, &admin, price, ledger);
@@ -113,6 +117,28 @@ mod contract {
 
             let age = env.ledger().sequence().saturating_sub(updated_at);
             if age > threshold {
+                return Err(OracleError::StalePrice);
+            }
+
+            bump_instance(&env);
+            Ok(price)
+        }
+
+        /// Return the current price, rejecting it if it is older than `max_age` seconds.
+        ///
+        /// Unlike `get_price` (which enforces the fixed `staleness_threshold` configured
+        /// at `initialize` time, measured in ledgers), this lets a caller specify its own
+        /// tolerance in seconds, checked against `env.ledger().timestamp()`.
+        ///
+        /// # Errors
+        /// - [`OracleError::NotInitialized`] if no price has been pushed yet.
+        /// - [`OracleError::StalePrice`] if `env.ledger().timestamp() - last_updated > max_age`.
+        pub fn get_price_checked(env: Env, max_age: u64) -> Result<i128, OracleError> {
+            let price: i128 = get_required(&env, &Price)?;
+            let updated_at_timestamp: u64 = get_required(&env, &UpdatedAtTimestamp)?;
+
+            let age = env.ledger().timestamp().saturating_sub(updated_at_timestamp);
+            if age > max_age {
                 return Err(OracleError::StalePrice);
             }
 

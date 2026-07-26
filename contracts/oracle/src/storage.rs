@@ -16,6 +16,8 @@ pub enum DataKey {
     UpdatedAt,
     /// The maximum age, in ledgers, before a price is considered stale.
     StalenessThreshold,
+    /// The unix timestamp at which the price was last updated.
+    UpdatedAtTimestamp,
 }
 
 /// Snapshot of the oracle state returned by read entry points.
