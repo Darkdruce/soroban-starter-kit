@@ -28,3 +28,10 @@ pub fn refunded(env: &Env, pledger: &Address, amount: i128) {
     env.events()
         .publish((Symbol::new(env, "refunded"), pledger.clone()), amount);
 }
+
+pub fn deadline_extended(env: &Env, creator: &Address, new_deadline: u32) {
+    env.events().publish(
+        (Symbol::new(env, "deadline_extended"), creator.clone()),
+        new_deadline,
+    );
+}
