@@ -81,9 +81,13 @@ impl BallotContract {
             .ok_or(BallotError::NotInitialized)?;
         admin.require_auth();
 
+        let voter_key = DataKey::RegisteredVoter(voter.clone());
         env.storage()
             .persistent()
-            .set(&DataKey::RegisteredVoter(voter.clone()), &true);
+            .set(&voter_key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&voter_key, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
 
         bump(&env);
         events::voter_registered(&env, &voter);
@@ -135,9 +139,17 @@ impl BallotContract {
             return Err(BallotError::InvalidChoice);
         }
 
+        let voter_key = DataKey::Voter(voter.clone());
+        let registered_voter_key = DataKey::RegisteredVoter(voter.clone());
         env.storage()
             .persistent()
-            .set(&DataKey::Voter(voter.clone()), &true);
+            .set(&voter_key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&voter_key, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .extend_ttl(&registered_voter_key, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
 
         if choice == 1 {
             let yes: i128 = env
