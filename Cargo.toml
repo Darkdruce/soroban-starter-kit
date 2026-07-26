@@ -14,6 +14,7 @@ members = [
   "contracts/swap",
   "contracts/crowdfund",
   "contracts/auction",
+  "contracts/ballot",
   "contracts/marketplace",
   "contracts/airdrop",
   "contracts/oracle",
