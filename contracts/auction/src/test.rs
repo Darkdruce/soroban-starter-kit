@@ -35,7 +35,7 @@ fn test_single_bid_and_settle() {
     let (client, seller, b1, _, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 100;
-    client.start(&seller, &token, &1_000, &100, &deadline);
+    client.start(&seller, &token, &1_000, &100, &deadline, &None);
 
     client.bid(&b1, &1_500);
     assert_eq!(client.get_info().highest_bid, 1_500);
@@ -53,7 +53,7 @@ fn test_overbid_refunds_previous_bidder() {
     let (client, seller, b1, b2, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 100;
-    client.start(&seller, &token, &1_000, &100, &deadline);
+    client.start(&seller, &token, &1_000, &100, &deadline, &None);
 
     client.bid(&b1, &1_000);
     client.bid(&b2, &1_200); // overbids b1
@@ -74,7 +74,7 @@ fn test_multiple_overbids() {
     let (client, seller, b1, b2, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 100;
-    client.start(&seller, &token, &1_000, &500, &deadline);
+    client.start(&seller, &token, &1_000, &500, &deadline, &None);
 
     client.bid(&b1, &1_000);
     client.bid(&b2, &1_500);
@@ -101,7 +101,7 @@ fn test_bid_after_deadline_fails() {
     let (client, seller, b1, _, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 10;
-    client.start(&seller, &token, &1_000, &100, &deadline);
+    client.start(&seller, &token, &1_000, &100, &deadline, &None);
 
     env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
     client.bid(&b1, &1_500);
@@ -115,7 +115,7 @@ fn test_end_before_deadline_fails() {
     let (client, seller, b1, _, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 100;
-    client.start(&seller, &token, &1_000, &100, &deadline);
+    client.start(&seller, &token, &1_000, &100, &deadline, &None);
     client.bid(&b1, &1_500);
     client.end(); // deadline not reached
 }
@@ -131,7 +131,7 @@ fn test_end_with_no_bids() {
     let (client, seller, _, _, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 10;
-    client.start(&seller, &token, &1_000, &100, &deadline);
+    client.start(&seller, &token, &1_000, &100, &deadline, &None);
 
     env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
     client.end();
@@ -149,7 +149,7 @@ fn test_bid_too_low_fails() {
     let (client, seller, b1, b2, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 100;
-    client.start(&seller, &token, &1_000, &500, &deadline);
+    client.start(&seller, &token, &1_000, &500, &deadline, &None);
 
     client.bid(&b1, &1_000);
     client.bid(&b2, &1_200); // needs >= 1_500 (1000 + 500)
@@ -163,7 +163,7 @@ fn test_double_settle_fails() {
     let (client, seller, b1, _, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 10;
-    client.start(&seller, &token, &1_000, &100, &deadline);
+    client.start(&seller, &token, &1_000, &100, &deadline, &None);
     client.bid(&b1, &1_000);
     env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
     client.end();
@@ -178,6 +178,77 @@ fn test_double_start_fails() {
     let (client, seller, _, _, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 100;
-    client.start(&seller, &token, &1_000, &100, &deadline);
-    client.start(&seller, &token, &1_000, &100, &deadline);
+    client.start(&seller, &token, &1_000, &100, &deadline, &None);
+    client.start(&seller, &token, &1_000, &100, &deadline, &None);
+}
+
+// ---------------------------------------------------------------------------
+// Reserve price — #783
+// ---------------------------------------------------------------------------
+
+/// Reserve is met: seller receives the winning bid.
+#[test]
+fn test_reserve_met_settles_to_seller() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, seller, b1, _, token) = setup(&env);
+
+    let deadline = env.ledger().sequence() + 100;
+    // reserve = 2_000, bid = 2_500 → reserve met
+    client.start(&seller, &token, &1_000, &100, &deadline, &Some(2_000i128));
+
+    client.bid(&b1, &2_500);
+
+    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
+    client.end();
+
+    let info = client.get_info();
+    assert!(info.settled);
+    assert_eq!(info.reserve_price, Some(2_000));
+    // Bidder has no pending refund — the auction settled normally
+    assert_eq!(client.get_pending(&b1), 0);
+}
+
+/// Reserve is NOT met: highest bidder gets funds back, item unsold.
+#[test]
+fn test_reserve_not_met_returns_funds_to_bidder() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, seller, b1, _, token) = setup(&env);
+
+    use soroban_sdk::token::Client as TokenClient;
+    let before = TokenClient::new(&env, &token).balance(&b1);
+
+    let deadline = env.ledger().sequence() + 100;
+    // reserve = 5_000, bid = 1_500 → reserve NOT met
+    client.start(&seller, &token, &1_000, &100, &deadline, &Some(5_000i128));
+
+    client.bid(&b1, &1_500);
+
+    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
+    client.end();
+
+    let info = client.get_info();
+    assert!(info.settled);
+    // Bidder's balance restored (contract transferred back directly)
+    assert_eq!(TokenClient::new(&env, &token).balance(&b1), before);
+}
+
+/// No reserve set behaves identically to the original contract.
+#[test]
+fn test_no_reserve_settles_any_bid() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, seller, b1, _, token) = setup(&env);
+
+    let deadline = env.ledger().sequence() + 100;
+    client.start(&seller, &token, &1_000, &100, &deadline, &None);
+
+    client.bid(&b1, &1_000);
+
+    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
+    client.end();
+
+    assert!(client.get_info().settled);
+    assert_eq!(client.get_info().reserve_price, None);
 }

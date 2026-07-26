@@ -22,6 +22,13 @@ pub fn ended_no_bids(env: &Env) {
         .publish((Symbol::new(env, "ended_no_bids"),), ());
 }
 
+pub fn ended_reserve_not_met(env: &Env, highest_bidder: &Address, highest_bid: i128, reserve_price: i128) {
+    env.events().publish(
+        (Symbol::new(env, "ended_reserve_not_met"), highest_bidder.clone()),
+        (highest_bid, reserve_price),
+    );
+}
+
 pub fn withdrawn(env: &Env, bidder: &Address, amount: i128) {
     env.events()
         .publish((Symbol::new(env, "withdrawn"), bidder.clone()), amount);

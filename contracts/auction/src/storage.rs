@@ -14,6 +14,8 @@ pub enum DataKey {
     HighestBidder,
     HighestBid,
     Settled,
+    /// Optional reserve price; auction settles only if highest_bid >= reserve_price.
+    ReservePrice,
     /// Pending refund for outbid bidders.
     Pending(Address),
 }
@@ -29,4 +31,6 @@ pub struct AuctionInfo {
     pub highest_bid: i128,
     pub highest_bidder: Option<Address>,
     pub settled: bool,
+    /// Optional reserve price set at start.
+    pub reserve_price: Option<i128>,
 }
