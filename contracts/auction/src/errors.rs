@@ -1,7 +1,7 @@
-use soroban_common::impl_display_error;
 // `#[contracterror]` generates undocumented public associated items.
 #![allow(missing_docs)]
 
+use soroban_common::impl_display_error;
 use soroban_sdk::contracterror;
 
 #[contracterror]
@@ -18,6 +18,8 @@ pub enum AuctionError {
     InvalidAmount = 9,
     InvalidDeadline = 10,
     NothingToWithdraw = 11,
+    /// The auction ended but the highest bid did not meet the reserve price.
+    ReserveNotMet = 12,
 }
 
 impl_display_error!(
@@ -33,4 +35,5 @@ impl_display_error!(
     InvalidAmount      => "invalid amount",
     InvalidDeadline    => "invalid deadline",
     NothingToWithdraw  => "nothing to withdraw",
+    ReserveNotMet      => "reserve price not met",
 );

@@ -14,4 +14,6 @@ pub enum DataKey {
     MerkleRoot,
     /// Whether a given address has already claimed (persistent).
     Claimed(Address),
+    /// The ledger sequence number after which claims are rejected (instance).
+    ClaimDeadline,
 }

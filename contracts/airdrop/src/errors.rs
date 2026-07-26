@@ -20,4 +20,6 @@ pub enum AirdropError {
     AlreadyClaimed = 6,
     /// Claim amount is zero.
     InvalidAmount = 7,
+    /// The claim deadline has passed; no further claims are accepted.
+    ClaimWindowClosed = 8,
 }

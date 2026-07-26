@@ -36,11 +36,13 @@ fn get_instance<T: soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val>>(
 /// English auction contract.
 ///
 /// Lifecycle:
-/// - Seller calls `start` to set the token, starting price, minimum bid increment, and deadline.
+/// - Seller calls `start` to set the token, starting price, minimum bid increment, deadline,
+///   and an optional `reserve_price`.
 /// - Bidders call `bid` with increasing amounts. The previous highest bidder's funds are held
 ///   as a pending refund, collectable via `withdraw`.
-/// - After the deadline, anyone calls `end` to settle. On success the seller receives the
-///   winning bid; if no bids were placed the auction ends with no transfer.
+/// - After the deadline, anyone calls `end` to settle. If `highest_bid >= reserve_price` the
+///   seller receives the winning bid; otherwise funds are returned to the highest bidder and the
+///   item is left unsold. If no bids were placed the auction ends with no transfer.
 /// - Outbid bidders call `withdraw` to recover their pending refund at any time.
 pub use contract::*;
 
@@ -58,6 +60,10 @@ mod contract {
     impl AuctionContract {
         /// Start the auction.
         ///
+        /// `reserve_price` is optional. Pass `None` (or `0`) for no reserve. When set,
+        /// `end()` will only transfer to the seller if `highest_bid >= reserve_price`;
+        /// otherwise the highest bidder's funds are returned.
+        ///
         /// # Errors
         ///
         /// - [`AuctionError::AlreadyInitialized`] if already started.
@@ -70,6 +76,7 @@ mod contract {
             start_price: i128,
             min_increment: i128,
             deadline: u32,
+            reserve_price: Option<i128>,
         ) -> Result<(), AuctionError> {
             if env.storage().instance().has(&DataKey::Seller) {
                 return Err(AuctionError::AlreadyInitialized);
@@ -97,6 +104,12 @@ mod contract {
                 .instance()
                 .set(&DataKey::HighestBid, &(start_price - 1));
             env.storage().instance().set(&DataKey::Settled, &false);
+
+            if let Some(rp) = reserve_price {
+                env.storage()
+                    .instance()
+                    .set(&DataKey::ReservePrice, &rp);
+            }
 
             bump_instance(&env);
             events::started(&env, &seller, start_price, deadline);
@@ -175,8 +188,13 @@ mod contract {
             Ok(())
         }
 
-        /// Settle the auction after the deadline. Transfers the winning bid to the seller.
-        /// If no bids were placed, emits `ended_no_bids` and nothing is transferred.
+        /// Settle the auction after the deadline.
+        ///
+        /// - If no bids were placed, emits `ended_no_bids` and nothing is transferred.
+        /// - If a reserve price was set and `highest_bid < reserve_price`, the highest bidder's
+        ///   funds are queued as a pending refund (retrievable via `withdraw`) and the item is
+        ///   left unsold (emits `ended_reserve_not_met`).
+        /// - Otherwise the seller receives the winning bid (emits `ended`).
         ///
         /// # Errors
         ///
@@ -204,14 +222,34 @@ mod contract {
 
             bump_instance(&env);
 
+            // No bids at all
             if highest_bid < start_price || winner.is_none() {
                 events::ended_no_bids(&env);
                 return Ok(());
             }
 
+            #[allow(clippy::unwrap_used)] // winner.is_none() is checked two lines above
+            let winner = winner.unwrap();
+
+            // Reserve price check
+            let reserve_price: Option<i128> =
+                env.storage().instance().get(&DataKey::ReservePrice);
+            if let Some(rp) = reserve_price {
+                if highest_bid < rp {
+                    // Return funds to the highest bidder
+                    let token: Address = get_instance(&env, &DataKey::Token)?;
+                    token::Client::new(&env, &token).transfer(
+                        &env.current_contract_address(),
+                        &winner,
+                        &highest_bid,
+                    );
+                    events::ended_reserve_not_met(&env, &winner, highest_bid, rp);
+                    return Ok(());
+                }
+            }
+
             let seller: Address = get_instance(&env, &DataKey::Seller)?;
             let token: Address = get_instance(&env, &DataKey::Token)?;
-            let winner = winner.unwrap(); // safe: checked above
 
             token::Client::new(&env, &token).transfer(
                 &env.current_contract_address(),
@@ -267,36 +305,10 @@ mod contract {
                 highest_bid: get_instance(&env, &DataKey::HighestBid)?,
                 highest_bidder: env.storage().instance().get(&DataKey::HighestBidder),
                 settled: get_instance(&env, &DataKey::Settled)?,
+                reserve_price: env.storage().instance().get(&DataKey::ReservePrice),
             })
         }
 
-        let seller: Address = get_instance(&env, &DataKey::Seller)?;
-        let token: Address = get_instance(&env, &DataKey::Token)?;
-        #[allow(clippy::unwrap_used)] // winner.is_none() is checked two lines above
-        let winner = winner.unwrap(); // safe: checked above
-
-        token::Client::new(&env, &token)
-            .transfer(&env.current_contract_address(), &seller, &highest_bid);
-
-        events::ended(&env, &winner, highest_bid);
-        Ok(())
-    }
-
-    /// Withdraw a pending refund (available for outbid bidders).
-    ///
-    /// # Errors
-    ///
-    /// - [`AuctionError::NothingToWithdraw`] if caller has no pending refund.
-    pub fn withdraw(env: Env, bidder: Address) -> Result<(), AuctionError> {
-        bidder.require_auth();
-
-        let pending: i128 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Pending(bidder.clone()))
-            .unwrap_or(0);
-        if pending <= 0 {
-            return Err(AuctionError::NothingToWithdraw);
         /// Return a bidder's pending refund amount.
         #[must_use]
         pub fn get_pending(env: Env, bidder: Address) -> i128 {
