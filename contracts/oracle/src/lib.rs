@@ -13,9 +13,13 @@ mod events;
 mod storage;
 
 pub use errors::OracleError;
-pub use storage::{DataKey, PriceData, PublisherSubmission};
+pub use storage::{DataKey, PriceData, PriceObservation, PublisherSubmission};
 
 use soroban_common::{LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD};
+
+/// Maximum number of price observations retained for `get_twap`. Older
+/// observations are dropped as new ones are recorded.
+pub const MAX_HISTORY: u32 = 30;
 
 fn bump_instance(env: &Env) {
     env.storage()
@@ -61,6 +65,53 @@ fn median(values: &mut Vec<i128>) -> i128 {
     } else {
         values.get_unchecked(mid)
     }
+}
+
+/// Append a new price observation to the ring buffer, dropping the oldest
+/// entry once [`MAX_HISTORY`] is exceeded.
+fn push_history(env: &Env, price: i128, timestamp: u64) {
+    let mut history: Vec<PriceObservation> = env
+        .storage()
+        .instance()
+        .get(&DataKey::History)
+        .unwrap_or(Vec::new(env));
+
+    history.push_back(PriceObservation { price, timestamp });
+    while history.len() > MAX_HISTORY {
+        history.pop_front();
+    }
+
+    env.storage().instance().set(&DataKey::History, &history);
+}
+
+/// Compute the time-weighted average price over `observations`, which must be
+/// non-empty and sorted oldest-first. Each observation's price is weighted by
+/// how long it held (until the next observation, or `now` for the last one).
+#[allow(clippy::arithmetic_side_effects, clippy::integer_division)]
+fn twap(observations: &Vec<PriceObservation>, now: u64) -> i128 {
+    let len = observations.len();
+    if len == 1 {
+        return observations.get_unchecked(0).price;
+    }
+
+    let mut weighted_sum: i128 = 0;
+    let mut total_weight: i128 = 0;
+    for i in 0..len {
+        let obs = observations.get_unchecked(i);
+        let next_timestamp = if i + 1 < len {
+            observations.get_unchecked(i + 1).timestamp
+        } else {
+            now
+        };
+        let weight = i128::from(next_timestamp.saturating_sub(obs.timestamp));
+        weighted_sum = weighted_sum.saturating_add(obs.price.saturating_mul(weight));
+        total_weight = total_weight.saturating_add(weight);
+    }
+
+    if total_weight == 0 {
+        return observations.get_unchecked(len - 1).price;
+    }
+    weighted_sum / total_weight
 }
 
 pub use contract::*;
@@ -127,6 +178,7 @@ mod contract {
             env.storage()
                 .instance()
                 .set(&UpdatedAtTimestamp, &timestamp);
+            push_history(&env, price, timestamp);
 
             bump_instance(&env);
             events::price_updated(&env, &admin, price, ledger);
@@ -238,6 +290,7 @@ mod contract {
                 LEDGER_LIFETIME_THRESHOLD,
                 LEDGER_BUMP_AMOUNT,
             );
+            push_history(&env, price, timestamp);
             bump_instance(&env);
 
             events::price_submitted(&env, &publisher, price, timestamp);
@@ -269,6 +322,42 @@ mod contract {
             }
 
             Ok(median(&mut prices))
+        }
+
+        /// Compute the time-weighted average price over the last `window` seconds.
+        ///
+        /// Every `update_price` and `submit_price` call records an observation in a
+        /// ring buffer of up to [`MAX_HISTORY`] entries; this averages the
+        /// observations whose timestamp falls within `window` seconds of now,
+        /// weighting each by how long it held before the next observation (or now,
+        /// for the most recent one).
+        ///
+        /// # Errors
+        /// - [`OracleError::InsufficientHistory`] if no observation falls within
+        ///   `window` seconds of the current ledger timestamp.
+        pub fn get_twap(env: Env, window: u64) -> Result<i128, OracleError> {
+            let history: Vec<PriceObservation> = env
+                .storage()
+                .instance()
+                .get(&History)
+                .unwrap_or(Vec::new(&env));
+
+            let now = env.ledger().timestamp();
+            let cutoff = now.saturating_sub(window);
+
+            let mut in_window: Vec<PriceObservation> = Vec::new(&env);
+            for observation in history.iter() {
+                if observation.timestamp >= cutoff {
+                    in_window.push_back(observation);
+                }
+            }
+
+            if in_window.is_empty() {
+                return Err(OracleError::InsufficientHistory);
+            }
+
+            bump_instance(&env);
+            Ok(twap(&in_window, now))
         }
     }
 }

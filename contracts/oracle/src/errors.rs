@@ -20,4 +20,6 @@ pub enum OracleError {
     InvalidStalenessThreshold = 5,
     /// No authorized publisher has submitted a price yet.
     NoPublisherData = 6,
+    /// No price observations fall within the requested TWAP window.
+    InsufficientHistory = 7,
 }

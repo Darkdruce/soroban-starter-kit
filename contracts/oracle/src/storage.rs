@@ -22,6 +22,8 @@ pub enum DataKey {
     Publishers,
     /// The latest submission from a given publisher (persistent).
     Submission(Address),
+    /// Ring buffer of the last `N` price observations, oldest first (instance).
+    History,
 }
 
 /// Snapshot of the oracle state returned by read entry points.
@@ -45,5 +47,15 @@ pub struct PublisherSubmission {
     /// The submitted price.
     pub price: i128,
     /// The unix timestamp at which the price was submitted.
+    pub timestamp: u64,
+}
+
+/// A single historical price observation, used to compute a TWAP.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PriceObservation {
+    /// The recorded price.
+    pub price: i128,
+    /// The unix timestamp at which the price was recorded.
     pub timestamp: u64,
 }
