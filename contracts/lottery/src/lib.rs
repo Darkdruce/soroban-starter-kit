@@ -3,7 +3,7 @@
 //! Commit-reveal lottery contract template.
 //!
 //! Players buy tickets while the lottery is open; the admin commits to a hashed
-//! secret then reveals it to draw a verifiable random winner.
+//! secret then reveals it to draw verifiable random winners.
 
 use soroban_sdk::{Address, Bytes, BytesN, Env, Vec, contract, contractimpl, crypto::Hash, token};
 
@@ -15,6 +15,9 @@ pub use errors::LotteryError;
 pub use storage::{Commit, DataKey, LotteryInfo, LotteryState};
 
 use soroban_common::{LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD};
+
+/// Basis-point denominator used for prize splits (10 000 = 100 %).
+const BPS_DENOMINATOR: u32 = 10_000;
 
 fn bump_instance(env: &Env) {
     env.storage()
@@ -37,8 +40,11 @@ fn get_required<T: soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val>>(
 /// Lifecycle:
 /// 1. Admin calls `initialize` (→ Open).
 /// 2. Anyone calls `buy_ticket` (while Open).
-/// 3. Admin calls `commit` with hash(secret ++ salt) (→ Committed).
-/// 4. Admin calls `draw` revealing secret and salt (→ Drawn); winner receives the prize pool.
+/// 3. Admin calls `commit` with hash(secret ++ salt) and a reveal deadline (→ Committed).
+/// 4. Admin calls `draw` revealing secret and salt (→ Drawn); winners receive their prize share.
+///
+/// If the admin never calls `draw` before the reveal deadline, ticket buyers can call
+/// `claim_refund` to recover their ticket price.
 pub use contract::*;
 
 // The `#[contract]` / `#[contractimpl]` macros generate an undocumented public
@@ -59,14 +65,21 @@ mod contract {
     impl LotteryContract {
         /// Initialise the lottery.
         ///
+        /// `winner_count` sets how many distinct winners `draw` selects, and `prize_splits`
+        /// gives each winner's share of the prize pool in basis points (must sum to 10 000).
+        ///
         /// # Errors
         /// - [`LotteryError::AlreadyInitialized`]
         /// - [`LotteryError::InvalidTicketPrice`] if ticket_price <= 0
+        /// - [`LotteryError::InvalidWinnerConfig`] if winner_count is zero, `prize_splits` length
+        ///   doesn't match `winner_count`, or the splits don't sum to 10 000 basis points
         pub fn initialize(
             env: Env,
             admin: Address,
             token: Address,
             ticket_price: i128,
+            winner_count: u32,
+            prize_splits: Vec<u32>,
         ) -> Result<(), LotteryError> {
             if env.storage().instance().has(&State) {
                 return Err(LotteryError::AlreadyInitialized);
@@ -74,6 +87,19 @@ mod contract {
             if ticket_price <= 0 {
                 return Err(LotteryError::InvalidTicketPrice);
             }
+            if winner_count == 0 || prize_splits.len() != winner_count {
+                return Err(LotteryError::InvalidWinnerConfig);
+            }
+            let mut total: u32 = 0;
+            for split in prize_splits.iter() {
+                total = total
+                    .checked_add(split)
+                    .ok_or(LotteryError::InvalidWinnerConfig)?;
+            }
+            if total != BPS_DENOMINATOR {
+                return Err(LotteryError::InvalidWinnerConfig);
+            }
+
             admin.require_auth();
 
             env.storage().instance().set(&Admin, &admin);
@@ -83,6 +109,8 @@ mod contract {
                 .instance()
                 .set(&Participants, &Vec::<Address>::new(&env));
             env.storage().instance().set(&State, &LotteryState::Open);
+            env.storage().instance().set(&WinnerCount, &winner_count);
+            env.storage().instance().set(&PrizeSplits, &prize_splits);
 
             bump_instance(&env);
             events::initialized(&env, &admin, ticket_price);
@@ -119,8 +147,9 @@ mod contract {
             Ok(())
         }
 
-        /// Admin submits hash(secret ++ salt) to lock in randomness commitment.
-        /// Transitions lottery to Committed state, closing ticket sales.
+        /// Admin submits hash(secret ++ salt) to lock in randomness commitment, along with the
+        /// ledger sequence deadline by which `draw` must be called. Transitions lottery to
+        /// Committed state, closing ticket sales.
         ///
         /// # Errors
         /// - [`LotteryError::NotInitialized`]
@@ -128,7 +157,12 @@ mod contract {
         /// - [`LotteryError::LotteryClosed`] if not Open
         /// - [`LotteryError::CommitAlreadySubmitted`]
         /// - [`LotteryError::NoTickets`] if no participants
-        pub fn commit(env: Env, hash: BytesN<32>) -> Result<(), LotteryError> {
+        /// - [`LotteryError::InvalidRevealDeadline`] if `reveal_deadline` is not in the future
+        pub fn commit(
+            env: Env,
+            hash: BytesN<32>,
+            reveal_deadline: u32,
+        ) -> Result<(), LotteryError> {
             let admin: Address = get_required(&env, &Admin)?;
             admin.require_auth();
 
@@ -146,7 +180,14 @@ mod contract {
                 return Err(LotteryError::NoTickets);
             }
 
+            if reveal_deadline <= env.ledger().sequence() {
+                return Err(LotteryError::InvalidRevealDeadline);
+            }
+
             env.storage().instance().set(&Commit, &Commit { hash });
+            env.storage()
+                .instance()
+                .set(&RevealDeadline, &reveal_deadline);
             env.storage()
                 .instance()
                 .set(&State, &LotteryState::Committed);
@@ -157,8 +198,9 @@ mod contract {
         }
 
         /// Admin reveals secret and salt. The contract verifies the preimage matches
-        /// the stored commitment, then uses hash(secret ++ salt ++ participants_count)
-        /// to pick a winner and transfer the entire prize pool.
+        /// the stored commitment, then uses hash(secret ++ salt ++ ledger ++ round) to pick
+        /// `winner_count` distinct winners and splits the prize pool between them according to
+        /// the configured `prize_splits`.
         ///
         /// # Errors
         /// - [`LotteryError::NotInitialized`]
@@ -166,11 +208,13 @@ mod contract {
         /// - [`LotteryError::DrawNotDone`] if not yet Committed
         /// - [`LotteryError::DrawAlreadyDone`] if already Drawn
         /// - [`LotteryError::RevealMismatch`] if preimage does not match commitment
+        /// - [`LotteryError::InsufficientParticipants`] if fewer distinct addresses hold
+        ///   tickets than the configured `winner_count`
         pub fn draw(
             env: Env,
             secret: BytesN<32>,
             salt: BytesN<32>,
-        ) -> Result<Address, LotteryError> {
+        ) -> Result<Vec<Address>, LotteryError> {
             let admin: Address = get_required(&env, &Admin)?;
             admin.require_auth();
 
@@ -192,47 +236,152 @@ mod contract {
                 return Err(LotteryError::RevealMismatch);
             }
 
-            // Derive winner index from hash(secret ++ salt ++ ledger).
+            let participants: Vec<Address> = get_required(&env, &Participants)?;
+            let winner_count: u32 = get_required(&env, &WinnerCount)?;
+            let prize_splits: Vec<u32> = get_required(&env, &PrizeSplits)?;
+
+            // Distinct-address count must cover the configured winner count.
+            let mut seen: Vec<Address> = Vec::new(&env);
+            for p in participants.iter() {
+                if !seen.contains(&p) {
+                    seen.push_back(p.clone());
+                }
+            }
+            if seen.len() < winner_count {
+                return Err(LotteryError::InsufficientParticipants);
+            }
+
             let ledger_bytes = env.ledger().sequence().to_be_bytes();
-            let mut entropy_input = Bytes::new(&env);
-            entropy_input.extend_from_array(&secret.to_array());
-            entropy_input.extend_from_array(&salt.to_array());
-            entropy_input.extend_from_array(&ledger_bytes);
-            let entropy: Hash<32> = env.crypto().sha256(&entropy_input);
-            let entropy_bytes = entropy.to_array();
-            // Use last 8 bytes as u64 for modulo.
-            let idx_raw = u64::from_be_bytes([
-                entropy_bytes[24],
-                entropy_bytes[25],
-                entropy_bytes[26],
-                entropy_bytes[27],
-                entropy_bytes[28],
-                entropy_bytes[29],
-                entropy_bytes[30],
-                entropy_bytes[31],
-            ]);
+            let mut pool: Vec<Address> = participants.clone();
+            let mut winners: Vec<Address> = Vec::new(&env);
+
+            for round in 0..winner_count {
+                // Derive this round's winner index from hash(secret ++ salt ++ ledger ++ round).
+                let mut entropy_input = Bytes::new(&env);
+                entropy_input.extend_from_array(&secret.to_array());
+                entropy_input.extend_from_array(&salt.to_array());
+                entropy_input.extend_from_array(&ledger_bytes);
+                entropy_input.extend_from_array(&round.to_be_bytes());
+                let entropy: Hash<32> = env.crypto().sha256(&entropy_input);
+                let entropy_bytes = entropy.to_array();
+                #[allow(clippy::indexing_slicing)] // sha256 output is always 32 bytes
+                let idx_raw = u64::from_be_bytes([
+                    entropy_bytes[24],
+                    entropy_bytes[25],
+                    entropy_bytes[26],
+                    entropy_bytes[27],
+                    entropy_bytes[28],
+                    entropy_bytes[29],
+                    entropy_bytes[30],
+                    entropy_bytes[31],
+                ]);
+
+                #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
+                let pool_len = pool.len() as u64;
+                #[allow(
+                    clippy::cast_possible_truncation,
+                    clippy::as_conversions,
+                    clippy::arithmetic_side_effects,
+                    clippy::integer_division
+                )]
+                let idx = (idx_raw % pool_len) as u32;
+                #[allow(clippy::unwrap_used)] // idx is derived from modulo of len, always in bounds
+                let winner = pool.get(idx).unwrap();
+                winners.push_back(winner.clone());
+
+                // Remove every ticket held by this winner so they can't be drawn again.
+                let mut remaining = Vec::new(&env);
+                for p in pool.iter() {
+                    if p != winner {
+                        remaining.push_back(p.clone());
+                    }
+                }
+                pool = remaining;
+            }
+
+            // Distribute the prize pool according to the configured splits.
+            let ticket_price: i128 = get_required(&env, &TicketPrice)?;
+            #[allow(clippy::arithmetic_side_effects, clippy::cast_possible_truncation, clippy::as_conversions)]
+            let total_prize = ticket_price * participants.len() as i128;
+            let token_addr: Address = get_required(&env, &Token)?;
+            let token_client = token::Client::new(&env, &token_addr);
+
+            for i in 0..winner_count {
+                #[allow(clippy::unwrap_used)] // i < winner_count == winners.len() == prize_splits.len()
+                let winner = winners.get(i).unwrap();
+                #[allow(clippy::unwrap_used)]
+                let split = prize_splits.get(i).unwrap();
+                #[allow(clippy::arithmetic_side_effects, clippy::integer_division)]
+                let amount = (total_prize * split as i128) / BPS_DENOMINATOR as i128;
+                token_client.transfer(&env.current_contract_address(), &winner, &amount);
+                events::winner_drawn(&env, &winner, amount);
+            }
+
+            env.storage().instance().set(&State, &LotteryState::Drawn);
+            env.storage().instance().set(&Winners, &winners);
+            #[allow(clippy::unwrap_used)] // winner_count >= 1, validated at initialize
+            let first_winner = winners.get(0).unwrap();
+            env.storage().instance().set(&Winner, &first_winner);
+
+            bump_instance(&env);
+            Ok(winners)
+        }
+
+        /// Claim a refund of the ticket price for every ticket `buyer` holds, once the reveal
+        /// deadline set at `commit` time has passed without a `draw`.
+        ///
+        /// # Errors
+        /// - [`LotteryError::NotInitialized`]
+        /// - [`LotteryError::RefundNotAvailable`] if the lottery hasn't been committed yet, or
+        ///   the reveal deadline hasn't passed
+        /// - [`LotteryError::DrawAlreadyDone`] if the admin already drew a winner
+        /// - [`LotteryError::NothingToRefund`] if `buyer` holds no tickets
+        pub fn claim_refund(env: Env, buyer: Address) -> Result<i128, LotteryError> {
+            buyer.require_auth();
+
+            let state: LotteryState = get_required(&env, &State)?;
+            match state {
+                LotteryState::Open => return Err(LotteryError::RefundNotAvailable),
+                LotteryState::Drawn => return Err(LotteryError::DrawAlreadyDone),
+                LotteryState::Committed => {}
+            }
+
+            let reveal_deadline: u32 = get_required(&env, &RevealDeadline)?;
+            if env.ledger().sequence() <= reveal_deadline {
+                return Err(LotteryError::RefundNotAvailable);
+            }
 
             let participants: Vec<Address> = get_required(&env, &Participants)?;
-            let count = participants.len() as u64;
-            let winner_idx = (idx_raw % count) as u32;
-            let winner = participants.get(winner_idx).unwrap();
+            let mut ticket_count: i128 = 0;
+            let mut remaining: Vec<Address> = Vec::new(&env);
+            for p in participants.iter() {
+                if p == buyer {
+                    #[allow(clippy::arithmetic_side_effects)] // bounded by ticket sales, no overflow risk
+                    {
+                        ticket_count += 1;
+                    }
+                } else {
+                    remaining.push_back(p.clone());
+                }
+            }
+            if ticket_count == 0 {
+                return Err(LotteryError::NothingToRefund);
+            }
+            env.storage().instance().set(&Participants, &remaining);
 
-            // Transfer full prize pool to winner.
             let ticket_price: i128 = get_required(&env, &TicketPrice)?;
-            let prize = ticket_price * count as i128;
+            #[allow(clippy::arithmetic_side_effects)]
+            let refund_amount = ticket_price * ticket_count;
             let token_addr: Address = get_required(&env, &Token)?;
             token::Client::new(&env, &token_addr).transfer(
                 &env.current_contract_address(),
-                &winner,
-                &prize,
+                &buyer,
+                &refund_amount,
             );
 
-            env.storage().instance().set(&State, &LotteryState::Drawn);
-            env.storage().instance().set(&Winner, &winner);
-
             bump_instance(&env);
-            events::winner_drawn(&env, &winner, prize);
-            Ok(winner)
+            events::refund_claimed(&env, &buyer, refund_amount);
+            Ok(refund_amount)
         }
 
         /// Return lottery details.
@@ -249,77 +398,7 @@ mod contract {
             })
         }
 
-        // Derive winner index from hash(secret ++ salt ++ ledger).
-        let ledger_bytes = env.ledger().sequence().to_be_bytes();
-        let mut entropy_input = Bytes::new(&env);
-        entropy_input.extend_from_array(&secret.to_array());
-        entropy_input.extend_from_array(&salt.to_array());
-        entropy_input.extend_from_array(&ledger_bytes);
-        let entropy: Hash<32> = env.crypto().sha256(&entropy_input);
-        let entropy_bytes = entropy.to_array();
-        // Use last 8 bytes as u64 for modulo.
-        let idx_raw = u64::from_be_bytes([
-            entropy_bytes[24],
-            entropy_bytes[25],
-            entropy_bytes[26],
-            entropy_bytes[27],
-            entropy_bytes[28],
-            entropy_bytes[29],
-            entropy_bytes[30],
-            entropy_bytes[31],
-        ]);
-
-        let participants: Vec<Address> = get_required(&env, &Participants)?;
-        #[allow(clippy::cast_possible_truncation, clippy::arithmetic_side_effects, clippy::as_conversions)]
-        let count = participants.len() as u64;
-        #[allow(clippy::cast_possible_truncation, clippy::arithmetic_side_effects, clippy::as_conversions)]
-        let winner_idx = (idx_raw % count) as u32;
-        #[allow(clippy::unwrap_used)] // winner_idx is derived from modulo of len, always in bounds
-        let winner = participants.get(winner_idx).unwrap();
-
-        // Transfer full prize pool to winner.
-        let ticket_price: i128 = get_required(&env, &TicketPrice)?;
-        #[allow(clippy::arithmetic_side_effects, clippy::cast_possible_truncation, clippy::as_conversions)]
-        let prize = ticket_price * count as i128;
-        let token_addr: Address = get_required(&env, &Token)?;
-        token::Client::new(&env, &token_addr).transfer(
-            &env.current_contract_address(),
-            &winner,
-            &prize,
-        );
-
-        env.storage().instance().set(&State, &LotteryState::Drawn);
-        env.storage().instance().set(&Winner, &winner);
-
-        bump_instance(&env);
-        events::winner_drawn(&env, &winner, prize);
-        Ok(winner)
-    }
-
-    /// Return lottery details.
-    ///
-    /// # Errors
-    /// - [`LotteryError::NotInitialized`]
-    pub fn get_info(env: Env) -> Result<LotteryInfo, LotteryError> {
-        Ok(LotteryInfo {
-            admin: get_required(&env, &Admin)?,
-            token: get_required(&env, &Token)?,
-            ticket_price: get_required(&env, &TicketPrice)?,
-            state: get_required(&env, &State)?,
-            participants: get_required(&env, &Participants)?,
-        })
-    }
-
-    /// Return the winner address (only available after draw).
-    ///
-    /// # Errors
-    /// - [`LotteryError::NotInitialized`]
-    /// - [`LotteryError::DrawNotDone`] if draw hasn't happened yet
-    pub fn get_winner(env: Env) -> Result<Address, LotteryError> {
-        let state: LotteryState = get_required(&env, &State)?;
-        if state != LotteryState::Drawn {
-            return Err(LotteryError::DrawNotDone);
-        /// Return the winner address (only available after draw).
+        /// Return the first (or only) winner address (only available after draw).
         ///
         /// # Errors
         /// - [`LotteryError::NotInitialized`]
@@ -330,6 +409,19 @@ mod contract {
                 return Err(LotteryError::DrawNotDone);
             }
             get_required(&env, &Winner)
+        }
+
+        /// Return all winner addresses (only available after draw).
+        ///
+        /// # Errors
+        /// - [`LotteryError::NotInitialized`]
+        /// - [`LotteryError::DrawNotDone`] if draw hasn't happened yet
+        pub fn get_winners(env: Env) -> Result<Vec<Address>, LotteryError> {
+            let state: LotteryState = get_required(&env, &State)?;
+            if state != LotteryState::Drawn {
+                return Err(LotteryError::DrawNotDone);
+            }
+            get_required(&env, &Winners)
         }
     }
 }

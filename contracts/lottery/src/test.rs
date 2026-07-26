@@ -3,7 +3,7 @@
 
 use super::*;
 use soroban_sdk::{
-    Address, Bytes, BytesN, Env, String, testutils::Address as _, token::TokenInterface,
+    Address, Bytes, BytesN, Env, String, Vec, testutils::Address as _, token::TokenInterface,
 };
 
 // ---------------------------------------------------------------------------
@@ -48,12 +48,16 @@ fn make_commit(env: &Env, secret: &[u8; 32], salt: &[u8; 32]) -> BytesN<32> {
     env.crypto().sha256(&preimage).into()
 }
 
+fn single_winner_splits(env: &Env) -> Vec<u32> {
+    Vec::from_array(env, [10_000u32])
+}
+
 fn setup(env: &Env) -> (LotteryContractClient, Address, Address) {
     let admin = Address::generate(env);
     let token = env.register_contract(None, MockToken);
     let addr = env.register_contract(None, LotteryContract);
     let client = LotteryContractClient::new(env, &addr);
-    client.initialize(&admin, &token, &100);
+    client.initialize(&admin, &token, &100, &1u32, &single_winner_splits(env));
     (client, admin, token)
 }
 
@@ -80,7 +84,7 @@ fn test_initialize_twice_fails() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, admin, token) = setup(&env);
-    client.initialize(&admin, &token, &100);
+    client.initialize(&admin, &token, &100, &1u32, &single_winner_splits(&env));
 }
 
 #[test]
@@ -92,7 +96,7 @@ fn test_initialize_zero_price_fails() {
     let token = env.register_contract(None, MockToken);
     let addr = env.register_contract(None, LotteryContract);
     let client = LotteryContractClient::new(&env, &addr);
-    client.initialize(&admin, &token, &0);
+    client.initialize(&admin, &token, &0, &1u32, &single_winner_splits(&env));
 }
 
 #[test]
@@ -114,7 +118,7 @@ fn test_commit_with_no_tickets_fails() {
     let secret = [1u8; 32];
     let salt = [2u8; 32];
     let hash = make_commit(&env, &secret, &salt);
-    client.commit(&hash);
+    client.commit(&hash, &(env.ledger().sequence() + 100));
 }
 
 #[test]
@@ -131,16 +135,18 @@ fn test_full_lifecycle() {
     let secret = [42u8; 32];
     let salt = [99u8; 32];
     let hash = make_commit(&env, &secret, &salt);
-    client.commit(&hash);
+    client.commit(&hash, &(env.ledger().sequence() + 100));
     assert_eq!(client.get_info().state, LotteryState::Committed);
 
     let secret_bytes: BytesN<32> = BytesN::from_array(&env, &secret);
     let salt_bytes: BytesN<32> = BytesN::from_array(&env, &salt);
-    let winner = client.draw(&secret_bytes, &salt_bytes);
+    let winners = client.draw(&secret_bytes, &salt_bytes);
+    let winner = winners.get(0).unwrap();
 
     assert!(winner == buyer1 || winner == buyer2);
     assert_eq!(client.get_info().state, LotteryState::Drawn);
     assert_eq!(client.get_winner(), winner);
+    assert_eq!(client.get_winners(), winners);
 }
 
 #[test]
@@ -156,7 +162,7 @@ fn test_draw_wrong_preimage_fails() {
     let secret = [1u8; 32];
     let salt = [2u8; 32];
     let hash = make_commit(&env, &secret, &salt);
-    client.commit(&hash);
+    client.commit(&hash, &(env.ledger().sequence() + 100));
 
     // Reveal wrong secret.
     let bad_secret: BytesN<32> = BytesN::from_array(&env, &[9u8; 32]);
@@ -177,7 +183,7 @@ fn test_buy_ticket_after_commit_fails() {
     let secret = [1u8; 32];
     let salt = [2u8; 32];
     let hash = make_commit(&env, &secret, &salt);
-    client.commit(&hash);
+    client.commit(&hash, &(env.ledger().sequence() + 100));
 
     // Should fail — lottery is no longer Open.
     let another = Address::generate(&env);
@@ -197,7 +203,7 @@ fn test_draw_after_draw_fails() {
     let secret = [1u8; 32];
     let salt = [2u8; 32];
     let hash = make_commit(&env, &secret, &salt);
-    client.commit(&hash);
+    client.commit(&hash, &(env.ledger().sequence() + 100));
 
     let secret_bytes: BytesN<32> = BytesN::from_array(&env, &secret);
     let salt_bytes: BytesN<32> = BytesN::from_array(&env, &salt);

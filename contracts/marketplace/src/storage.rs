@@ -18,6 +18,8 @@ pub enum DataKey {
     NextListingId,
     /// Per-listing details (persistent).
     Listing(u64),
+    /// Escrowed offer amount for (listing_id, buyer) (persistent).
+    Offer(u64, Address),
 }
 
 /// State of a single NFT listing.
@@ -34,4 +36,6 @@ pub struct Listing {
     pub price: i128,
     /// Whether the listing is still open.
     pub active: bool,
+    /// Optional ledger sequence after which the listing can no longer be bought.
+    pub expires_at: Option<u32>,
 }

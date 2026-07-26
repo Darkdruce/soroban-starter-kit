@@ -13,6 +13,10 @@ pub enum DataKey {
     State,
     Commit,
     Winner,
+    Winners,
+    RevealDeadline,
+    WinnerCount,
+    PrizeSplits,
 }
 
 #[contracttype]

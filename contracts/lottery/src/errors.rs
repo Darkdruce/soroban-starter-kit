@@ -16,4 +16,9 @@ pub enum LotteryError {
     CommitAlreadySubmitted = 8,
     RevealMismatch = 9,
     NoTickets = 10,
+    InvalidRevealDeadline = 11,
+    RefundNotAvailable = 12,
+    NothingToRefund = 13,
+    InvalidWinnerConfig = 14,
+    InsufficientParticipants = 15,
 }
