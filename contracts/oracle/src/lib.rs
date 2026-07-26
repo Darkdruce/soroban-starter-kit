@@ -219,7 +219,10 @@ mod contract {
             let price: i128 = get_required(&env, &Price)?;
             let updated_at_timestamp: u64 = get_required(&env, &UpdatedAtTimestamp)?;
 
-            let age = env.ledger().timestamp().saturating_sub(updated_at_timestamp);
+            let age = env
+                .ledger()
+                .timestamp()
+                .saturating_sub(updated_at_timestamp);
             if age > max_age {
                 return Err(OracleError::StalePrice);
             }
