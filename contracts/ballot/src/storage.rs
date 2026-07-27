@@ -12,4 +12,10 @@ pub enum DataKey {
     Voter(Address),
     YesVotes,
     NoVotes,
+    /// First ledger sequence at which voting is open (inclusive).
+    VotingStart,
+    /// Last ledger sequence at which voting is open (inclusive).
+    VotingEnd,
+    /// Running count of total votes cast; used to gate `deregister_voter`.
+    TotalVotes,
 }

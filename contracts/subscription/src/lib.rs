@@ -67,6 +67,8 @@ mod contract {
                 return Err(SubscriptionError::AlreadyInitialized);
             }
 
+            provider.require_auth();
+
             // Validate that token implements the token interface.
             token::Client::new(&env, &token).decimals();
 

@@ -229,12 +229,15 @@ mod contract {
                 return Err(LotteryError::RevealMismatch);
             }
 
-            // Derive winner index from hash(secret ++ salt ++ ledger).
-            let ledger_bytes = env.ledger().sequence().to_be_bytes();
+            let participants: Vec<Address> = get_required(&env, &Participants)?;
+
+            // Derive winner index from hash(secret ++ salt ++ participants_count).
+            let count = participants.len() as u64;
+            let count_bytes = count.to_be_bytes();
             let mut entropy_input = Bytes::new(&env);
             entropy_input.extend_from_array(&secret.to_array());
             entropy_input.extend_from_array(&salt.to_array());
-            entropy_input.extend_from_array(&ledger_bytes);
+            entropy_input.extend_from_array(&count_bytes);
             let entropy: Hash<32> = env.crypto().sha256(&entropy_input);
             let entropy_bytes = entropy.to_array();
             // Use last 8 bytes as u64 for modulo.

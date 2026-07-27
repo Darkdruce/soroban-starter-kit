@@ -176,11 +176,11 @@ where
 /// Used to convert ledger counts to approximate durations in doc comments.
 pub const LEDGER_SECONDS: u32 = 5;
 
-/// Ledger threshold for TTL extension (~14 days at `LEDGER_SECONDS` seconds per ledger).
+/// Ledger threshold for TTL extension (~7 days at `LEDGER_SECONDS` seconds per ledger).
 /// When remaining TTL falls below this, storage is extended to `LEDGER_BUMP_AMOUNT`.
 pub const LEDGER_LIFETIME_THRESHOLD: u32 = 120_960;
 
-/// Target TTL (in ledgers) after each extension (~60 days at `LEDGER_SECONDS` seconds per ledger).
+/// Target TTL (in ledgers) after each extension (~30 days at `LEDGER_SECONDS` seconds per ledger).
 pub const LEDGER_BUMP_AMOUNT: u32 = 518_400;
 
 /// Generates a `core::fmt::Display` implementation for a `#[contracterror]` enum.

@@ -71,6 +71,7 @@ fn store_escrow_data(
     amount: i128,
     deadline_ledger: u32,
     required_signatures: u32,
+    dispute_timeout_ledgers: u32,
 ) {
     env.storage().instance().set(&Buyer, buyer);
     env.storage().instance().set(&Seller, seller);
@@ -83,6 +84,9 @@ fn store_escrow_data(
         .instance()
         .set(&RequiredSignatures, &required_signatures);
     env.storage().instance().set(&Version, &1u32);
+    env.storage()
+        .instance()
+        .set(&DisputeTimeoutLedgers, &dispute_timeout_ledgers);
 }
 
 fn emit_init_events(env: &Env, buyer: &Address, seller: &Address, arbiter: &Address, amount: i128) {
@@ -98,6 +102,7 @@ pub fn initialize(
     token_contract: Address,
     amount: i128,
     deadline_ledger: u32,
+    dispute_timeout_ledgers: u32,
     metadata_hash: Option<soroban_sdk::BytesN<32>>,
 ) -> Result<(), EscrowError> {
     if env.storage().instance().has(&State) {
@@ -116,6 +121,7 @@ pub fn initialize(
         amount,
         deadline_ledger,
         1u32,
+        dispute_timeout_ledgers,
     );
     if let Some(hash) = metadata_hash {
         env.storage().instance().set(&DataKey::MetadataHash, &hash);
@@ -134,6 +140,7 @@ pub fn initialize_with_arbiters(
     amount: i128,
     deadline_ledger: u32,
     required_signatures: u32,
+    dispute_timeout_ledgers: u32,
     metadata_hash: Option<soroban_sdk::BytesN<32>>,
 ) -> Result<(), EscrowError> {
     if env.storage().instance().has(&State) {
@@ -154,6 +161,7 @@ pub fn initialize_with_arbiters(
         amount,
         deadline_ledger,
         required_signatures,
+        dispute_timeout_ledgers,
     );
     env.storage().instance().set(&Arbiters, &arbiters);
     if let Some(hash) = metadata_hash {
@@ -297,6 +305,30 @@ pub fn request_refund(env: Env) -> Result<(), EscrowError> {
     refund_to_buyer(env)
 }
 
+/// Refund the remaining escrow balance to the buyer at any point while in
+/// `Funded` state.  This is useful when the buyer has already released a
+/// partial amount via [`release_partial`] and wants the unused remainder
+/// back without waiting for the deadline (issue #713).
+pub fn request_partial_refund(env: Env) -> Result<(), EscrowError> {
+    #[cfg(feature = "pausable")]
+    crate::EscrowContract::require_not_paused(&env)?;
+
+    let buyer: Address = get_required(&env, &Buyer)?;
+    buyer.require_auth();
+
+    let state: EscrowState = get_required(&env, &State)?;
+    if state != EscrowState::Funded {
+        return Err(EscrowError::InvalidState);
+    }
+
+    let amount: i128 = get_required(&env, &Amount)?;
+    if amount <= 0 {
+        return Err(EscrowError::InvalidAmount);
+    }
+
+    refund_to_buyer(env)
+}
+
 pub fn cancel(env: Env) -> Result<(), EscrowError> {
     let buyer: Address = get_required(&env, &Buyer)?;
     buyer.require_auth();
@@ -324,6 +356,11 @@ pub fn extend_deadline(env: Env, new_deadline: u32) -> Result<(), EscrowError> {
     seller.require_auth();
 
     let current_deadline: u32 = get_required(&env, &Deadline)?;
+    let current_ledger: u32 = env.ledger().sequence();
+
+    if new_deadline < current_ledger + soroban_common::MIN_DEADLINE_BUFFER {
+        return Err(EscrowError::DeadlinePassed);
+    }
 
     if new_deadline <= current_deadline {
         return Err(EscrowError::DeadlinePassed);

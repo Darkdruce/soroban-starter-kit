@@ -20,6 +20,8 @@ pub enum AuctionError {
     NothingToWithdraw = 11,
     /// The auction ended but the highest bid did not meet the reserve price.
     ReserveNotMet = 12,
+    /// `cancel` was called after at least one bid has been placed.
+    BidAlreadyPlaced = 13,
 }
 
 impl_display_error!(
@@ -36,4 +38,5 @@ impl_display_error!(
     InvalidDeadline    => "invalid deadline",
     NothingToWithdraw  => "nothing to withdraw",
     ReserveNotMet      => "reserve price not met",
+    BidAlreadyPlaced   => "cannot cancel after a bid has been placed",
 );

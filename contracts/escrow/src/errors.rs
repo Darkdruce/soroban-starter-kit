@@ -36,7 +36,12 @@ pub enum EscrowError {
     InsufficientFunds = 7,
     /// The escrow amount must be greater than zero.
     InvalidAmount = 8,
+    /// The specified parties for the escrow are not valid.
     InvalidParties = 9,
+    /// A dispute timeout claim was attempted but the timeout has not elapsed yet.
+    DisputeTimeoutNotReached = 10,
+    /// A dispute timeout claim was attempted but no timeout is configured.
+    NoDisputeTimeout = 11,
 }
 
 /// Converts the unit error returned by `soroban_common::validate_deadline`
@@ -53,15 +58,17 @@ impl From<()> for EscrowError {
 
 impl_display_error!(
     EscrowError,
-    NotAuthorized      => "not authorized",
-    InvalidState       => "invalid state",
-    DeadlinePassed     => "deadline passed",
-    DeadlineNotReached => "deadline not reached",
-    AlreadyInitialized => "already initialized",
-    NotInitialized     => "not initialized",
-    InsufficientFunds  => "insufficient funds",
-    InvalidAmount      => "invalid amount",
-    InvalidParties     => "invalid parties",
+    NotAuthorized             => "not authorized",
+    InvalidState              => "invalid state",
+    DeadlinePassed            => "deadline passed",
+    DeadlineNotReached        => "deadline not reached",
+    AlreadyInitialized        => "already initialized",
+    NotInitialized            => "not initialized",
+    InsufficientFunds         => "insufficient funds",
+    InvalidAmount             => "invalid amount",
+    InvalidParties            => "invalid parties",
+    DisputeTimeoutNotReached  => "dispute timeout not reached",
+    NoDisputeTimeout          => "no dispute timeout configured",
 );
 
 #[cfg(test)]
