@@ -419,6 +419,15 @@ mod contract {
                     .unwrap_or(0),
             })
         }
+
+        /// Return a bidder's pending refund amount.
+        #[must_use]
+        pub fn get_pending(env: Env, bidder: Address) -> i128 {
+            env.storage()
+                .persistent()
+                .get(&DataKey::Pending(bidder))
+                .unwrap_or(0)
+        }
     }
 }
 
