@@ -871,6 +871,25 @@ fn test_batch_mint_zero_amount() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #7)")]
+fn test_batch_mint_overflow() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+    let client = init_token(&env, &admin);
+
+    // Minting amounts that sum to more than i128::MAX causes overflow
+    let recipients = soroban_sdk::vec![
+        &env,
+        (user1.clone(), i128::MAX),
+        (user2.clone(), 1i128),
+    ];
+    client.batch_mint(&recipients);
+}
+
+#[test]
 fn test_allowance_expiry() {
     let env = Env::default();
     env.mock_all_auths();
