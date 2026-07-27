@@ -16,4 +16,6 @@ pub enum LotteryError {
     CommitAlreadySubmitted = 8,
     RevealMismatch = 9,
     NoTickets = 10,
+    InvalidTicketCap = 11,
+    TicketCapExceeded = 12,
 }
