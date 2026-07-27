@@ -106,6 +106,8 @@ mod contract {
                 return Err(AirdropError::AlreadyInitialized);
             }
 
+            admin.require_auth();
+
             // Validate token interface.
             token::Client::new(&env, &token).decimals();
 
