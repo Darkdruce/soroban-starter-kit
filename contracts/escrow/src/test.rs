@@ -507,6 +507,67 @@ fn test_deadline_passed() {
 }
 
 #[test]
+fn test_get_remaining_ledgers_positive() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let buyer = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let arbiter = Address::generate(&env);
+    let token_contract = create_mock_token(&env);
+    let amount = 1_000i128;
+    let current_sequence = env.ledger().sequence();
+    let deadline = current_sequence + 100;
+
+    let (client, _) = create_escrow_contract(&env);
+    client.initialize(
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_contract,
+        &amount,
+        &deadline,
+        &None,
+    );
+
+    let remaining = client.get_remaining_ledgers();
+    assert_eq!(remaining, 100i64);
+    assert!(remaining > 0);
+}
+
+#[test]
+fn test_get_remaining_ledgers_negative() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let buyer = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let arbiter = Address::generate(&env);
+    let token_contract = create_mock_token(&env);
+    let amount = 1_000i128;
+    let current_sequence = env.ledger().sequence();
+    let deadline = current_sequence + 100;
+
+    let (client, _) = create_escrow_contract(&env);
+    client.initialize(
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_contract,
+        &amount,
+        &deadline,
+        &None,
+    );
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number = deadline + 50);
+
+    let remaining = client.get_remaining_ledgers();
+    assert_eq!(remaining, -50i64);
+    assert!(remaining < 0);
+}
+
+#[test]
 fn test_arbiter_resolve_to_seller() {
     let env = Env::default();
     env.mock_all_auths();

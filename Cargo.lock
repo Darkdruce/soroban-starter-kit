@@ -78,6 +78,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ballot"
+version = "0.1.0"
+dependencies = [
+ "soroban-common",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -135,6 +143,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "bonding-curve"
+version = "0.1.0"
+dependencies = [
+ "soroban-common",
+ "soroban-sdk",
 ]
 
 [[package]]
@@ -2295,6 +2311,14 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "wrapped-token"
+version = "0.1.0"
+dependencies = [
+ "soroban-common",
+ "soroban-sdk",
+]
 
 [[package]]
 name = "zerocopy"

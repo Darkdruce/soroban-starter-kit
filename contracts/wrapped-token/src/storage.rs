@@ -7,5 +7,6 @@ use soroban_sdk::Address;
 pub enum DataKey {
     Admin,
     WrappedToken,
+    UnderlyingToken,
     TotalWrapped,
 }

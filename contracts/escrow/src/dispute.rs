@@ -70,6 +70,11 @@ pub fn claim_dispute_timeout(env: Env) -> Result<(), EscrowError> {
 }
 
 pub fn resolve_dispute(env: Env, release_to_seller_flag: bool) -> Result<(), EscrowError> {
+pub fn resolve_dispute(
+    env: Env,
+    caller: Address,
+    release_to_seller_flag: bool,
+) -> Result<(), EscrowError> {
     let state: EscrowState = get_required(&env, &State)?;
     if state != EscrowState::Disputed {
         return Err(EscrowError::InvalidState);
@@ -84,7 +89,7 @@ pub fn resolve_dispute(env: Env, release_to_seller_flag: bool) -> Result<(), Esc
             .instance()
             .get(&DataKey::RequiredSignatures)
             .unwrap_or(1);
-        resolve_multisig(env, arbiters, required_sigs, release_to_seller_flag)
+        resolve_multisig(env, caller, arbiters, required_sigs, release_to_seller_flag)
     } else {
         resolve_single(env, release_to_seller_flag)
     }
@@ -111,28 +116,33 @@ fn resolve_single(env: Env, release_to_seller_flag: bool) -> Result<(), EscrowEr
 
 fn resolve_multisig(
     env: Env,
+    caller: Address,
     arbiters: soroban_sdk::Vec<Address>,
     required_sigs: u32,
     release_to_seller_flag: bool,
 ) -> Result<(), EscrowError> {
+    let mut is_valid_arbiter = false;
+    for arbiter in arbiters.iter() {
+        if arbiter == caller {
+            is_valid_arbiter = true;
+            break;
+        }
+    }
+
+    if !is_valid_arbiter {
+        return Err(EscrowError::NotAuthorized);
+    }
+
+    caller.require_auth();
+
     let mut votes: soroban_sdk::Vec<Address> = env
         .storage()
         .instance()
         .get(&DataKey::ArbiterVotes)
         .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
 
-    let mut caller_found = false;
-    for arbiter in arbiters.iter() {
-        arbiter.require_auth();
-        if !votes.iter().any(|v| v == arbiter) {
-            votes.push_back(arbiter.clone());
-        }
-        caller_found = true;
-        break;
-    }
-
-    if !caller_found {
-        return Err(EscrowError::NotAuthorized);
+    if !votes.iter().any(|v| v == caller) {
+        votes.push_back(caller.clone());
     }
 
     env.storage().instance().set(&DataKey::ArbiterVotes, &votes);
@@ -140,6 +150,7 @@ fn resolve_multisig(
     #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
     if votes.len() as u32 >= required_sigs {
         env.storage().instance().remove(&DataKey::ArbiterVotes);
+        extend_ttl(&env);
         if release_to_seller_flag {
             env.storage()
                 .instance()
@@ -150,6 +161,7 @@ fn resolve_multisig(
             refund_to_buyer(env)
         }
     } else {
+        extend_ttl(&env);
         Ok(())
     }
 }

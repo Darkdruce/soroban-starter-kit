@@ -356,6 +356,11 @@ pub fn extend_deadline(env: Env, new_deadline: u32) -> Result<(), EscrowError> {
     seller.require_auth();
 
     let current_deadline: u32 = get_required(&env, &Deadline)?;
+    let current_ledger: u32 = env.ledger().sequence();
+
+    if new_deadline < current_ledger + soroban_common::MIN_DEADLINE_BUFFER {
+        return Err(EscrowError::DeadlinePassed);
+    }
 
     if new_deadline <= current_deadline {
         return Err(EscrowError::DeadlinePassed);
