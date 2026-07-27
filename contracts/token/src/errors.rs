@@ -11,6 +11,9 @@ pub enum TokenError {
     NotInitialized = 5,
     InvalidAmount = 6,
     Overflow = 7,
+    InvalidNonce = 8,
+    PermitExpired = 9,
+    PermitSignerNotSet = 10,
 }
 
 impl_display_error!(
@@ -22,6 +25,9 @@ impl_display_error!(
     NotInitialized       => "not initialized",
     InvalidAmount        => "invalid amount",
     Overflow             => "arithmetic overflow",
+    InvalidNonce         => "invalid permit nonce",
+    PermitExpired        => "permit expired",
+    PermitSignerNotSet   => "permit signer not set",
 );
 
 #[cfg(test)]
@@ -42,7 +48,10 @@ TokenError::Unauthorized = {}\n\
 TokenError::AlreadyInitialized = {}\n\
 TokenError::NotInitialized = {}\n\
 TokenError::InvalidAmount = {}\n\
-TokenError::Overflow = {}\n",
+TokenError::Overflow = {}\n\
+TokenError::InvalidNonce = {}\n\
+TokenError::PermitExpired = {}\n\
+TokenError::PermitSignerNotSet = {}\n",
             TokenError::InsufficientBalance as u32,
             TokenError::InsufficientAllowance as u32,
             TokenError::Unauthorized as u32,
@@ -50,6 +59,9 @@ TokenError::Overflow = {}\n",
             TokenError::NotInitialized as u32,
             TokenError::InvalidAmount as u32,
             TokenError::Overflow as u32,
+            TokenError::InvalidNonce as u32,
+            TokenError::PermitExpired as u32,
+            TokenError::PermitSignerNotSet as u32,
         )
     }
 

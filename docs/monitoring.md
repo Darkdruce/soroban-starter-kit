@@ -88,6 +88,15 @@ All token events are emitted by `contracts/token` and follow this structure:
 | `paused` | `Symbol("paused")` | `Address` (admin) | — | `()` |
 | `unpaused` | `Symbol("unpaused")` | `Address` (admin) | — | `()` |
 | `upgraded` | `Symbol("upgraded")` | `Address` (admin) | — | `BytesN<32>` (wasm hash) |
+| `permit_signer_set` | `Symbol("permit_signer_set")` | `Address` (owner) | — | `()` |
+| `permit_used` | `Symbol("permit_used")` | `Address` (owner) | `Address` (spender) | `(i128 amount, u32 nonce)` |
+
+`permit_used` is emitted in addition to (not instead of) `approve`/`revoke` whenever
+`approve_with_signature` succeeds, so any dashboard already watching allowance
+changes via `approve`/`revoke` needs no special-casing for signature-granted
+allowances. Watch `permit_signer_set` for unexpected signer rotations — a
+rotation invalidates all outstanding, unsubmitted permits signed with the
+previous key.
 
 ### Escrow Contract Events
 
@@ -119,6 +128,47 @@ Events emitted by `contracts/subscription`:
 | `subscribed` | `Symbol("subscribed")` | `Address` (subscriber) | — | `(i128 amount, u32 interval_ledgers)` |
 | `charged` | `Symbol("charged")` | `Address` (subscriber) | `Address` (provider) | `i128` (amount) |
 | `cancelled` | `Symbol("cancelled")` | `Address` (subscriber) | — | `()` |
+
+### Wrapped-Token Contract Events
+
+Events emitted by `contracts/wrapped-token`:
+
+| Event | Topic[0] | Data |
+|-------|----------|------|
+| `initialized` | `Symbol("initialized")` | `(Address admin, Address wrapped_token)` |
+| `wrapped` | `Symbol("wrapped")` | `(Address user, i128 amount, i128 new_total_wrapped)` |
+| `unwrapped` | `Symbol("unwrapped")` | `(Address user, i128 amount, i128 new_total_wrapped)` |
+| `paused` | `Symbol("paused")` | `Address` (admin) — only emitted when built with the `pausable` feature |
+| `unpaused` | `Symbol("unpaused")` | `Address` (admin) — only emitted when built with the `pausable` feature |
+
+#### Reserve-backing invariant
+
+The wrapped-token contract mints wrapped tokens 1:1 against an underlying asset
+held in its own balance. The core solvency invariant that must always hold is:
+
+```
+get_total_wrapped() <= get_reserve_balance()
+```
+
+- `get_total_wrapped()` returns the contract's internally-tracked wrapped supply.
+- `get_reserve_balance()` reads the underlying asset's actual `balance()` of the
+  contract address — i.e. the real reserve, independent of the contract's own
+  bookkeeping.
+
+A monitoring job should poll both view functions after every `wrapped` /
+`unwrapped` event (or on a fixed interval) and alert immediately if
+`get_total_wrapped() > get_reserve_balance()`, since that would mean wrapped
+tokens are no longer fully backed. Under normal operation the two values are
+equal; a persistent gap where the reserve exceeds the wrapped total is benign
+(e.g. a direct transfer into the contract), but the wrapped total ever
+exceeding the reserve indicates a critical accounting bug or an exploit and
+should halt further `wrap` calls (see the admin `pause()` entry point, gated
+behind the `pausable` feature) pending investigation.
+
+| Signal | Detection | Threshold |
+|--------|-----------|-----------|
+| Reserve shortfall | `get_total_wrapped() > get_reserve_balance()` | Alert immediately (critical) — invoke `pause()` |
+| Cap saturation | `wrapped_by(address)` approaching `max_wrap_per_address()` | Warn at > 90% of cap |
 
 ---
 

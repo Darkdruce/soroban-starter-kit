@@ -25,6 +25,12 @@ pub enum DataKey {
     TransferHook,
     /// Persistent storage – balance snapshot: key is `(Address, ledger: u32)` → `i128`.
     Snapshot(Address, u32),
+    /// Persistent storage – ed25519 public key registered for an owner's
+    /// signature-based permits (`BytesN<32>`).
+    PermitSigner(Address),
+    /// Persistent storage – next expected nonce for an owner's signature-based
+    /// permits (`u32`).
+    PermitNonce(Address),
 }
 
 #[contracttype]
@@ -75,6 +81,8 @@ mod discriminant_tests {
             DataKey::Frozen(_) => 10,
             DataKey::TransferHook => 11,
             DataKey::Snapshot(_, _) => 12,
+            DataKey::PermitSigner(_) => 13,
+            DataKey::PermitNonce(_) => 14,
         }
     }
 
@@ -108,12 +116,17 @@ mod discriminant_tests {
         assert_eq!(token_data_key_index(&DataKey::MaxSupply), 7);
         assert_eq!(token_data_key_index(&DataKey::PendingUpgrade), 8);
         assert_eq!(token_data_key_index(&DataKey::Version), 9);
-        assert_eq!(token_data_key_index(&DataKey::Frozen(addr)), 10);
+        assert_eq!(token_data_key_index(&DataKey::Frozen(addr.clone())), 10);
         assert_eq!(token_data_key_index(&DataKey::TransferHook), 11);
         assert_eq!(
             token_data_key_index(&DataKey::Snapshot(Address::generate(&env), 0u32)),
             12
         );
+        assert_eq!(
+            token_data_key_index(&DataKey::PermitSigner(addr.clone())),
+            13
+        );
+        assert_eq!(token_data_key_index(&DataKey::PermitNonce(addr)), 14);
     }
 
     #[test]

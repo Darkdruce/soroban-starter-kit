@@ -1,4 +1,10 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing
+)]
 #![cfg(test)]
 
 use super::*;
@@ -881,11 +887,7 @@ fn test_batch_mint_overflow() {
     let client = init_token(&env, &admin);
 
     // Minting amounts that sum to more than i128::MAX causes overflow
-    let recipients = soroban_sdk::vec![
-        &env,
-        (user1.clone(), i128::MAX),
-        (user2.clone(), 1i128),
-    ];
+    let recipients = soroban_sdk::vec![&env, (user1.clone(), i128::MAX), (user2.clone(), 1i128),];
     client.batch_mint(&recipients);
 }
 
@@ -1044,7 +1046,7 @@ fn test_cancel_admin_proposal_by_non_admin_fails() {
 #[cfg(feature = "transfer-hook")]
 mod transfer_hook_tests {
     use super::*;
-    use soroban_sdk::{contract, contractimpl, Symbol, IntoVal, testutils::Events as _};
+    use soroban_sdk::{IntoVal, Symbol, contract, contractimpl, testutils::Events as _};
 
     /// Minimal mock hook contract that records calls via an event.
     #[contract]
@@ -1053,10 +1055,8 @@ mod transfer_hook_tests {
     #[contractimpl]
     impl MockHook {
         pub fn on_transfer(env: Env, from: Address, to: Address, amount: i128) {
-            env.events().publish(
-                (Symbol::new(&env, "hook_called"), from, to),
-                amount,
-            );
+            env.events()
+                .publish((Symbol::new(&env, "hook_called"), from, to), amount);
         }
     }
 
@@ -1107,8 +1107,7 @@ mod transfer_hook_tests {
         let found = env.events().all().iter().any(|(addr, topics, _)| {
             *addr == hook_addr
                 && topics
-                    == (Symbol::new(&env, "hook_called"), from.clone(), to.clone())
-                        .into_val(&env)
+                    == (Symbol::new(&env, "hook_called"), from.clone(), to.clone()).into_val(&env)
         });
         assert!(found, "hook_called event not emitted");
     }
@@ -1196,4 +1195,266 @@ fn test_multiple_snapshots_at_different_ledgers() {
 
     assert_eq!(client.balance_at(&user, &ledger1), Some(100i128));
     assert_eq!(client.balance_at(&user, &ledger2), Some(300i128));
+}
+
+// ---------------------------------------------------------------------------
+// approve_with_signature ("permit")
+// ---------------------------------------------------------------------------
+
+mod permit_tests {
+    use super::*;
+    use ed25519_dalek::{Signer, SigningKey};
+    use rand::rngs::OsRng;
+    use soroban_sdk::xdr::ToXdr;
+    use soroban_sdk::{Bytes, BytesN};
+
+    fn bytes_to_vec(bytes: &Bytes) -> std::vec::Vec<u8> {
+        let mut v = std::vec::Vec::with_capacity(bytes.len() as usize);
+        for b in bytes.iter() {
+            v.push(b);
+        }
+        v
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn sign_permit(
+        env: &Env,
+        signing_key: &SigningKey,
+        contract: &Address,
+        owner: &Address,
+        spender: &Address,
+        amount: i128,
+        nonce: u32,
+        expiry_ledger: u32,
+    ) -> BytesN<64> {
+        let message: Bytes = (
+            contract.clone(),
+            owner.clone(),
+            spender.clone(),
+            amount,
+            nonce,
+            expiry_ledger,
+        )
+            .to_xdr(env);
+        let signature = signing_key.sign(&bytes_to_vec(&message));
+        BytesN::from_array(env, &signature.to_bytes())
+    }
+
+    fn setup_permit(env: &Env) -> (TokenContractClient<'_>, Address, Address, SigningKey) {
+        let admin = Address::generate(env);
+        let owner = Address::generate(env);
+        let spender = Address::generate(env);
+        let client = init_token(env, &admin);
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let public_key = BytesN::from_array(env, &signing_key.verifying_key().to_bytes());
+        client.set_permit_signer(&owner, &public_key);
+
+        (client, owner, spender, signing_key)
+    }
+
+    #[test]
+    fn test_approve_with_signature_valid() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, owner, spender, signing_key) = setup_permit(&env);
+
+        let contract_id = client.address.clone();
+        let expiry = env.ledger().sequence() + 1_000;
+        let signature = sign_permit(
+            &env,
+            &signing_key,
+            &contract_id,
+            &owner,
+            &spender,
+            500i128,
+            0u32,
+            expiry,
+        );
+
+        client.approve_with_signature(&owner, &spender, &500i128, &0u32, &expiry, &signature);
+
+        assert_eq!(client.allowance(&owner, &spender), 500i128);
+        assert_eq!(client.permit_nonce(&owner), 1u32);
+    }
+
+    #[test]
+    fn test_approve_with_signature_replay_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, owner, spender, signing_key) = setup_permit(&env);
+
+        let contract_id = client.address.clone();
+        let expiry = env.ledger().sequence() + 1_000;
+        let signature = sign_permit(
+            &env,
+            &signing_key,
+            &contract_id,
+            &owner,
+            &spender,
+            500i128,
+            0u32,
+            expiry,
+        );
+
+        client.approve_with_signature(&owner, &spender, &500i128, &0u32, &expiry, &signature);
+
+        // Replaying the exact same signed message must fail: the nonce has already advanced.
+        let result = client
+            .try_approve_with_signature(&owner, &spender, &500i128, &0u32, &expiry, &signature);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_approve_with_signature_expired_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, owner, spender, signing_key) = setup_permit(&env);
+
+        let contract_id = client.address.clone();
+        let expiry = env.ledger().sequence();
+        env.ledger().with_mut(|l| l.sequence_number += 1);
+
+        let signature = sign_permit(
+            &env,
+            &signing_key,
+            &contract_id,
+            &owner,
+            &spender,
+            500i128,
+            0u32,
+            expiry,
+        );
+        let result = client
+            .try_approve_with_signature(&owner, &spender, &500i128, &0u32, &expiry, &signature);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_approve_with_signature_wrong_nonce_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, owner, spender, signing_key) = setup_permit(&env);
+
+        let contract_id = client.address.clone();
+        let expiry = env.ledger().sequence() + 1_000;
+        // Sign with nonce 1 while the contract still expects nonce 0.
+        let signature = sign_permit(
+            &env,
+            &signing_key,
+            &contract_id,
+            &owner,
+            &spender,
+            500i128,
+            1u32,
+            expiry,
+        );
+        let result = client
+            .try_approve_with_signature(&owner, &spender, &500i128, &1u32, &expiry, &signature);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_approve_with_signature_without_registered_signer_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let owner = Address::generate(&env);
+        let spender = Address::generate(&env);
+        let client = init_token(&env, &admin);
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let contract_id = client.address.clone();
+        let expiry = env.ledger().sequence() + 1_000;
+        let signature = sign_permit(
+            &env,
+            &signing_key,
+            &contract_id,
+            &owner,
+            &spender,
+            500i128,
+            0u32,
+            expiry,
+        );
+
+        // `owner` never called `set_permit_signer`.
+        let result = client
+            .try_approve_with_signature(&owner, &spender, &500i128, &0u32, &expiry, &signature);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_approve_with_signature_invalid_signature_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, owner, spender, _signing_key) = setup_permit(&env);
+
+        let contract_id = client.address.clone();
+        let expiry = env.ledger().sequence() + 1_000;
+        // Sign with a different, unregistered key — must not verify against
+        // the owner's registered permit signer.
+        let wrong_key = SigningKey::generate(&mut OsRng);
+        let signature = sign_permit(
+            &env,
+            &wrong_key,
+            &contract_id,
+            &owner,
+            &spender,
+            500i128,
+            0u32,
+            expiry,
+        );
+
+        client.approve_with_signature(&owner, &spender, &500i128, &0u32, &expiry, &signature);
+    }
+
+    #[test]
+    fn test_permit_signer_can_be_rotated() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, owner, spender, old_key) = setup_permit(&env);
+
+        let new_key = SigningKey::generate(&mut OsRng);
+        let new_public_key = BytesN::from_array(&env, &new_key.verifying_key().to_bytes());
+        client.set_permit_signer(&owner, &new_public_key);
+
+        let contract_id = client.address.clone();
+        let expiry = env.ledger().sequence() + 1_000;
+
+        // A signature from the old key must no longer verify.
+        let old_signature = sign_permit(
+            &env,
+            &old_key,
+            &contract_id,
+            &owner,
+            &spender,
+            100i128,
+            0u32,
+            expiry,
+        );
+        let result = client.try_approve_with_signature(
+            &owner,
+            &spender,
+            &100i128,
+            &0u32,
+            &expiry,
+            &old_signature,
+        );
+        assert!(result.is_err());
+
+        // The new key works.
+        let new_signature = sign_permit(
+            &env,
+            &new_key,
+            &contract_id,
+            &owner,
+            &spender,
+            100i128,
+            0u32,
+            expiry,
+        );
+        client.approve_with_signature(&owner, &spender, &100i128, &0u32, &expiry, &new_signature);
+        assert_eq!(client.allowance(&owner, &spender), 100i128);
+    }
 }
