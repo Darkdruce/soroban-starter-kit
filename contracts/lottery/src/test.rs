@@ -1,4 +1,10 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing
+)]
 #![cfg(test)]
 
 use super::*;
@@ -58,6 +64,7 @@ fn setup(env: &Env) -> (LotteryContractClient, Address, Address) {
     let addr = env.register_contract(None, LotteryContract);
     let client = LotteryContractClient::new(env, &addr);
     client.initialize(&admin, &token, &100, &1u32, &single_winner_splits(env));
+    client.initialize(&admin, &token, &100, &None);
     (client, admin, token)
 }
 
@@ -85,6 +92,7 @@ fn test_initialize_twice_fails() {
     env.mock_all_auths();
     let (client, admin, token) = setup(&env);
     client.initialize(&admin, &token, &100, &1u32, &single_winner_splits(&env));
+    client.initialize(&admin, &token, &100, &None);
 }
 
 #[test]
@@ -97,6 +105,7 @@ fn test_initialize_zero_price_fails() {
     let addr = env.register_contract(None, LotteryContract);
     let client = LotteryContractClient::new(&env, &addr);
     client.initialize(&admin, &token, &0, &1u32, &single_winner_splits(&env));
+    client.initialize(&admin, &token, &0, &None);
 }
 
 #[test]

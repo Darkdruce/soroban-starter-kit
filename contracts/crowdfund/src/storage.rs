@@ -1,7 +1,7 @@
 // `#[contracttype]` generates undocumented public associated items.
 #![allow(missing_docs)]
 
-use soroban_sdk::{Address, contracttype};
+use soroban_sdk::{Address, String, Vec, contracttype};
 
 #[contracttype]
 #[derive(Clone)]
@@ -13,6 +13,9 @@ pub enum DataKey {
     TotalPledged,
     Claimed,
     Pledge(Address),
+    Tiers,
+    MaxPledgePerAddress,
+    DeadlineExtended,
 }
 
 #[contracttype]
@@ -24,4 +27,24 @@ pub struct CrowdfundInfo {
     pub deadline: u32,
     pub total_pledged: i128,
     pub claimed: bool,
+    pub tiers: Vec<TierStatus>,
+    pub max_pledge_per_address: Option<i128>,
+}
+
+/// A funding tier (stretch goal) settable at initialize: crossing `threshold`
+/// unlocks the reward described by `description`.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct FundingTier {
+    pub threshold: i128,
+    pub description: String,
+}
+
+/// A funding tier along with whether `total_pledged` has met its threshold.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct TierStatus {
+    pub threshold: i128,
+    pub description: String,
+    pub met: bool,
 }

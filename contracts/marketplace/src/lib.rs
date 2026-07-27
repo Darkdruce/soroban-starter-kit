@@ -7,14 +7,18 @@
 //! Sellers may also set an optional expiry on a listing, and buyers may
 //! propose a lower price via an escrowed offer that the seller can accept.
 
-use soroban_sdk::{Address, Env, contract, contractclient, contractimpl, token};
+use soroban_sdk::{Address, Env, Vec, contract, contractclient, contractimpl, token};
 
 mod errors;
 mod events;
 mod storage;
 
 pub use errors::MarketplaceError;
-pub use storage::{DataKey, Listing};
+pub use storage::{DataKey, Listing, ListingEntry, ListingPage};
+
+/// Maximum number of listings a single [`MarketplaceContract::get_active_listings`] call
+/// may return, regardless of the requested `limit`.
+pub const MAX_LISTINGS_PAGE_SIZE: u32 = 50;
 
 use soroban_common::{LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD};
 
@@ -93,6 +97,8 @@ mod contract {
             if royalty_bps > 10_000 {
                 return Err(MarketplaceError::InvalidRoyalty);
             }
+
+            admin.require_auth();
 
             // Sanity-check the token address implements the token interface.
             token::Client::new(&env, &payment_token).decimals();
@@ -249,6 +255,7 @@ mod contract {
             env.storage()
                 .persistent()
                 .set(&DataKey::Listing(listing_id), &listing);
+            bump_listing(&env, listing_id);
             bump_instance(&env);
 
             let price = listing.price;
@@ -307,6 +314,7 @@ mod contract {
             env.storage()
                 .persistent()
                 .set(&DataKey::Listing(listing_id), &listing);
+            bump_listing(&env, listing_id);
             bump_instance(&env);
 
             events::cancelled(&env, listing_id, &seller);
@@ -564,6 +572,49 @@ mod contract {
             env.storage()
                 .persistent()
                 .get(&DataKey::Offer(listing_id, buyer))
+        /// Enumerate active listings, paginated by listing ID.
+        ///
+        /// `cursor` is the listing ID to resume scanning from (pass `0` to start from the
+        /// beginning). `limit` is the maximum number of active listings to return and is
+        /// capped at [`MAX_LISTINGS_PAGE_SIZE`] (a `limit` of `0` is treated as `1`).
+        ///
+        /// Returns a page of matching listings together with a `next_cursor` to pass to
+        /// the following call, or `next_cursor: None` once the end of the listing range
+        /// has been reached.
+        pub fn get_active_listings(env: Env, cursor: u64, limit: u32) -> ListingPage {
+            let capped_limit = limit.clamp(1, MAX_LISTINGS_PAGE_SIZE);
+            let next_id: u64 = env
+                .storage()
+                .instance()
+                .get(&DataKey::NextListingId)
+                .unwrap_or(0);
+
+            let mut listings = Vec::new(&env);
+            let mut id = cursor;
+            let mut next_cursor = None;
+
+            while id < next_id {
+                if listings.len() >= capped_limit {
+                    next_cursor = Some(id);
+                    break;
+                }
+
+                if let Some(listing) = env
+                    .storage()
+                    .persistent()
+                    .get::<_, Listing>(&DataKey::Listing(id))
+                    && listing.active
+                {
+                    listings.push_back(ListingEntry { id, listing });
+                }
+
+                id = id.saturating_add(1);
+            }
+
+            ListingPage {
+                listings,
+                next_cursor,
+            }
         }
     }
 }

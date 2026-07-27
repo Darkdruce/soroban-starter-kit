@@ -123,3 +123,12 @@ pub fn transfer_hook_set(env: &Env, admin: &Address, hook: Option<&Address>) {
         hook.cloned(),
     );
 }
+
+/// Emitted when a balance snapshot is recorded (issue #717).
+/// Topics: (Symbol, Address, u32) — event name, account, ledger
+pub fn snapshot_taken(env: &Env, account: &Address, ledger: u32, balance: i128) {
+    env.events().publish(
+        (Symbol::new(env, "snapshot"), account.clone(), ledger),
+        balance,
+    );
+}

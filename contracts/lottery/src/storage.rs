@@ -17,6 +17,8 @@ pub enum DataKey {
     RevealDeadline,
     WinnerCount,
     PrizeSplits,
+    MaxTicketsPerAddress,
+    TicketCount(Address),
 }
 
 #[contracttype]

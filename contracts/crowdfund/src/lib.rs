@@ -6,14 +6,14 @@
 //! goal is met the creator claims the funds; otherwise contributors refund
 //! their pledges.
 
-use soroban_sdk::{Address, Env, contract, contractimpl, token};
+use soroban_sdk::{Address, Env, Vec, contract, contractimpl, token};
 
 mod errors;
 mod events;
 mod storage;
 
 pub use errors::CrowdfundError;
-pub use storage::{CrowdfundInfo, DataKey};
+pub use storage::{CrowdfundInfo, DataKey, FundingTier, TierStatus};
 
 use soroban_common::{LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD};
 
@@ -57,17 +57,25 @@ mod contract {
     impl CrowdfundContract {
         /// Initialize the campaign. Can only be called once.
         ///
+        /// `tiers` are optional (stretch-goal) reward thresholds beyond `goal`; pass an
+        /// empty vec if none are needed. `max_pledge_per_address`, if set, caps how much
+        /// a single address may pledge in total across multiple calls to `pledge`.
+        ///
         /// # Errors
         ///
         /// - [`CrowdfundError::AlreadyInitialized`] if already set up.
         /// - [`CrowdfundError::InvalidGoal`] if `goal` <= 0.
         /// - [`CrowdfundError::InvalidDeadline`] if `deadline` <= current ledger.
+        /// - [`CrowdfundError::InvalidTier`] if any tier threshold <= 0.
+        /// - [`CrowdfundError::InvalidAmount`] if `max_pledge_per_address` is `Some` and <= 0.
         pub fn initialize(
             env: Env,
             creator: Address,
             token: Address,
             goal: i128,
             deadline: u32,
+            tiers: Vec<FundingTier>,
+            max_pledge_per_address: Option<i128>,
         ) -> Result<(), CrowdfundError> {
             if env.storage().instance().has(&DataKey::Creator) {
                 return Err(CrowdfundError::AlreadyInitialized);
@@ -77,6 +85,16 @@ mod contract {
             }
             if deadline <= env.ledger().sequence() {
                 return Err(CrowdfundError::InvalidDeadline);
+            }
+            for tier in tiers.iter() {
+                if tier.threshold <= 0 {
+                    return Err(CrowdfundError::InvalidTier);
+                }
+            }
+            if let Some(cap) = max_pledge_per_address {
+                if cap <= 0 {
+                    return Err(CrowdfundError::InvalidAmount);
+                }
             }
 
             creator.require_auth();
@@ -89,6 +107,15 @@ mod contract {
                 .instance()
                 .set(&DataKey::TotalPledged, &0_i128);
             env.storage().instance().set(&DataKey::Claimed, &false);
+            env.storage().instance().set(&DataKey::Tiers, &tiers);
+            env.storage()
+                .instance()
+                .set(&DataKey::DeadlineExtended, &false);
+            if let Some(cap) = max_pledge_per_address {
+                env.storage()
+                    .instance()
+                    .set(&DataKey::MaxPledgePerAddress, &cap);
+            }
 
             bump_instance(&env);
             events::initialized(&env, &creator, goal, deadline);
@@ -102,6 +129,8 @@ mod contract {
         /// - [`CrowdfundError::NotInitialized`] if not set up.
         /// - [`CrowdfundError::DeadlinePassed`] if the deadline has passed.
         /// - [`CrowdfundError::InvalidAmount`] if `amount` <= 0.
+        /// - [`CrowdfundError::PledgeCapExceeded`] if this pledge would push the
+        ///   pledger's cumulative total above `max_pledge_per_address`.
         pub fn pledge(env: Env, pledger: Address, amount: i128) -> Result<(), CrowdfundError> {
             if amount <= 0 {
                 return Err(CrowdfundError::InvalidAmount);
@@ -114,6 +143,23 @@ mod contract {
 
             pledger.require_auth();
 
+            let existing: i128 = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Pledge(pledger.clone()))
+                .unwrap_or(0);
+            let new_pledge = existing + amount;
+
+            if let Some(cap) = env
+                .storage()
+                .instance()
+                .get::<DataKey, i128>(&DataKey::MaxPledgePerAddress)
+            {
+                if new_pledge > cap {
+                    return Err(CrowdfundError::PledgeCapExceeded);
+                }
+            }
+
             let token: Address = get_instance(&env, &DataKey::Token)?;
             token::Client::new(&env, &token).transfer(
                 &pledger,
@@ -121,12 +167,6 @@ mod contract {
                 &amount,
             );
 
-            let existing: i128 = env
-                .storage()
-                .persistent()
-                .get(&DataKey::Pledge(pledger.clone()))
-                .unwrap_or(0);
-            let new_pledge = existing + amount;
             env.storage()
                 .persistent()
                 .set(&DataKey::Pledge(pledger.clone()), &new_pledge);
@@ -191,6 +231,45 @@ mod contract {
 
             bump_instance(&env);
             events::withdrawn(&env, &pledger, pledge);
+            Ok(())
+        }
+
+        /// Extend the campaign deadline once. Admin (creator) only, and only callable
+        /// before the original deadline has passed.
+        ///
+        /// # Errors
+        ///
+        /// - [`CrowdfundError::NotInitialized`] if not set up.
+        /// - [`CrowdfundError::DeadlinePassed`] if the current deadline has already passed.
+        /// - [`CrowdfundError::DeadlineAlreadyExtended`] if the deadline was already extended once.
+        /// - [`CrowdfundError::InvalidDeadline`] if `new_deadline` does not extend the current deadline.
+        pub fn extend_deadline(env: Env, new_deadline: u32) -> Result<(), CrowdfundError> {
+            let creator: Address = get_instance(&env, &DataKey::Creator)?;
+            creator.require_auth();
+
+            let deadline: u32 = get_instance(&env, &DataKey::Deadline)?;
+            if env.ledger().sequence() > deadline {
+                return Err(CrowdfundError::DeadlinePassed);
+            }
+
+            let extended: bool = get_instance(&env, &DataKey::DeadlineExtended)?;
+            if extended {
+                return Err(CrowdfundError::DeadlineAlreadyExtended);
+            }
+
+            if new_deadline <= deadline {
+                return Err(CrowdfundError::InvalidDeadline);
+            }
+
+            env.storage()
+                .instance()
+                .set(&DataKey::Deadline, &new_deadline);
+            env.storage()
+                .instance()
+                .set(&DataKey::DeadlineExtended, &true);
+
+            bump_instance(&env);
+            events::deadline_extended(&env, &creator, new_deadline);
             Ok(())
         }
 
@@ -286,16 +365,29 @@ mod contract {
             Ok(())
         }
 
-        /// Return campaign details.
+        /// Return campaign details, including which funding tiers have been met.
         #[must_use]
         pub fn get_info(env: Env) -> Result<CrowdfundInfo, CrowdfundError> {
+            let total_pledged: i128 = get_instance(&env, &DataKey::TotalPledged)?;
+            let tiers: Vec<FundingTier> = get_instance(&env, &DataKey::Tiers)?;
+            let mut tier_status = Vec::new(&env);
+            for tier in tiers.iter() {
+                tier_status.push_back(TierStatus {
+                    threshold: tier.threshold,
+                    description: tier.description.clone(),
+                    met: total_pledged >= tier.threshold,
+                });
+            }
+
             Ok(CrowdfundInfo {
                 creator: get_instance(&env, &DataKey::Creator)?,
                 token: get_instance(&env, &DataKey::Token)?,
                 goal: get_instance(&env, &DataKey::Goal)?,
                 deadline: get_instance(&env, &DataKey::Deadline)?,
-                total_pledged: get_instance(&env, &DataKey::TotalPledged)?,
+                total_pledged,
                 claimed: get_instance(&env, &DataKey::Claimed)?,
+                tiers: tier_status,
+                max_pledge_per_address: env.storage().instance().get(&DataKey::MaxPledgePerAddress),
             })
         }
 

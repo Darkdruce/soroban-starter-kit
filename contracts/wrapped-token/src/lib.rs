@@ -23,15 +23,15 @@ fn bump(env: &Env) {
     extend_ttl_instance(env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
 }
 
-/// Wrapped XLM token contract.
+/// Wrapped asset token contract.
 ///
-/// Users deposit XLM and receive an equivalent amount of wrapped tokens.
-/// Users can burn wrapped tokens to retrieve the underlying XLM.
+/// Users deposit an underlying asset and receive an equivalent amount of wrapped tokens.
+/// Users can burn wrapped tokens to retrieve the underlying asset.
 ///
 /// Flow:
-/// 1. Admin calls `initialize` — sets up the wrapped token address.
-/// 2. Users call `wrap` to deposit XLM and mint wrapped tokens (1:1 peg).
-/// 3. Users call `unwrap` to burn wrapped tokens and receive XLM (1:1 peg).
+/// 1. Admin calls `initialize` — sets up the wrapped token and underlying asset addresses.
+/// 2. Users call `wrap` to deposit underlying assets and mint wrapped tokens (1:1 peg).
+/// 3. Users call `unwrap` to burn wrapped tokens and receive underlying assets (1:1 peg).
 pub use contract::*;
 
 // The `#[contract]` / `#[contractimpl]` macros generate an undocumented public
@@ -54,6 +54,7 @@ impl WrappedTokenContract {
         env: Env,
         admin: Address,
         wrapped_token: Address,
+        underlying_token: Address,
     ) -> Result<(), WrappedTokenError> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(WrappedTokenError::AlreadyInitialized);
@@ -64,6 +65,9 @@ impl WrappedTokenContract {
         env.storage()
             .instance()
             .set(&DataKey::WrappedToken, &wrapped_token);
+        env.storage()
+            .instance()
+            .set(&DataKey::UnderlyingToken, &underlying_token);
         env.storage().instance().set(&DataKey::TotalWrapped, &0i128);
 
         bump(&env);
@@ -71,9 +75,9 @@ impl WrappedTokenContract {
         Ok(())
     }
 
-    /// Wrap XLM by sending it to the contract and minting wrapped tokens.
+    /// Wrap underlying assets by transferring them to the contract and minting wrapped tokens.
     ///
-    /// 1:1 peg is maintained: amount XLM = amount wrapped tokens.
+    /// 1:1 peg is maintained: amount underlying = amount wrapped tokens.
     ///
     /// # Errors
     /// - [`WrappedTokenError::NotInitialized`] if the contract has not been initialized.
@@ -93,6 +97,17 @@ impl WrappedTokenContract {
             .get(&DataKey::WrappedToken)
             .ok_or(WrappedTokenError::NotInitialized)?;
 
+        let underlying_token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::UnderlyingToken)
+            .ok_or(WrappedTokenError::NotInitialized)?;
+
+        // Transfer underlying asset from user to contract
+        token::Client::new(&env, &underlying_token)
+            .transfer(&user, &env.current_contract_address(), &amount);
+
+        // Mint wrapped tokens to user
         token::Client::new(&env, &wrapped_token)
             .mint(&user, &amount);
 
@@ -111,9 +126,9 @@ impl WrappedTokenContract {
         Ok(())
     }
 
-    /// Unwrap wrapped tokens by burning them and sending XLM back to the user.
+    /// Unwrap wrapped tokens by burning them and sending underlying assets back to the user.
     ///
-    /// 1:1 peg is maintained: amount wrapped tokens = amount XLM.
+    /// 1:1 peg is maintained: amount wrapped tokens = amount underlying assets.
     ///
     /// # Errors
     /// - [`WrappedTokenError::NotInitialized`] if the contract has not been initialized.
@@ -134,7 +149,18 @@ impl WrappedTokenContract {
             .get(&DataKey::WrappedToken)
             .ok_or(WrappedTokenError::NotInitialized)?;
 
+        let underlying_token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::UnderlyingToken)
+            .ok_or(WrappedTokenError::NotInitialized)?;
+
+        // Burn wrapped tokens from user
         token::Client::new(&env, &wrapped_token).burn(&user, &amount);
+
+        // Transfer underlying asset from contract to user
+        token::Client::new(&env, &underlying_token)
+            .transfer(&env.current_contract_address(), &user, &amount);
 
         let total: i128 = env
             .storage()
@@ -176,10 +202,11 @@ mod test {
         let admin = Address::random(&env);
         let user = Address::random(&env);
         let wrapped_token = Address::random(&env);
+        let underlying_token = Address::random(&env);
 
         let contract = WrappedTokenContractClient::new(&env, &env.current_contract_id());
 
-        contract.initialize(&admin, &wrapped_token);
+        contract.initialize(&admin, &wrapped_token, &underlying_token);
 
         // Mock wrap: 100 units
         contract.wrap(&user, &100i128);
@@ -203,12 +230,13 @@ mod test {
 
         let admin = Address::random(&env);
         let wrapped_token = Address::random(&env);
+        let underlying_token = Address::random(&env);
 
         let contract = WrappedTokenContractClient::new(&env, &env.current_contract_id());
 
-        contract.initialize(&admin, &wrapped_token);
+        contract.initialize(&admin, &wrapped_token, &underlying_token);
 
-        let result = contract.try_initialize(&admin, &wrapped_token);
+        let result = contract.try_initialize(&admin, &wrapped_token, &underlying_token);
         assert!(result.is_err());
         match result {
             Err(e) => assert_eq!(e.error(), WrappedTokenError::AlreadyInitialized),

@@ -1,4 +1,10 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing
+)]
 #![cfg(test)]
 
 use super::*;
@@ -36,7 +42,7 @@ fn test_goal_met_creator_claims() {
 
     let deadline = env.ledger().sequence() + 100;
     let goal = 5_000_i128;
-    client.initialize(&creator, &token, &goal, &deadline);
+    client.initialize(&creator, &token, &goal, &deadline, &Vec::new(&env), &None);
 
     client.pledge(&c1, &3_000);
     client.pledge(&c2, &2_500);
@@ -59,7 +65,7 @@ fn test_pledge_increments_total() {
     let (client, creator, c1, _, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 50;
-    client.initialize(&creator, &token, &1_000, &deadline);
+    client.initialize(&creator, &token, &1_000, &deadline, &Vec::new(&env), &None);
 
     client.pledge(&c1, &400);
     assert_eq!(client.get_info().total_pledged, 400);
@@ -75,7 +81,7 @@ fn test_withdraw_before_deadline() {
     let (client, creator, c1, _, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 50;
-    client.initialize(&creator, &token, &10_000, &deadline);
+    client.initialize(&creator, &token, &10_000, &deadline, &Vec::new(&env), &None);
 
     client.pledge(&c1, &3_000);
     client.withdraw(&c1);
@@ -95,7 +101,7 @@ fn test_goal_not_met_contributors_refund() {
     let (client, creator, c1, c2, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 100;
-    client.initialize(&creator, &token, &10_000, &deadline);
+    client.initialize(&creator, &token, &10_000, &deadline, &Vec::new(&env), &None);
 
     client.pledge(&c1, &1_000);
     client.pledge(&c2, &500);
@@ -117,7 +123,7 @@ fn test_pledge_after_deadline_fails() {
     let (client, creator, c1, _, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 10;
-    client.initialize(&creator, &token, &1_000, &deadline);
+    client.initialize(&creator, &token, &1_000, &deadline, &Vec::new(&env), &None);
 
     env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
     client.pledge(&c1, &500);
@@ -131,7 +137,7 @@ fn test_claim_before_deadline_fails() {
     let (client, creator, c1, _, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 100;
-    client.initialize(&creator, &token, &500, &deadline);
+    client.initialize(&creator, &token, &500, &deadline, &Vec::new(&env), &None);
     client.pledge(&c1, &1_000);
     // deadline not reached
     client.claim();
@@ -145,7 +151,7 @@ fn test_claim_goal_not_met_fails() {
     let (client, creator, c1, _, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 10;
-    client.initialize(&creator, &token, &10_000, &deadline);
+    client.initialize(&creator, &token, &10_000, &deadline, &Vec::new(&env), &None);
     client.pledge(&c1, &100);
     env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
     client.claim();
@@ -159,7 +165,7 @@ fn test_refund_when_goal_met_fails() {
     let (client, creator, c1, _, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 10;
-    client.initialize(&creator, &token, &500, &deadline);
+    client.initialize(&creator, &token, &500, &deadline, &Vec::new(&env), &None);
     client.pledge(&c1, &1_000);
     env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
     client.refund(&c1);
@@ -173,6 +179,6 @@ fn test_double_initialize_fails() {
     let (client, creator, _, _, token) = setup(&env);
 
     let deadline = env.ledger().sequence() + 100;
-    client.initialize(&creator, &token, &1_000, &deadline);
-    client.initialize(&creator, &token, &1_000, &deadline);
+    client.initialize(&creator, &token, &1_000, &deadline, &Vec::new(&env), &None);
+    client.initialize(&creator, &token, &1_000, &deadline, &Vec::new(&env), &None);
 }

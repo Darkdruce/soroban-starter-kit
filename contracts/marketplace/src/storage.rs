@@ -39,3 +39,24 @@ pub struct Listing {
     /// Optional ledger sequence after which the listing can no longer be bought.
     pub expires_at: Option<u32>,
 }
+
+/// A listing paired with its ID, as returned by [`super::MarketplaceContract::get_active_listings`].
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ListingEntry {
+    /// The listing ID.
+    pub id: u64,
+    /// The listing itself.
+    pub listing: Listing,
+}
+
+/// One page of results from [`super::MarketplaceContract::get_active_listings`].
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ListingPage {
+    /// Active listings found in this page, in ascending ID order.
+    pub listings: soroban_sdk::Vec<ListingEntry>,
+    /// The cursor to pass to the next call to continue scanning, or `None`
+    /// if the end of the listing range has been reached.
+    pub next_cursor: Option<u64>,
+}

@@ -67,12 +67,15 @@ mod contract {
         ///
         /// `winner_count` sets how many distinct winners `draw` selects, and `prize_splits`
         /// gives each winner's share of the prize pool in basis points (must sum to 10 000).
+        /// `max_tickets_per_address`, if set, caps how many tickets a single address
+        /// may buy in total across repeated calls to `buy_ticket`.
         ///
         /// # Errors
         /// - [`LotteryError::AlreadyInitialized`]
         /// - [`LotteryError::InvalidTicketPrice`] if ticket_price <= 0
         /// - [`LotteryError::InvalidWinnerConfig`] if winner_count is zero, `prize_splits` length
         ///   doesn't match `winner_count`, or the splits don't sum to 10 000 basis points
+        /// - [`LotteryError::InvalidTicketCap`] if `max_tickets_per_address` is `Some(0)`
         pub fn initialize(
             env: Env,
             admin: Address,
@@ -80,6 +83,7 @@ mod contract {
             ticket_price: i128,
             winner_count: u32,
             prize_splits: Vec<u32>,
+            max_tickets_per_address: Option<u32>,
         ) -> Result<(), LotteryError> {
             if env.storage().instance().has(&State) {
                 return Err(LotteryError::AlreadyInitialized);
@@ -100,6 +104,9 @@ mod contract {
                 return Err(LotteryError::InvalidWinnerConfig);
             }
 
+            if max_tickets_per_address == Some(0) {
+                return Err(LotteryError::InvalidTicketCap);
+            }
             admin.require_auth();
 
             env.storage().instance().set(&Admin, &admin);
@@ -111,6 +118,9 @@ mod contract {
             env.storage().instance().set(&State, &LotteryState::Open);
             env.storage().instance().set(&WinnerCount, &winner_count);
             env.storage().instance().set(&PrizeSplits, &prize_splits);
+            if let Some(cap) = max_tickets_per_address {
+                env.storage().instance().set(&MaxTicketsPerAddress, &cap);
+            }
 
             bump_instance(&env);
             events::initialized(&env, &admin, ticket_price);
@@ -122,6 +132,8 @@ mod contract {
         /// # Errors
         /// - [`LotteryError::NotInitialized`]
         /// - [`LotteryError::LotteryClosed`] if lottery is no longer Open
+        /// - [`LotteryError::TicketCapExceeded`] if the buyer has already reached
+        ///   `max_tickets_per_address`
         pub fn buy_ticket(env: Env, buyer: Address) -> Result<(), LotteryError> {
             let state: LotteryState = get_required(&env, &State)?;
             if state != LotteryState::Open {
@@ -129,6 +141,21 @@ mod contract {
             }
 
             buyer.require_auth();
+
+            let ticket_count: u32 = env
+                .storage()
+                .persistent()
+                .get(&TicketCount(buyer.clone()))
+                .unwrap_or(0);
+            if let Some(cap) = env
+                .storage()
+                .instance()
+                .get::<DataKey, u32>(&MaxTicketsPerAddress)
+            {
+                if ticket_count >= cap {
+                    return Err(LotteryError::TicketCapExceeded);
+                }
+            }
 
             let ticket_price: i128 = get_required(&env, &TicketPrice)?;
             let token_addr: Address = get_required(&env, &Token)?;
@@ -141,6 +168,15 @@ mod contract {
             let mut participants: Vec<Address> = get_required(&env, &Participants)?;
             participants.push_back(buyer.clone());
             env.storage().instance().set(&Participants, &participants);
+
+            env.storage()
+                .persistent()
+                .set(&TicketCount(buyer.clone()), &(ticket_count + 1));
+            env.storage().persistent().extend_ttl(
+                &TicketCount(buyer.clone()),
+                LEDGER_LIFETIME_THRESHOLD,
+                LEDGER_BUMP_AMOUNT,
+            );
 
             bump_instance(&env);
             events::ticket_purchased(&env, &buyer);
@@ -369,9 +405,53 @@ mod contract {
             }
             env.storage().instance().set(&Participants, &remaining);
 
+            // Derive winner index from hash(secret ++ salt ++ participants_count).
+            let count = participants.len() as u64;
+            let count_bytes = count.to_be_bytes();
+            let mut entropy_input = Bytes::new(&env);
+            entropy_input.extend_from_array(&secret.to_array());
+            entropy_input.extend_from_array(&salt.to_array());
+            entropy_input.extend_from_array(&count_bytes);
+            let entropy: Hash<32> = env.crypto().sha256(&entropy_input);
+            let entropy_bytes = entropy.to_array();
+            // Use last 8 bytes as u64 for modulo.
+            let idx_raw = u64::from_be_bytes([
+                entropy_bytes[24],
+                entropy_bytes[25],
+                entropy_bytes[26],
+                entropy_bytes[27],
+                entropy_bytes[28],
+                entropy_bytes[29],
+                entropy_bytes[30],
+                entropy_bytes[31],
+            ]);
+
+            let participants: Vec<Address> = get_required(&env, &Participants)?;
+            #[allow(
+                clippy::cast_possible_truncation,
+                clippy::arithmetic_side_effects,
+                clippy::as_conversions
+            )]
+            let count = participants.len() as u64;
+            #[allow(
+                clippy::cast_possible_truncation,
+                clippy::arithmetic_side_effects,
+                clippy::as_conversions
+            )]
+            let winner_idx = (idx_raw % count) as u32;
+            #[allow(clippy::unwrap_used)]
+            // winner_idx is derived from modulo of len, always in bounds
+            let winner = participants.get(winner_idx).unwrap();
+
             let ticket_price: i128 = get_required(&env, &TicketPrice)?;
             #[allow(clippy::arithmetic_side_effects)]
             let refund_amount = ticket_price * ticket_count;
+            #[allow(
+                clippy::arithmetic_side_effects,
+                clippy::cast_possible_truncation,
+                clippy::as_conversions
+            )]
+            let prize = ticket_price * count as i128;
             let token_addr: Address = get_required(&env, &Token)?;
             token::Client::new(&env, &token_addr).transfer(
                 &env.current_contract_address(),
@@ -399,6 +479,7 @@ mod contract {
         }
 
         /// Return the first (or only) winner address (only available after draw).
+        /// Return the winner address (only available after draw).
         ///
         /// # Errors
         /// - [`LotteryError::NotInitialized`]
@@ -422,6 +503,13 @@ mod contract {
                 return Err(LotteryError::DrawNotDone);
             }
             get_required(&env, &Winners)
+        /// Return how many tickets `buyer` has purchased so far.
+        #[must_use]
+        pub fn get_ticket_count(env: Env, buyer: Address) -> u32 {
+            env.storage()
+                .persistent()
+                .get(&TicketCount(buyer))
+                .unwrap_or(0)
         }
     }
 }

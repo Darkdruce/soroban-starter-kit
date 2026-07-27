@@ -16,6 +16,14 @@ pub enum DataKey {
     UpdatedAt,
     /// The maximum age, in ledgers, before a price is considered stale.
     StalenessThreshold,
+    /// The unix timestamp at which the price was last updated.
+    UpdatedAtTimestamp,
+    /// The admin-configured set of authorized publishers (persistent).
+    Publishers,
+    /// The latest submission from a given publisher (persistent).
+    Submission(Address),
+    /// Ring buffer of the last `N` price observations, oldest first (instance).
+    History,
 }
 
 /// Snapshot of the oracle state returned by read entry points.
@@ -30,4 +38,24 @@ pub struct PriceData {
     pub admin: Address,
     /// The configured staleness threshold, in ledgers.
     pub staleness_threshold: u32,
+}
+
+/// A single publisher's latest price submission.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PublisherSubmission {
+    /// The submitted price.
+    pub price: i128,
+    /// The unix timestamp at which the price was submitted.
+    pub timestamp: u64,
+}
+
+/// A single historical price observation, used to compute a TWAP.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PriceObservation {
+    /// The recorded price.
+    pub price: i128,
+    /// The unix timestamp at which the price was recorded.
+    pub timestamp: u64,
 }

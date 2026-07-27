@@ -871,6 +871,25 @@ fn test_batch_mint_zero_amount() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #7)")]
+fn test_batch_mint_overflow() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let user1 = Address::generate(&env);
+    let user2 = Address::generate(&env);
+    let client = init_token(&env, &admin);
+
+    // Minting amounts that sum to more than i128::MAX causes overflow
+    let recipients = soroban_sdk::vec![
+        &env,
+        (user1.clone(), i128::MAX),
+        (user2.clone(), 1i128),
+    ];
+    client.batch_mint(&recipients);
+}
+
+#[test]
 fn test_allowance_expiry() {
     let env = Env::default();
     env.mock_all_auths();
@@ -1108,4 +1127,73 @@ mod transfer_hook_tests {
         client.transfer(&from, &to, &300i128);
         assert_eq!(client.balance(&to), 300);
     }
+}
+
+// ── #717 snapshot tests ───────────────────────────────────────────────────────
+
+#[test]
+fn test_snapshot_records_balance() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let client = init_token(&env, &admin);
+
+    client.mint(&user, &500i128);
+
+    let ledger = env.ledger().sequence();
+    client.snapshot(&user, &ledger);
+
+    assert_eq!(client.balance_at(&user, &ledger), Some(500i128));
+}
+
+#[test]
+fn test_balance_at_returns_none_for_missing_snapshot() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let client = init_token(&env, &admin);
+
+    assert_eq!(client.balance_at(&user, &42u32), None);
+}
+
+#[test]
+fn test_snapshot_captures_balance_at_point_in_time() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let client = init_token(&env, &admin);
+
+    client.mint(&user, &1_000i128);
+    let ledger_before = env.ledger().sequence();
+    client.snapshot(&user, &ledger_before);
+
+    // Mint more tokens — snapshot should still reflect old balance
+    client.mint(&user, &500i128);
+
+    assert_eq!(client.balance_at(&user, &ledger_before), Some(1_000i128));
+    assert_eq!(client.balance(&user), 1_500i128);
+}
+
+#[test]
+fn test_multiple_snapshots_at_different_ledgers() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let client = init_token(&env, &admin);
+
+    client.mint(&user, &100i128);
+    let ledger1 = env.ledger().sequence();
+    client.snapshot(&user, &ledger1);
+
+    env.ledger().with_mut(|l| l.sequence_number += 10);
+    client.mint(&user, &200i128);
+    let ledger2 = env.ledger().sequence();
+    client.snapshot(&user, &ledger2);
+
+    assert_eq!(client.balance_at(&user, &ledger1), Some(100i128));
+    assert_eq!(client.balance_at(&user, &ledger2), Some(300i128));
 }

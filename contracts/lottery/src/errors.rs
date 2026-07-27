@@ -21,4 +21,6 @@ pub enum LotteryError {
     NothingToRefund = 13,
     InvalidWinnerConfig = 14,
     InsufficientParticipants = 15,
+    InvalidTicketCap = 11,
+    TicketCapExceeded = 12,
 }

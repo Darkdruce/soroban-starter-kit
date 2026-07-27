@@ -50,6 +50,7 @@ mod contract {
             token_contract: Address,
             amount: i128,
             deadline_ledger: u32,
+            dispute_timeout_ledgers: u32,
             metadata_hash: Option<soroban_sdk::BytesN<32>>,
         ) -> Result<(), EscrowError> {
             lifecycle::initialize(
@@ -60,6 +61,7 @@ mod contract {
                 token_contract,
                 amount,
                 deadline_ledger,
+                dispute_timeout_ledgers,
                 metadata_hash,
             )
         }
@@ -73,6 +75,7 @@ mod contract {
             amount: i128,
             deadline_ledger: u32,
             required_signatures: u32,
+            dispute_timeout_ledgers: u32,
             metadata_hash: Option<soroban_sdk::BytesN<32>>,
         ) -> Result<(), EscrowError> {
             lifecycle::initialize_with_arbiters(
@@ -84,6 +87,7 @@ mod contract {
                 amount,
                 deadline_ledger,
                 required_signatures,
+                dispute_timeout_ledgers,
                 metadata_hash,
             )
         }
@@ -112,12 +116,24 @@ mod contract {
             lifecycle::request_refund(env)
         }
 
+        pub fn request_partial_refund(env: Env) -> Result<(), EscrowError> {
+            lifecycle::request_partial_refund(env)
+        }
+
         pub fn raise_dispute(env: Env, caller: Address) -> Result<(), EscrowError> {
             dispute::raise_dispute(env, caller)
         }
 
-        pub fn resolve_dispute(env: Env, release_to_seller: bool) -> Result<(), EscrowError> {
-            dispute::resolve_dispute(env, release_to_seller)
+        pub fn resolve_dispute(
+            env: Env,
+            caller: Address,
+            release_to_seller: bool,
+        ) -> Result<(), EscrowError> {
+            dispute::resolve_dispute(env, caller, release_to_seller)
+        }
+
+        pub fn claim_dispute_timeout(env: Env) -> Result<(), EscrowError> {
+            dispute::claim_dispute_timeout(env)
         }
 
         pub fn cancel(env: Env) -> Result<(), EscrowError> {
