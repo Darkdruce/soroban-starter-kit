@@ -2,14 +2,19 @@
 name = "bonding-curve"
 version = "0.1.0"
 edition = "2024"
+authors.workspace = true
+license.workspace = true
 publish = false
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = { version = "21.5", features = ["contract"] }
-soroban-common = { path = "../common" }
+soroban-sdk = { workspace = true }
+soroban-common = { workspace = true }
 
 [dev-dependencies]
-soroban-sdk = { version = "21.5", features = ["testutils"] }
+soroban-sdk = { workspace = true, features = ["testutils"] }
+
+[lints]
+workspace = true

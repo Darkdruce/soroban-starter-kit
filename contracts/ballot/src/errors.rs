@@ -18,6 +18,12 @@ pub enum BallotError {
     AlreadyVoted = 5,
     /// Invalid vote choice.
     InvalidChoice = 6,
-    /// Voting has not started or is closed.
+    /// Voting has not started, is closed, or has not reached its start ledger yet.
     VotingClosed = 7,
+    /// `deregister_voter` was called after at least one vote has been cast.
+    VotingAlreadyStarted = 8,
+    /// Voting window is invalid: start_ledger >= end_ledger or window is in the past.
+    InvalidWindow = 9,
+    /// Current ledger is before voting_start.
+    VotingNotStarted = 10,
 }

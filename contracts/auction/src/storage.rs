@@ -14,8 +14,15 @@ pub enum DataKey {
     HighestBidder,
     HighestBid,
     Settled,
+    /// Optional reserve price; auction settles only if highest_bid >= reserve_price.
+    ReservePrice,
     /// Pending refund for outbid bidders.
     Pending(Address),
+    /// Anti-sniping: number of ledgers to extend the deadline when a bid
+    /// arrives within this window of the current deadline.
+    ExtensionWindow,
+    /// True once the seller has cancelled the auction (before any bids).
+    Cancelled,
 }
 
 #[contracttype]
@@ -29,4 +36,8 @@ pub struct AuctionInfo {
     pub highest_bid: i128,
     pub highest_bidder: Option<Address>,
     pub settled: bool,
+    /// Optional reserve price set at start.
+    pub reserve_price: Option<i128>,
+    /// Anti-sniping extension window in ledgers (0 = disabled).
+    pub extension_window: u32,
 }

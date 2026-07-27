@@ -1,0 +1,26 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# Top-most EditorConfig file
+root = true
+
+# Unix-style newlines with a newline ending every file
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Rust, Markdown, TOML, YAML, JSON and other text files
+[*.{rs,md,toml,yaml,yml,json,js,ts,tsx,jsx}]
+indent_style = space
+indent_size = 4
+
+# Dockerfiles
+[Dockerfile*]
+indent_style = space
+indent_size = 4
+
+# Shell scripts
+[*.sh]
+indent_style = space
+indent_size = 4
