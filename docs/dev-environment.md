@@ -25,7 +25,41 @@ brew install just
 winget install Casey.Just
 ```
 
-Run `just --list` from the project root to see all available recipes.
+Run `just --list` from the project root to see all available recipes. The
+`justfile` mirrors the `Makefile` targets (`build`, `test`, `clippy`, `fmt`,
+`fmt-check`, `lint-fix`, `watch`, `install-hooks`, `deploy-testnet`,
+`deploy-local`, `bench`, `clean`) so either tool works interchangeably.
+
+---
+
+## Faster test runs with cargo-nextest
+
+[cargo-nextest](https://nexte.st/) is a faster test runner for Rust. It
+parallelizes better than `cargo test` for a workspace this size and gives
+cleaner per-test output.
+
+### Installing cargo-nextest
+
+```bash
+cargo install cargo-nextest --locked
+```
+
+### Running tests
+
+```bash
+# Run the full workspace test suite
+cargo nextest run --workspace
+
+# With all features enabled
+cargo nextest run --workspace --all-features
+
+# Via the Makefile / justfile
+make test-nextest
+just test-nextest
+```
+
+`cargo nextest` runs the same test binaries as `cargo test`, so it's a drop-in
+alternative — no test code changes are required.
 
 ---
 

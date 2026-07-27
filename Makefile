@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build test test-all-features clippy fmt fmt-check watch deploy-testnet deploy-local bench clean
+.PHONY: help build test test-all-features test-nextest clippy fmt fmt-check lint-fix watch install-hooks deploy-testnet deploy-local bench clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -14,6 +14,9 @@ test: ## Run unit tests
 test-all-features: ## Run unit tests with all features enabled
 	cargo test --all-features
 
+test-nextest: ## Run unit tests via cargo-nextest (requires cargo-nextest)
+	cargo nextest run --workspace
+
 clippy: ## Run Clippy lints
 	cargo clippy --all-targets --all-features -- -D warnings
 
@@ -23,8 +26,14 @@ fmt: ## Format source code
 fmt-check: ## Verify all Rust files are rustfmt-clean (exits non-zero on failure)
 	./scripts/format-check.sh
 
+lint-fix: ## Auto-fix formatting and common Clippy issues
+	./scripts/lint-fix.sh
+
 watch: ## Re-run tests on any src/ change (requires cargo-watch)
 	cargo watch -w src -x test
+
+install-hooks: ## Install git pre-commit hook (format-check + clippy)
+	./scripts/install-hooks.sh
 
 deploy-testnet: ## Deploy contracts to testnet
 	./scripts/deploy.sh testnet

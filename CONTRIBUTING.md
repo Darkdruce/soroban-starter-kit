@@ -23,6 +23,23 @@ To run the hooks manually without committing:
 pre-commit run --all-files
 ```
 
+### Lightweight alternative (no Python dependency)
+
+If you'd rather not install the Python `pre-commit` framework, use the bundled
+installer script instead:
+
+```bash
+./scripts/install-hooks.sh
+# or
+make install-hooks
+just install-hooks
+```
+
+This writes a `.git/hooks/pre-commit` hook that runs `scripts/format-check.sh`
+and a quick `cargo clippy --workspace --all-targets -- -D warnings` pass
+before every commit. Use `git commit --no-verify` to skip it for a single
+commit.
+
 ---
 
 ## CI checks
@@ -330,6 +347,20 @@ cargo fmt --all
 # Lint (warnings are treated as errors in CI)
 cargo clippy --all-targets -- -D warnings
 ```
+
+To auto-fix formatting and common Clippy issues in one step, run:
+
+```bash
+./scripts/lint-fix.sh
+# or
+make lint-fix
+just lint-fix
+```
+
+This runs `cargo fmt --all` followed by
+`cargo clippy --workspace --fix --allow-dirty --allow-staged`. Review the
+resulting diff before committing — not every Clippy warning can be
+auto-fixed.
 
 Additional conventions:
 

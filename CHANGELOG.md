@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Terraform provider version pinning and `.terraform` directory caching between plan and apply jobs (#242)
 - Structured JSON log lines (timestamp, network, contract, contractId, txHash, status) emitted by the deploy scripts so deployments can be piped to log aggregators (#696)
 - Prometheus alert definitions and a sample importable Grafana dashboard JSON in `docs/monitoring.md`, linked from the deployment guide (#697)
+- `scripts/lint-fix.sh` — one-command `cargo fmt` + `cargo clippy --fix` wrapper, documented in `CONTRIBUTING.md` (#844)
+- `scripts/install-hooks.sh` and `make`/`just install-hooks` targets — installs a `.git/hooks/pre-commit` hook running format-check and Clippy without requiring the Python `pre-commit` framework (#845)
+- `fmt-check`, `lint-fix`, `watch`, `install-hooks`, and `test-nextest` targets to the `justfile` for full parity with the `Makefile` (#846)
+- `cargo-nextest` documented as a faster local test runner, with install/usage instructions in `docs/dev-environment.md` and `test-nextest` Makefile/justfile targets (#847)
 
 ### Changed
 - Migrated all workspace crates to the Rust 2024 edition and bumped the pinned toolchain to 1.85.0 (#703)
