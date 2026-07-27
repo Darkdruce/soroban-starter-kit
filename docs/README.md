@@ -19,6 +19,16 @@ Welcome to the Soroban starter kit documentation. This directory contains guides
   - State machine invariants
   - Overflow/underflow protection
 
+- **[Threat Model](threat-model.md)** — Trust assumptions and attack surface per contract
+  - Trusted roles and what each can/cannot do
+  - Worst-case-per-role compromise analysis
+
+- **[Known Issues](known-issues.md)** — Accepted design tradeoffs per contract
+  - Documented limitations that are not bugs
+  - Cross-linked to relevant ADRs
+
+- **[Glossary](glossary.md)** — Soroban/Stellar terminology used across the repo
+
 - **[Integration Guide](integration-guide.md)** — How to integrate contracts into your application
   - Contract deployment
   - Client setup

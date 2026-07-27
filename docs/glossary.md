@@ -1,0 +1,44 @@
+# Glossary
+
+Definitions for Soroban and Stellar terms used across this repository's contracts, docs, and scripts. Terms are alphabetical. Where a term has a specific meaning in this codebase (e.g. an `AdminKey` pattern), the definition notes it.
+
+| Term | Definition |
+|------|------------|
+| **Admin model** | The pattern this repo uses for privileged operations: a single trusted `Address` (or role set, for contracts like Escrow and Multisig) stored on-chain and checked via `require_auth()` before state-changing calls. See [ADR-0003](adr/0003-admin-model.md) and [threat-model.md](threat-model.md). |
+| **Contract ID** | The unique, network-specific identifier (a strkey starting with `C`) assigned to a deployed Soroban contract instance. Used to invoke the contract from clients, scripts, and other contracts. |
+| **`#[contractclient]`** | A `soroban-sdk` macro that generates a typed client for invoking a contract's public functions, either in-process (tests) or over the network. |
+| **`#[contracterror]`** | A `soroban-sdk` macro that defines an enum of contract-specific error codes returned from fallible entry points (e.g. `NftError`, `EscrowError` in this repo). |
+| **`#[contractimpl]`** | A `soroban-sdk` macro that marks an `impl` block's `pub fn`s as the contract's externally callable entry points. |
+| **Envelope (transaction envelope)** | The signed wrapper around a Stellar transaction, containing the operations, signatures, and (for Soroban invocations) the resource footprint and fee. |
+| **Event** | An on-chain log entry a contract publishes via `env.events().publish(...)`. Used for off-chain indexing (see [event-catalogue.md](event-catalogue.md)) since Soroban contract storage isn't directly queryable by external services. |
+| **Footprint (read/write footprint)** | The declared set of ledger entries (storage keys) a transaction will read or write, required up front so the network can parallelize execution and price resource usage. Simulating a transaction (e.g. via `stellar contract invoke --sim`) computes this automatically. |
+| **Freighter** | A browser extension wallet for Stellar/Soroban, commonly used to sign transactions from a dApp frontend during local development and testing. |
+| **Futurenet / Testnet / Mainnet** | The three Stellar network tiers: Futurenet runs bleeding-edge, not-yet-released protocol features; Testnet is the stable pre-production network for integration testing; Mainnet is the production network with real asset value. |
+| **Host function** | A function implemented by the Soroban host environment (not WASM bytecode) that contracts call for capabilities like storage access, cryptography, and cross-contract invocation. Host functions are what make contract execution deterministic and metered. |
+| **Instance storage** | One of Soroban's three storage tiers. A single TTL covers all instance-storage entries for a contract; best for small, always-needed global state (e.g. this repo's `Admin`, `TotalSupply`). See [storage-layout.md](storage-layout.md) and [ADR-0001](adr/0001-storage-tier-choices.md). |
+| **Ledger** | Stellar's unit of consensus state — analogous to a "block" in other chains. Each ledger has a monotonically increasing **sequence number**, which Soroban contracts in this repo use for deadlines, TTLs, and time-based logic (there is no native wall-clock timestamp comparison at the contract level beyond `env.ledger().timestamp()`). |
+| **Ledger sequence number** | The integer identifying a specific ledger, always increasing. Used throughout this repo (e.g. escrow `deadline`, vesting `cliff_ledger`/`end_ledger`, timelock `release_ledger`) as the unit for time-based contract logic. |
+| **Muxed address** | A Stellar address (`M...`) that combines a base account address with a sub-account ID, letting one on-chain account represent many logical sub-identities (e.g. exchange user accounts) without a separate ledger entry each. |
+| **Persistent storage** | The Soroban storage tier for long-lived, per-key data that must survive independently of other entries (e.g. this repo's per-user `Balance`, per-token `Owner`). Each key has its own TTL and can be individually archived and restored. See [ADR-0001](adr/0001-storage-tier-choices.md). |
+| **Protocol version** | The version number of the Stellar network's consensus and execution rules (e.g. Protocol 21, 22, 23). Soroban SDK versions are tightly coupled to a target protocol — see the Compatibility Matrix in the [README](../README.md#-compatibility-matrix). |
+| **`require_auth()`** | The `soroban-sdk` call that asserts the current invocation was authorized by the given `Address` (via a signature or a prior `authorize_as_current_contract` sub-invocation). This is the primitive underlying every access-control check in this repo's contracts. |
+| **Resource fee** | The portion of a Soroban transaction's fee that pays for CPU instructions, memory, ledger I/O, and storage rent — separate from the classic Stellar base transaction fee. Resource fees are computed from the transaction's declared footprint and instruction count. |
+| **RPC (Soroban RPC)** | The JSON-RPC service (`soroban-rpc` / `stellar-rpc`) that clients and the Stellar CLI use to submit transactions, simulate invocations, and query ledger/contract state, since Soroban state isn't exposed through classic Horizon endpoints. |
+| **SAC (Stellar Asset Contract)** | The built-in Soroban contract type that wraps a classic Stellar asset (e.g. an issued asset or native XLM) so it can be used through the standard Soroban token interface alongside custom tokens like this repo's `token` contract. |
+| **SEP-41** | The Stellar Ecosystem Proposal defining the standard token interface (`transfer`, `approve`, `balance`, `allowance`, etc.) that this repo's `token` contract implements for interoperability with wallets and other contracts. |
+| **State archival** | The Soroban mechanism (introduced under Protocol 23, CAP-62/66) by which persistent and temporary ledger entries whose TTL expires are removed from active state and must be explicitly restored before use again. This is why every contract in this repo calls `extend_ttl` on its hot storage keys. |
+| **`stellar` / `soroban` CLI** | The command-line tool (`stellar-cli`, formerly `soroban-cli`) used throughout this repo's `scripts/` and `Makefile`/`justfile` targets to build, deploy, and invoke contracts. |
+| **Temporary storage** | The Soroban storage tier for short-lived, scratch data that is deliberately allowed to be deleted once its TTL expires, with no restoration path. Cheapest of the three tiers; unused by the current templates but available for scratch/nonce-style data. |
+| **TTL (Time To Live)** | The number of ledgers remaining before a storage entry becomes eligible for archival. Contracts in this repo call `extend_ttl` (wrapped as `bump_instance` / `bump_token` / similar helpers) on every interaction to keep active data alive; see `LEDGER_LIFETIME_THRESHOLD` and `LEDGER_BUMP_AMOUNT` in [architecture.md](architecture.md#ttl--bump-strategy). |
+| **Upgrade (contract upgrade)** | Replacing a deployed contract's WASM bytecode via the `update_current_contract_wasm` host function while preserving its contract ID and storage. Some templates in this repo (e.g. `token`, `escrow` under the `upgradeable`/`pausable` feature) gate this behind an admin-proposed, time-locked flow — see [upgrade-guide.md](upgrade-guide.md). |
+| **WASM (WebAssembly)** | The compiled bytecode format Soroban contracts run as. `cargo build` in this repo targets `wasm32-unknown-unknown`; `stellar contract build` produces the optimized `.wasm` that gets deployed. |
+| **XDR** | External Data Representation — the binary encoding Stellar uses for ledger entries, transactions, and contract values (`ScVal`) on the wire and in storage. Tools like Stellar Laboratory decode/encode XDR for human inspection. |
+| **XLM / stroop** | XLM (lumens) is Stellar's native asset, used to pay transaction and resource fees. A stroop is the smallest unit, `1 XLM = 10,000,000 stroops`. |
+
+## See Also
+
+- [Architecture](architecture.md) — storage tiers, admin model, and TTL strategy in context
+- [Threat Model](threat-model.md) — per-contract trusted roles
+- [Storage Layout](storage-layout.md)
+- [Soroban Documentation](https://soroban.stellar.org/docs)
+- [Stellar Glossary](https://developers.stellar.org/docs/learn/glossary) — the canonical upstream glossary for terms not specific to this repo
