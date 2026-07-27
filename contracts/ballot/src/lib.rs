@@ -147,6 +147,13 @@ mod contract {
                 .ok_or(BallotError::NotInitialized)?;
             admin.require_auth();
 
+        let voter_key = DataKey::RegisteredVoter(voter.clone());
+        env.storage()
+            .persistent()
+            .set(&voter_key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&voter_key, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
             // Reject once any vote has been cast.
             let total_votes: i128 = env
                 .storage()
@@ -286,6 +293,17 @@ mod contract {
             Ok(())
         }
 
+        let voter_key = DataKey::Voter(voter.clone());
+        let registered_voter_key = DataKey::RegisteredVoter(voter.clone());
+        env.storage()
+            .persistent()
+            .set(&voter_key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&voter_key, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+        env.storage()
+            .persistent()
+            .extend_ttl(&registered_voter_key, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
         /// Get tally results and close voting.
         ///
         /// Returns (yes_votes, no_votes).

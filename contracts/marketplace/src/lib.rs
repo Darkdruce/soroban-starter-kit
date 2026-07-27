@@ -197,6 +197,7 @@ mod contract {
             env.storage()
                 .persistent()
                 .set(&DataKey::Listing(listing_id), &listing);
+            bump_listing(&env, listing_id);
             bump_instance(&env);
 
             let price = listing.price;
@@ -253,6 +254,7 @@ mod contract {
             env.storage()
                 .persistent()
                 .set(&DataKey::Listing(listing_id), &listing);
+            bump_listing(&env, listing_id);
             bump_instance(&env);
 
             events::cancelled(&env, listing_id, &seller);
