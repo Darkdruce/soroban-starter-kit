@@ -10,6 +10,11 @@ pub fn voter_registered(env: &Env, voter: &Address) {
     env.events().publish(topics, voter.clone());
 }
 
+pub fn voter_deregistered(env: &Env, voter: &Address) {
+    let topics = (Symbol::new(env, "voter_deregistered"),);
+    env.events().publish(topics, voter.clone());
+}
+
 pub fn voted(env: &Env, voter: &Address, choice: u32) {
     let topics = (Symbol::new(env, "voted"),);
     env.events().publish(topics, (voter.clone(), choice));

@@ -355,6 +355,8 @@ TOKEN_CONTRACT_ID=<id> ESCROW_CONTRACT_ID=<id> node examples/typescript/index.js
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, test commands, code style, and the PR process.
 
+A special thanks to all our [contributors](CONTRIBUTORS.md) who have helped make this project better!
+
 ## 📚 Resources
 
 - [Directory Tree](docs/directory-tree.md) — Purpose of every directory in the repository

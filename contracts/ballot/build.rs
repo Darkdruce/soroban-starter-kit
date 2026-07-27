@@ -1,3 +1,1 @@
-fn main() {
-    soroban_sdk::meta();
-}
+fn main() {}

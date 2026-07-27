@@ -81,6 +81,8 @@ mod contract {
                 return Err(MarketplaceError::InvalidRoyalty);
             }
 
+            admin.require_auth();
+
             // Sanity-check the token address implements the token interface.
             token::Client::new(&env, &payment_token).decimals();
 
