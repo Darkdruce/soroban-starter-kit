@@ -103,6 +103,175 @@ usage and the validator-set limits in effect.
 
 ---
 
+## Newer Contracts
+
+The contracts below were added after the initial Token/Escrow benchmark suite
+and do not yet have dedicated Criterion benches under `benches/`. Figures here
+are **estimated**, not measured — see [Methodology](#methodology-for-newer-contracts)
+for how they were derived. Treat them as order-of-magnitude guides only, and
+prefer the measured Token/Escrow figures above when precision matters.
+
+### Airdrop Contract
+
+| Function | Estimated CUs (approx.) | Storage ops | Token transfers | Notes |
+|---|---|---|---|---|
+| `initialize` | ~450 000 | 4 writes (instance) | 0 | Stores merkle root, token, admin |
+| `set_root` | ~150 000 | 1 write (instance) | 0 | Admin auth required |
+| `claim` | ~750 000 | 1 read + 1 write (persistent) | 1 (contract → claimant) | Merkle proof verification adds hashing cost |
+| `claim_batch` | ~750 000 × N | N reads + N writes (persistent) | N | Cost scales linearly with batch size |
+| `is_claimed` / `get_root` | ~60 000 | 1 read | 0 | Read-only |
+
+### Auction Contract
+
+| Function | Estimated CUs (approx.) | Storage ops | Token transfers | Notes |
+|---|---|---|---|---|
+| `start` | ~500 000 | 6 writes (instance) | 0 | Seller auth; stores auction terms |
+| `bid` | ~950 000 | 3 reads + 2 writes (instance) | 1 (bidder → contract) | Refunds prior high bidder to pending balance |
+| `cancel` | ~200 000 | 2 reads + 1 write (instance) | 0 | Only valid before any bid |
+| `end` | ~950 000 | 2 reads + 1 write (instance) | 1 (contract → seller) | Settles highest bid |
+| `withdraw` | ~700 000 | 2 reads + 1 write (instance) | 1 (contract → bidder) | Pulls pending refund balance |
+| `get_pending` / `get_info` | ~70 000 | 1-2 reads | 0 | Read-only |
+
+### Ballot Contract
+
+| Function | Estimated CUs (approx.) | Storage ops | Token transfers | Notes |
+|---|---|---|---|---|
+| `initialize` | ~400 000 | 3 writes (instance) | 0 | No token dependency |
+| `register_voter` / `deregister_voter` | ~200 000 | 1 read + 1 write (persistent) | 0 | Admin auth required |
+| `vote` | ~300 000 | 2 reads + 2 writes (persistent + instance) | 0 | Prevents double voting |
+| `tally` / `get_yes_votes` / `get_no_votes` | ~55 000 | 1 read (instance) | 0 | Read-only |
+
+### Bonding-Curve Contract
+
+| Function | Estimated CUs (approx.) | Storage ops | Token transfers | Notes |
+|---|---|---|---|---|
+| `initialize` | ~450 000 | 4 writes (instance) | 0 | Stores curve slope + token references |
+| `buy` | ~900 000 | 2 reads + 2 writes (instance) | 1 (buyer → contract) | Price computed from reserve/supply curve before transfer |
+| `sell` | ~900 000 | 2 reads + 2 writes (instance) | 1 (contract → seller) | Same curve math, reverse direction |
+| `get_reserve` / `get_supply` / `get_price` | ~55 000 | 1 read (instance) | 0 | Read-only |
+
+### Crowdfund Contract
+
+| Function | Estimated CUs (approx.) | Storage ops | Token transfers | Notes |
+|---|---|---|---|---|
+| `initialize` | ~500 000 | 5 writes (instance) | 0 | Stores goal, deadline, token |
+| `pledge` | ~900 000 | 2 reads + 2 writes (persistent + instance) | 1 (pledger → contract) | Tracks per-pledger amount |
+| `withdraw` (creator, goal met) | ~900 000 | 2 reads + 1 write (instance) | 1 (contract → creator) | Only after deadline + goal reached |
+| `extend_deadline` | ~150 000 | 1 read + 1 write (instance) | 0 | Creator auth required |
+| `claim` | ~900 000 | 2 reads + 1 write (instance) | 1 (contract → creator) | Alias path for goal-met payout |
+| `refund` | ~900 000 | 2 reads + 2 writes (persistent + instance) | 1 (contract → pledger) | Only if goal not met after deadline |
+| `get_info` / `get_pledge` | ~65 000 | 1 read | 0 | Read-only |
+
+### Lottery Contract
+
+| Function | Estimated CUs (approx.) | Storage ops | Token transfers | Notes |
+|---|---|---|---|---|
+| `initialize` | ~450 000 | 4 writes (instance) | 0 | Sets ticket price, token |
+| `buy_ticket` | ~750 000 | 2 reads + 2 writes (persistent + instance) | 1 (buyer → contract) | Increments ticket count |
+| `commit` | ~200 000 | 1 write (instance) | 0 | Admin commits `hash(secret ++ salt)` |
+| `draw` | ~950 000 | 3 reads + 2 writes (instance) | 1 (contract → winner) | SHA-256 reveal check + winner payout |
+| `claim_refund` | ~750 000 | 2 reads + 1 write (persistent) | 1 (contract → buyer) | Refund path if lottery cancelled |
+| `get_info` / `get_winner` / `get_ticket_count` | ~60 000 | 1 read | 0 | Read-only |
+
+### Marketplace Contract
+
+| Function | Estimated CUs (approx.) | Storage ops | Token transfers | Notes |
+|---|---|---|---|---|
+| `initialize` | ~450 000 | 3 writes (instance) | 0 | Stores payment token, fee config |
+| `list` / `list_with_expiry` | ~500 000 | 1 read + 2 writes (persistent) | 0 | Cross-contract check against NFT owner |
+| `buy` | ~1 150 000 | 3 reads + 2 writes (persistent) | 1-2 (buyer → seller, optional royalty) + 1 NFT `transfer_from` | Most expensive path: two token transfers plus an NFT transfer |
+| `cancel` | ~200 000 | 2 reads + 1 write (persistent) | 0 | Seller auth required |
+| `sweep_expired` | ~200 000 × N | N reads + N writes (persistent) | 0 | Cost scales with number of expired listings swept |
+| `make_offer` | ~900 000 | 2 reads + 2 writes (persistent) | 1 (offerer → contract, escrowed) | Escrows offer amount until accepted/cancelled |
+| `accept_offer` | ~1 150 000 | 3 reads + 2 writes (persistent) | 1-2 + 1 NFT `transfer_from` | Same shape as `buy` |
+| `cancel_offer` | ~700 000 | 2 reads + 1 write (persistent) | 1 (contract → offerer) | Returns escrowed offer amount |
+| `get_listing` / `get_offer` / `get_active_listings` | ~70 000 | 1 read | 0 | Read-only |
+
+### Oracle Contract
+
+| Function | Estimated CUs (approx.) | Storage ops | Token transfers | Notes |
+|---|---|---|---|---|
+| `initialize` | ~350 000 | 3 writes (instance) | 0 | No token dependency |
+| `update_price` | ~150 000 | 1 write (instance) | 0 | Admin-pushed single price |
+| `set_publishers` | ~200 000 | 1 write (instance) | 0 | Admin-managed publisher set |
+| `submit_price` | ~250 000 | 2 reads + 1 write (persistent) | 0 | Per-publisher price submission |
+| `get_price` / `get_price_checked` / `get_price_data` | ~55 000 | 1 read (instance) | 0 | Read-only; `_checked` variant adds an age comparison |
+| `get_median_price` / `get_twap` | ~120 000 | N reads (persistent) | 0 | Cost scales with number of publisher submissions / window size |
+
+### Subscription Contract
+
+| Function | Estimated CUs (approx.) | Storage ops | Token transfers | Notes |
+|---|---|---|---|---|
+| `initialize` | ~350 000 | 3 writes (instance) | 0 | Stores provider + token |
+| `subscribe` | ~250 000 | 1 write (persistent) | 0 | Subscriber sets own amount/interval; no funds move yet |
+| `charge` | ~750 000 | 2 reads + 1 write (persistent) | 1 (`transfer_from`, subscriber → provider) | Allowance-based pull; provider-initiated |
+| `cancel` | ~150 000 | 1 read + 1 write (persistent) | 0 | Subscriber auth required |
+| `get_subscription` / `get_provider` / `get_token` | ~55 000 | 1 read | 0 | Read-only |
+
+### Swap Contract
+
+| Function | Estimated CUs (approx.) | Storage ops | Token transfers | Notes |
+|---|---|---|---|---|
+| `propose_swap` | ~950 000 | 1 write (persistent) | 1 (Party A → contract, escrowed) | Escrows Party A's tokens on proposal |
+| `accept_swap` | ~1 400 000 | 2 reads + 1 write (persistent) | 2 (Party B → Party A, contract → Party B) | Atomic two-directional settlement |
+| `cancel_swap` | ~700 000 | 2 reads + 1 write (persistent) | 1 (contract → Party A) | Only before acceptance or after expiry |
+| `get_swap` / `swap_count` | ~55 000 | 1 read | 0 | Read-only |
+
+### Timelock Contract
+
+| Function | Estimated CUs (approx.) | Storage ops | Token transfers | Notes |
+|---|---|---|---|---|
+| `initialize` | ~550 000 | 6 writes (instance) | 1 (beneficiary/admin → contract, if funded at init) | Stores beneficiary, release ledger, token |
+| `release` | ~700 000 | 2 reads + 1 write (instance) | 1 (contract → beneficiary) | Callable by anyone once release ledger reached |
+| `cancel` | ~700 000 | 2 reads + 1 write (instance) | 1 (contract → admin) | Only before release ledger |
+| `get_info` / `is_releasable` / `get_remaining_ledgers` | ~55 000 | 1 read (instance) | 0 | Read-only |
+
+### Vesting Contract
+
+| Function | Estimated CUs (approx.) | Storage ops | Token transfers | Notes |
+|---|---|---|---|---|
+| `initialize` | ~550 000 | 6 writes (instance) | 0 | Stores cliff/end ledgers, admin, token |
+| `claim` | ~700 000 | 2 reads + 1 write (instance) | 1 (contract → beneficiary) | Computes linearly-vested amount since last claim |
+| `revoke` | ~750 000 | 2 reads + 2 writes (instance) | 1 (contract → beneficiary, remaining vested) | Admin auth; unvested amount stays with admin |
+| `admin_release` | ~700 000 | 2 reads + 1 write (instance) | 1 (contract → admin) | Reclaims unvested tokens post-revoke |
+| `get_info` / `claimable` / `contract_version` | ~55 000 | 1 read (instance) | 0 | Read-only |
+
+### Wrapped-Token Contract
+
+| Function | Estimated CUs (approx.) | Storage ops | Token transfers | Notes |
+|---|---|---|---|---|
+| `initialize` | ~400 000 | 3 writes (instance) | 0 | Stores underlying + wrapped token references |
+| `wrap` | ~900 000 | 1 read + 1 write (instance) | 1 (user → contract) + 1 wrapped-token mint | Deposits underlying, mints wrapped 1:1 |
+| `unwrap` | ~900 000 | 1 read + 1 write (instance) | 1 wrapped-token burn + 1 (contract → user) | Burns wrapped, releases underlying 1:1 |
+| `get_total_wrapped` | ~55 000 | 1 read (instance) | 0 | Read-only |
+
+### Methodology for Newer Contracts
+
+Unlike the Token and Escrow tables above (measured via the Criterion benches in
+`benches/`), the tables in this section were **derived, not measured**:
+
+1. Each function's storage reads/writes were counted by inspecting
+   `contracts/<name>/src/lib.rs` for `env.storage()` calls.
+2. Cross-contract token transfers (`token::Client::...transfer`,
+   `transfer_from`, mint/burn on a wrapped/NFT contract) were counted from the
+   same source pass.
+3. Those counts were multiplied against the flat per-operation costs already
+   established in the [Cost Breakdown by Operation Type](#cost-breakdown-by-operation-type)
+   table above (e.g. instance write ≈ 10,000 CUs, cross-contract token
+   transfer ≈ 500,000–700,000 CUs, `require_auth` ≈ 50,000–100,000 CUs) to
+   arrive at a rough total.
+4. No Criterion bench currently exists for these contracts under
+   `benches/benches/`. Adding one per contract (following the pattern of
+   `token_ops.rs` / `escrow_ops.rs`) and wiring it into
+   `.github/workflows/bench.yml` would let these figures move from *estimated*
+   to *measured* — tracked as follow-up work, not yet filed as an issue.
+
+Because these figures are model-derived rather than measured, treat them as
+directionally useful for comparing "cheap read" vs. "expensive multi-transfer
+call" rather than as precise fee predictions.
+
+---
+
 ## Reproducing the Measurements
 
 Run the Criterion benchmarks locally to get instruction counts for your
