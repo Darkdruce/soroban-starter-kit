@@ -33,3 +33,13 @@ pub fn withdrawn(env: &Env, bidder: &Address, amount: i128) {
     env.events()
         .publish((Symbol::new(env, "withdrawn"), bidder.clone()), amount);
 }
+
+pub fn deadline_extended(env: &Env, new_deadline: u32) {
+    env.events()
+        .publish((Symbol::new(env, "deadline_extended"),), new_deadline);
+}
+
+pub fn cancelled(env: &Env, seller: &Address) {
+    env.events()
+        .publish((Symbol::new(env, "cancelled"), seller.clone()), ());
+}
