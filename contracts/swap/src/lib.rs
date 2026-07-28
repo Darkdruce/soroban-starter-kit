@@ -73,6 +73,109 @@ mod contract {
             Ok(())
         }
 
+        /// Update the treasury address. Only admin can call this.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SwapError::NotInitialized`] if the contract is not initialized.
+        /// Returns [`SwapError::NotAuthorized`] if caller is not the admin.
+        pub fn set_treasury(env: Env, new_treasury: Address) -> Result<(), SwapError> {
+            if !env.storage().instance().has(&DataKey::Initialized) {
+                return Err(SwapError::NotInitialized);
+            }
+
+            let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+            admin.require_auth();
+
+            env.storage().instance().set(&DataKey::Treasury, &new_treasury);
+            bump_instance(&env);
+
+            Ok(())
+        }
+
+        /// Update the fee basis points. Only admin can call this.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SwapError::NotInitialized`] if the contract is not initialized.
+        /// Returns [`SwapError::NotAuthorized`] if caller is not the admin.
+        /// Returns [`SwapError::InvalidFee`] if `new_fee_bps` > 10000 (100%).
+        pub fn set_fee_bps(env: Env, new_fee_bps: u32) -> Result<(), SwapError> {
+            if !env.storage().instance().has(&DataKey::Initialized) {
+                return Err(SwapError::NotInitialized);
+            }
+            if new_fee_bps > 10_000 {
+                return Err(SwapError::InvalidFee);
+            }
+
+            let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+            admin.require_auth();
+
+            env.storage().instance().set(&DataKey::FeeBps, &new_fee_bps);
+            bump_instance(&env);
+
+            Ok(())
+        }
+
+        /// Update the admin address. Only current admin can call this.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SwapError::NotInitialized`] if the contract is not initialized.
+        /// Returns [`SwapError::NotAuthorized`] if caller is not the current admin.
+        pub fn set_admin(env: Env, new_admin: Address) -> Result<(), SwapError> {
+            if !env.storage().instance().has(&DataKey::Initialized) {
+                return Err(SwapError::NotInitialized);
+            }
+
+            let current_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+            current_admin.require_auth();
+
+            env.storage().instance().set(&DataKey::Admin, &new_admin);
+            bump_instance(&env);
+
+            Ok(())
+        }
+
+        /// Get the current admin address.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SwapError::NotInitialized`] if the contract is not initialized.
+        pub fn get_admin(env: Env) -> Result<Address, SwapError> {
+            if !env.storage().instance().has(&DataKey::Initialized) {
+                return Err(SwapError::NotInitialized);
+            }
+
+            Ok(env.storage().instance().get(&DataKey::Admin).unwrap())
+        }
+
+        /// Get the current treasury address.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SwapError::NotInitialized`] if the contract is not initialized.
+        pub fn get_treasury(env: Env) -> Result<Address, SwapError> {
+            if !env.storage().instance().has(&DataKey::Initialized) {
+                return Err(SwapError::NotInitialized);
+            }
+
+            Ok(env.storage().instance().get(&DataKey::Treasury).unwrap())
+        }
+
+        /// Get the current fee basis points.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SwapError::NotInitialized`] if the contract is not initialized.
+        pub fn get_fee_bps(env: Env) -> Result<u32, SwapError> {
+            if !env.storage().instance().has(&DataKey::Initialized) {
+                return Err(SwapError::NotInitialized);
+            }
+
+            Ok(env.storage().instance().get(&DataKey::FeeBps).unwrap())
+        }
+
         /// Propose a new swap. Party A deposits `amount_a` of `token_a` into the contract.
         ///
         /// Returns the `swap_id` for use in `accept_swap` or `cancel_swap`.
