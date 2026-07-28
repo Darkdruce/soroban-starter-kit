@@ -23,6 +23,10 @@ pub struct SubscriptionInfo {
     pub amount: i128,
     /// Number of ledgers between each charge.
     pub interval_ledgers: u32,
+    /// Number of ledgers in the trial period (if any).
+    pub trial_ledgers: u32,
+    /// Whether the trial period has been completed (first charge processed).
+    pub trial_completed: bool,
     /// Ledger sequence number of the last successful charge (or subscription start).
     pub last_charged_ledger: u32,
     /// Whether the subscription is currently active.
