@@ -321,6 +321,18 @@ fn test_cannot_set_invalid_fee() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #10)")]
+fn test_cannot_propose_before_initialization() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, party_a, _, token_a, token_b) = setup(&env);
+    let expires_at = env.ledger().sequence() + 100;
+    
+    // Try to propose a swap before initializing - should fail
+    client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &expires_at);
+}
+
+#[test]
 fn test_multiple_swaps_increment_id() {
     let env = Env::default();
     env.mock_all_auths();
