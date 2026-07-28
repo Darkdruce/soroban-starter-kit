@@ -253,6 +253,47 @@ fn test_fee_deducted_when_swap_accepted() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_non_admin_cannot_update_configuration() {
+    let env = Env::default();
+    env.mock_all_auths(); // Only mock auths for authorized calls
+    let (client, party_a, party_b, _, _) = setup(&env);
+    let initial_treasury = Address::generate(&env);
+    let new_treasury = Address::generate(&env);
+    
+    // Initialize with party_a as admin
+    client.initialize(&party_a, &initial_treasury, &50);
+    
+    // Try to update treasury as non-admin (party_b) - should fail
+    client.set_treasury(&new_treasury);
+}
+
+#[test]
+fn test_admin_can_update_configuration() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, party_a, _, _, _) = setup(&env);
+    let initial_treasury = Address::generate(&env);
+    let new_treasury = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    
+    // Initialize
+    client.initialize(&party_a, &initial_treasury, &50);
+    
+    // Update treasury (as admin)
+    client.set_treasury(&new_treasury);
+    assert_eq!(client.get_treasury(), new_treasury);
+    
+    // Update fee
+    client.set_fee_bps(&100);
+    assert_eq!(client.get_fee_bps(), 100);
+    
+    // Update admin
+    client.set_admin(&new_admin);
+    assert_eq!(client.get_admin(), new_admin);
+}
+
+#[test]
 fn test_multiple_swaps_increment_id() {
     let env = Env::default();
     env.mock_all_auths();
