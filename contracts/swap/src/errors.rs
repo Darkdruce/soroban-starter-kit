@@ -15,6 +15,9 @@ pub enum SwapError {
     InvalidDeadline = 6,
     AlreadyCompleted = 7,
     AlreadyCancelled = 8,
+    AlreadyInitialized = 9,
+    NotInitialized = 10,
+    InvalidFee = 11,
 }
 
 impl_display_error!(
@@ -27,4 +30,7 @@ impl_display_error!(
     InvalidDeadline  => "invalid deadline",
     AlreadyCompleted => "swap already completed",
     AlreadyCancelled => "swap already cancelled",
+    AlreadyInitialized => "contract already initialized",
+    NotInitialized    => "contract not initialized",
+    InvalidFee       => "invalid fee basis points",
 );
