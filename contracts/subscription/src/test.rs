@@ -43,11 +43,12 @@ fn approve_and_subscribe(
     amount: i128,
     interval: u32,
     allowance: i128,
+    trial_ledgers: Option<u32>,
 ) {
     StellarAssetClient::new(env, token_addr).mint(subscriber, &allowance);
     let token_client = soroban_sdk::token::Client::new(env, token_addr);
     token_client.approve(subscriber, contract_addr, &allowance, &1_000_000);
-    client.subscribe(subscriber, &amount, &interval);
+    client.subscribe(subscriber, &amount, &interval, &trial_ledgers);
 }
 
 // ── unit tests ────────────────────────────────────────────────────────────────
@@ -74,7 +75,7 @@ fn test_subscribe_stores_subscription() {
     let (client, addr, _provider, token) = setup(&env);
     let subscriber = Address::generate(&env);
 
-    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, 100, 50, 500);
+    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, 100, 50, 500, None);
 
     let info = client.get_subscription(&subscriber).unwrap();
     assert_eq!(info.amount, 100);
@@ -106,7 +107,7 @@ fn test_subscribe_twice_fails() {
     let (client, addr, _provider, token) = setup(&env);
     let subscriber = Address::generate(&env);
 
-    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, 100, 50, 1_000);
+    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, 100, 50, 1_000, None);
     let result = client.try_subscribe(&subscriber, &100, &50);
     assert_eq!(result, Err(Ok(SubscriptionError::AlreadySubscribed)));
 }
