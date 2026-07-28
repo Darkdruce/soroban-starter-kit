@@ -229,6 +229,86 @@ fn test_claimable_after_end_is_full_amount() {
     assert_eq!(client.claimable(&beneficiary), amount);
 }
 
+#[test]
+fn test_multiple_beneficiaries_independent_schedules() {
+    let env = setup_env();
+    let admin = Address::generate(&env);
+    let beneficiary1 = Address::generate(&env);
+    let beneficiary2 = Address::generate(&env);
+    let amount1 = 1000i128;
+    let amount2 = 2000i128;
+    let total_amount = amount1 + amount2;
+    
+    // Mint enough tokens for both beneficiaries
+    let token = make_token(&env, &admin, total_amount);
+    
+    // Initialize the contract once
+    let addr = env.register_contract(None, VestingContract);
+    let client = VestingContractClient::new(&env, &addr);
+    client.initialize(&admin, &token);
+    
+    // Create different schedules for each beneficiary
+    let cliff1 = env.ledger().sequence() + 10;
+    let end1 = cliff1 + 100;
+    client.create_schedule(&beneficiary1, &cliff1, &end1, &amount1);
+    
+    let cliff2 = env.ledger().sequence() + 20; // Different cliff
+    let end2 = cliff2 + 200; // Different end
+    client.create_schedule(&beneficiary2, &cliff2, &end2, &amount2);
+    
+    // Verify both schedules exist with correct parameters
+    let info1 = client.get_info(&beneficiary1).unwrap();
+    assert_eq!(info1.amount, amount1);
+    assert_eq!(info1.cliff_ledger, cliff1);
+    assert_eq!(info1.end_ledger, end1);
+    assert_eq!(info1.claimed, 0);
+    assert!(!info1.revoked);
+    
+    let info2 = client.get_info(&beneficiary2).unwrap();
+    assert_eq!(info2.amount, amount2);
+    assert_eq!(info2.cliff_ledger, cliff2);
+    assert_eq!(info2.end_ledger, end2);
+    assert_eq!(info2.claimed, 0);
+    assert!(!info2.revoked);
+    
+    // Move ledger to mid-way through beneficiary1's schedule, but before beneficiary2's cliff
+    let mid1 = cliff1 + (end1 - cliff1) / 2;
+    env.ledger().with_mut(|l| l.sequence_number = mid1);
+    
+    // Beneficiary1 should have claimable tokens, beneficiary2 should have 0
+    assert!(client.claimable(&beneficiary1) > 0);
+    assert_eq!(client.claimable(&beneficiary2), 0);
+    
+    // Beneficiary1 claims their tokens
+    let claimed1 = client.claim(&beneficiary1);
+    assert!(claimed1 > 0 && claimed1 < amount1);
+    
+    // Verify beneficiary2's schedule is completely unaffected
+    let info2_after = client.get_info(&beneficiary2).unwrap();
+    assert_eq!(info2_after.claimed, 0);
+    assert_eq!(client.claimable(&beneficiary2), 0);
+    
+    // Revoke beneficiary2's schedule before their cliff
+    let returned2 = client.revoke(&beneficiary2);
+    assert_eq!(returned2, amount2); // All tokens returned to admin
+    
+    // Beneficiary1 can still claim their remaining tokens
+    let remaining1 = client.claimable(&beneficiary1);
+    assert!(remaining1 > 0);
+    let claimed1_again = client.claim(&beneficiary1);
+    assert_eq!(claimed1_again, remaining1);
+    
+    // Verify both schedules are properly updated independently
+    let info1_final = client.get_info(&beneficiary1).unwrap();
+    assert_eq!(info1_final.claimed, amount1);
+    assert!(!info1_final.revoked);
+    
+    let info2_final = client.get_info(&beneficiary2).unwrap();
+    assert_eq!(info2_final.claimed, 0);
+    assert!(info2_final.revoked);
+    assert_eq!(info2_final.amount, 0); // amount was capped to 0 at revocation
+}
+
 // ── property tests ────────────────────────────────────────────────────────────
 
 use proptest::prelude::*;
