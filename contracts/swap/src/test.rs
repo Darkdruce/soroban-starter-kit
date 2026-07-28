@@ -197,6 +197,22 @@ fn test_cancel_already_cancelled_fails() {
 }
 
 #[test]
+fn test_configuration_getters_work() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, party_a, _, _, _) = setup(&env);
+    let treasury = Address::generate(&env);
+    let fee_bps = 50;
+    
+    client.initialize(&party_a, &treasury, &fee_bps);
+    
+    // Test getters
+    assert_eq!(client.get_admin(), party_a);
+    assert_eq!(client.get_treasury(), treasury);
+    assert_eq!(client.get_fee_bps(), 50);
+}
+
+#[test]
 fn test_fee_deducted_when_swap_accepted() {
     let env = Env::default();
     env.mock_all_auths();
