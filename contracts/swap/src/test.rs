@@ -49,9 +49,9 @@ fn test_propose_swap() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, party_a, _, token_a, token_b) = setup(&env);
-    let deadline = env.ledger().sequence() + 100;
+    let expires_at = env.ledger().sequence() + 100;
 
-    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &deadline);
+    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &expires_at);
     assert_eq!(swap_id, 0);
     assert_eq!(client.swap_count(), 1);
 
@@ -68,14 +68,14 @@ fn test_propose_swap_zero_amount_fails() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, party_a, _, token_a, token_b) = setup(&env);
-    let deadline = env.ledger().sequence() + 100;
+    let expires_at = env.ledger().sequence() + 100;
 
-    client.propose_swap(&party_a, &token_a, &0, &token_b, &500, &deadline);
+    client.propose_swap(&party_a, &token_a, &0, &token_b, &500, &expires_at);
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #6)")]
-fn test_propose_swap_past_deadline_fails() {
+fn test_propose_swap_past_expiry_fails() {
     let env = Env::default();
     env.mock_all_auths();
     env.ledger().with_mut(|l| l.sequence_number = 200);
@@ -89,9 +89,9 @@ fn test_accept_swap() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, party_a, party_b, token_a, token_b) = setup(&env);
-    let deadline = env.ledger().sequence() + 100;
+    let expires_at = env.ledger().sequence() + 100;
 
-    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &deadline);
+    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &expires_at);
     client.accept_swap(&swap_id, &party_b);
 
     let swap = client.get_swap(&swap_id);
@@ -100,14 +100,14 @@ fn test_accept_swap() {
 
 #[test]
 #[should_panic(expected = "Error(Contract, #4)")]
-fn test_accept_swap_after_deadline_fails() {
+fn test_accept_swap_after_expiry_fails() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, party_a, party_b, token_a, token_b) = setup(&env);
-    let deadline = env.ledger().sequence() + 10;
+    let expires_at = env.ledger().sequence() + 10;
 
-    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &deadline);
-    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
+    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &expires_at);
+    env.ledger().with_mut(|l| l.sequence_number = expires_at + 1);
     client.accept_swap(&swap_id, &party_b);
 }
 
@@ -116,9 +116,9 @@ fn test_cancel_swap_by_party_a() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, party_a, _, token_a, token_b) = setup(&env);
-    let deadline = env.ledger().sequence() + 100;
+    let expires_at = env.ledger().sequence() + 100;
 
-    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &deadline);
+    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &expires_at);
     client.cancel_swap(&swap_id);
 
     assert_eq!(client.get_swap(&swap_id).state, SwapState::Cancelled);
