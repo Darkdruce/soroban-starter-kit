@@ -40,15 +40,14 @@ fn approve_and_subscribe(
     contract_addr: &Address,
     token_addr: &Address,
     subscriber: &Address,
-    amount: i128,
-    interval: u32,
+    plan_id: &Symbol,
     allowance: i128,
     trial_ledgers: Option<u32>,
 ) {
     StellarAssetClient::new(env, token_addr).mint(subscriber, &allowance);
     let token_client = soroban_sdk::token::Client::new(env, token_addr);
     token_client.approve(subscriber, contract_addr, &allowance, &1_000_000);
-    client.subscribe(subscriber, &amount, &interval, &trial_ledgers);
+    client.subscribe(subscriber, plan_id, &trial_ledgers);
 }
 
 // ── unit tests ────────────────────────────────────────────────────────────────

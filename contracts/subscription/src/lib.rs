@@ -5,7 +5,7 @@
 //! A provider charges a subscriber a fixed amount per interval by pulling from
 //! a pre-approved token allowance until the subscriber cancels.
 
-use soroban_sdk::{Address, Env, contract, contractimpl, token};
+use soroban_sdk::{Address, Env, Symbol, contract, contractimpl, token};
 
 mod errors;
 mod events;
@@ -360,6 +360,11 @@ mod contract {
         /// Return the payment token address, or `None` if not initialized.
         pub fn get_token(env: Env) -> Option<Address> {
             env.storage().instance().get(&DataKey::Token)
+        }
+
+        /// Return the plan details for the given ID, or `None` if the plan doesn't exist.
+        pub fn get_plan(env: Env, plan_id: Symbol) -> Option<Plan> {
+            env.storage().persistent().get(&DataKey::Plan(plan_id))
         }
     }
 }
