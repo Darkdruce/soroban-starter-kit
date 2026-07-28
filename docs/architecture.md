@@ -287,6 +287,82 @@ Every entry point reads the current state first and rejects invalid transitions 
 - `Delivered` → `Refunded` (via `request_refund()` after deadline or `resolve_dispute()`)
 - `Disputed` → `Completed` or `Refunded` (via `resolve_dispute()`)
 
+---
+
+## Sequence Diagrams
+
+### Escrow Lifecycle
+
+Covers initialization, funding, the happy-path release, and the dispute path.
+
+```mermaid
+sequenceDiagram
+    actor Buyer
+    actor Seller
+    actor Arbiter
+    participant Escrow as Escrow Contract
+    participant Token as Token Contract
+
+    Buyer->>Escrow: initialize(buyer, seller, arbiter, token, amount, deadline)
+    Escrow-->>Escrow: state = Created
+
+    Buyer->>Escrow: fund()
+    Escrow->>Token: transfer(buyer, escrow, amount)
+    Token-->>Escrow: ok
+    Escrow-->>Escrow: state = Funded
+
+    Seller->>Escrow: mark_delivered()
+    Escrow-->>Escrow: state = Delivered
+
+    alt Happy path: buyer approves
+        Buyer->>Escrow: approve_delivery()
+        Escrow->>Token: transfer(escrow, seller, amount)
+        Escrow-->>Escrow: state = Completed
+    else Dispute path
+        Buyer->>Escrow: raise_dispute(caller)
+        Escrow-->>Escrow: state = Disputed
+        Arbiter->>Escrow: resolve_dispute(release_to_seller_flag)
+        alt release to seller
+            Escrow->>Token: transfer(escrow, seller, amount)
+            Escrow-->>Escrow: state = Completed
+        else refund to buyer
+            Escrow->>Token: transfer(escrow, buyer, amount)
+            Escrow-->>Escrow: state = Refunded
+        end
+    end
+```
+
+### Multisig Lifecycle
+
+Covers proposing a transaction, collecting threshold signatures, and execution against the target contract.
+
+```mermaid
+sequenceDiagram
+    actor Proposer as Signer (proposer)
+    actor Signer2 as Signer (additional)
+    participant Multisig as Multisig Contract
+    participant Target as Target Contract
+
+    Proposer->>Multisig: propose_transaction(target, function, args)
+    Multisig-->>Multisig: store Transaction { signatures: [proposer] }
+    Multisig-->>Multisig: emit transaction_proposed(tx_id, proposer)
+
+    Proposer->>Multisig: sign_transaction(tx_id)
+    Multisig-->>Multisig: emit transaction_signed(tx_id, proposer, count=1)
+
+    loop until signature_count >= threshold
+        Signer2->>Multisig: sign_transaction(tx_id)
+        Multisig-->>Multisig: emit transaction_signed(tx_id, signer, count=N)
+    end
+
+    Signer2->>Multisig: execute_transaction(tx_id)
+    Multisig-->>Multisig: verify signature_count >= threshold
+    Multisig->>Target: invoke(function, args)
+    Target-->>Multisig: result
+    Multisig-->>Multisig: mark executed
+    Multisig-->>Multisig: emit transaction_executed(tx_id)
+```
+
 ### Checks-Effects-Interactions (CEI) Pattern
 
 All token transfers happen **after** state is updated:

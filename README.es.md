@@ -6,6 +6,7 @@
 Una colección curada de plantillas de contratos inteligentes Soroban listos para producción. Estas plantillas ayudan a los desarrolladores a iniciar rápidamente casos de uso comunes en Soroban (la plataforma de contratos inteligentes de Stellar) para DeFi, pagos, gobernanza y más.
 
 > **English version**: [README.md](README.md)
+> **Disponible en français**: [README.fr.md](README.fr.md)
 
 ## 🚀 Inicio Rápido
 
