@@ -9,6 +9,9 @@ use soroban_sdk::{Address, contracttype};
 pub enum DataKey {
     SwapCount,
     Initialized,
+    Admin,
+    Treasury,
+    FeeBps,
 }
 
 /// Persistent-storage key for individual swaps.
