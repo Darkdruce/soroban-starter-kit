@@ -335,6 +335,10 @@ mod contract {
         /// Returns [`SwapError::AlreadyCompleted`] or [`SwapError::AlreadyCancelled`] if already done.
         /// Returns [`SwapError::NotAuthorized`] if the caller is not party A and the deadline has not passed.
         pub fn cancel_swap(env: Env, swap_id: u32) -> Result<(), SwapError> {
+            if !env.storage().instance().has(&DataKey::Initialized) {
+                return Err(SwapError::NotInitialized);
+            }
+
             let mut swap: SwapInfo = env
                 .storage()
                 .persistent()
