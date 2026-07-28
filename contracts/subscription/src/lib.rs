@@ -177,6 +177,23 @@ mod contract {
             }
 
             let current_ledger = env.ledger().sequence();
+            
+            // Check if trial period is still active
+            if !info.trial_completed {
+                if current_ledger < info.last_charged_ledger + info.trial_ledgers {
+                    return Err(SubscriptionError::IntervalNotElapsed);
+                }
+                // Trial period completed - mark as completed and update last charged ledger
+                info.trial_completed = true;
+                info.last_charged_ledger = current_ledger;
+                env.storage().persistent().set(&key, &info);
+                bump_subscription(&env, &subscriber);
+                bump_instance(&env);
+                events::trial_completed(&env, &subscriber);
+                return Ok(());
+            }
+
+            // Normal billing period check
             if current_ledger < info.last_charged_ledger + info.interval_ledgers {
                 return Err(SubscriptionError::IntervalNotElapsed);
             }
