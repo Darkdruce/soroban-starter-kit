@@ -210,22 +210,23 @@ fn test_get_info_uninitialized_returns_none() {
     let env = setup_env();
     let addr = env.register_contract(None, VestingContract);
     let client = VestingContractClient::new(&env, &addr);
-    assert_eq!(client.get_info(), None);
+    let beneficiary = Address::generate(&env);
+    assert_eq!(client.get_info(&beneficiary), None);
 }
 
 #[test]
 fn test_claimable_before_cliff_is_zero() {
     let env = setup_env();
-    let (client, ..) = setup(&env);
-    assert_eq!(client.claimable(), 0);
+    let (client, _admin, beneficiary, ..) = setup(&env);
+    assert_eq!(client.claimable(&beneficiary), 0);
 }
 
 #[test]
 fn test_claimable_after_end_is_full_amount() {
     let env = setup_env();
-    let (client, _admin, _beneficiary, _token, _cliff, end, amount) = setup(&env);
+    let (client, _admin, beneficiary, _token, _cliff, end, amount) = setup(&env);
     env.ledger().with_mut(|l| l.sequence_number = end + 1);
-    assert_eq!(client.claimable(), amount);
+    assert_eq!(client.claimable(&beneficiary), amount);
 }
 
 // ── property tests ────────────────────────────────────────────────────────────
@@ -238,12 +239,13 @@ fn prop_setup(
 ) -> (VestingContractClient, Address, Address, Address, u32, u32) {
     let admin = Address::generate(env);
     let beneficiary = Address::generate(env);
-    let token = make_token(env, &admin, amount);
+    let token = make_token(env, &admin, amount * 2);
     let cliff = env.ledger().sequence() + 10;
     let end = cliff + 100;
     let addr = env.register_contract(None, VestingContract);
     let client = VestingContractClient::new(env, &addr);
-    client.initialize(&admin, &beneficiary, &token, &cliff, &end, &amount);
+    client.initialize(&admin, &token);
+    client.create_schedule(&beneficiary, &cliff, &end, &amount);
     (client, admin, beneficiary, token, cliff, end)
 }
 
@@ -251,8 +253,8 @@ proptest! {
     #[test]
     fn prop_initialize_stores_amount(amount in 1i128..=1_000_000i128) {
         let env = setup_env();
-        let (client, ..) = prop_setup(&env, amount);
-        let info = client.get_info().unwrap();
+        let (client, _admin, beneficiary, ..) = prop_setup(&env, amount);
+        let info = client.get_info(&beneficiary).unwrap();
         assert_eq!(info.amount, amount);
         assert_eq!(info.claimed, 0);
         assert!(!info.revoked);
@@ -263,7 +265,7 @@ proptest! {
         let env = setup_env();
         let (client, _admin, beneficiary, token, _cliff, end) = prop_setup(&env, amount);
         env.ledger().with_mut(|l| l.sequence_number = end + 1);
-        let claimed = client.claim();
+        let claimed = client.claim(&beneficiary);
         assert_eq!(claimed, amount);
         let token_client = soroban_sdk::token::Client::new(&env, &token);
         assert_eq!(token_client.balance(&beneficiary), amount);
@@ -272,8 +274,8 @@ proptest! {
     #[test]
     fn prop_revoke_before_cliff_returns_all(amount in 1i128..=1_000_000i128) {
         let env = setup_env();
-        let (client, admin, _beneficiary, token, _cliff, _end) = prop_setup(&env, amount);
-        let returned = client.revoke();
+        let (client, admin, beneficiary, token, _cliff, _end) = prop_setup(&env, amount);
+        let returned = client.revoke(&beneficiary);
         assert_eq!(returned, amount);
         let token_client = soroban_sdk::token::Client::new(&env, &token);
         assert_eq!(token_client.balance(&admin), amount);
@@ -285,11 +287,11 @@ proptest! {
         pct in 0u32..=100u32,
     ) {
         let env = setup_env();
-        let (client, _admin, _beneficiary, _token, cliff, end) = prop_setup(&env, amount);
+        let (client, _admin, beneficiary, _token, cliff, end) = prop_setup(&env, amount);
         let ledger = cliff + (end - cliff) * pct / 100;
         env.ledger().with_mut(|l| l.sequence_number = ledger);
-        let returned = client.revoke();
-        let claimed = client.try_claim().unwrap_or(Ok(0)).unwrap_or(0);
+        let returned = client.revoke(&beneficiary);
+        let claimed = client.try_claim(&beneficiary).unwrap_or(Ok(0)).unwrap_or(0);
         assert_eq!(returned + claimed, amount);
     }
 
