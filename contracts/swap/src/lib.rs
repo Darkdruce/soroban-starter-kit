@@ -43,12 +43,43 @@ mod contract {
 
     #[contractimpl]
     impl SwapContract {
+        /// Initialize the swap contract with admin, treasury, and fee configuration.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SwapError::AlreadyInitialized`] if the contract is already initialized.
+        /// Returns [`SwapError::InvalidFee`] if `fee_bps` > 10000 (100%).
+        pub fn initialize(
+            env: Env,
+            admin: Address,
+            treasury: Address,
+            fee_bps: u32,
+        ) -> Result<(), SwapError> {
+            if env.storage().instance().has(&DataKey::Initialized) {
+                return Err(SwapError::AlreadyInitialized);
+            }
+            if fee_bps > 10_000 {
+                return Err(SwapError::InvalidFee);
+            }
+
+            admin.require_auth();
+
+            env.storage().instance().set(&DataKey::Admin, &admin);
+            env.storage().instance().set(&DataKey::Treasury, &treasury);
+            env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
+            env.storage().instance().set(&DataKey::Initialized, &true);
+
+            bump_instance(&env);
+            Ok(())
+        }
+
         /// Propose a new swap. Party A deposits `amount_a` of `token_a` into the contract.
         ///
         /// Returns the `swap_id` for use in `accept_swap` or `cancel_swap`.
         ///
         /// # Errors
         ///
+        /// Returns [`SwapError::NotInitialized`] if the contract is not initialized.
         /// Returns [`SwapError::InvalidAmount`] if either amount is <= 0.
         /// Returns [`SwapError::InvalidDeadline`] if `expires_at` <= current ledger.
         pub fn propose_swap(
