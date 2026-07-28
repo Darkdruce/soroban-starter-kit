@@ -5,7 +5,7 @@
 //! Admin-controlled minting with per-token owners, approved spenders, metadata
 //! URIs, and an optional supply cap.
 
-use soroban_sdk::{Address, Env, String, contract, contractimpl};
+use soroban_sdk::{Address, Env, String, Vec, contract, contractimpl};
 
 mod errors;
 mod events;
@@ -178,6 +178,53 @@ mod contract {
 
             bump_token(&env, &TokenKey::Owner(token_id));
             events::transferred(&env, &from, &to, token_id);
+
+            Ok(())
+        }
+
+        /// Transfer multiple tokens from `from` to `to` in a single call. Requires a single
+        /// auth from `from` (the owner) covering the whole batch.
+        ///
+        /// Ownership of every token in `token_ids` is validated before any transfer is applied,
+        /// so the batch is atomic: either all tokens move or none do.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`NftError::TokenNotFound`] if any token in `token_ids` does not exist.
+        /// Returns [`NftError::NotOwner`] if `from` does not own any token in `token_ids`.
+        pub fn batch_transfer(
+            env: Env,
+            from: Address,
+            to: Address,
+            token_ids: Vec<u32>,
+        ) -> Result<(), NftError> {
+            Self::require_initialized(&env)?;
+            from.require_auth();
+
+            for token_id in token_ids.iter() {
+                let owner: Address = env
+                    .storage()
+                    .persistent()
+                    .get(&TokenKey::Owner(token_id))
+                    .ok_or(NftError::TokenNotFound)?;
+
+                if owner != from {
+                    return Err(NftError::NotOwner);
+                }
+            }
+
+            for token_id in token_ids.iter() {
+                env.storage()
+                    .persistent()
+                    .set(&TokenKey::Owner(token_id), &to);
+                // Clear any existing approval on transfer.
+                env.storage()
+                    .persistent()
+                    .remove(&TokenKey::Approval(token_id));
+
+                bump_token(&env, &TokenKey::Owner(token_id));
+                events::transferred(&env, &from, &to, token_id);
+            }
 
             Ok(())
         }

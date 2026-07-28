@@ -1,5 +1,7 @@
 # Security
 
+> For a per-contract breakdown of trusted roles and the worst case if a role's key is compromised, see [Threat Model](threat-model.md). For accepted design tradeoffs that are not vulnerabilities, see [Known Issues](known-issues.md).
+
 ## Arbiter Time-Lock
 
 The arbiter time-lock mechanism in the escrow contract is designed to ensure that funds are not released to the seller until the buyer has had a chance to inspect the goods or services. The time-lock is implemented as a `deadline` ledger sequence number, after which the buyer can request a refund.

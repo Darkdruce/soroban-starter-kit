@@ -119,6 +119,7 @@ just --list
 - **Unique Token Ownership**: Each token ID maps to exactly one owner tracked in persistent storage
 - **Admin-Controlled Minting**: Only the admin may mint new tokens; optional supply cap enforced at mint time
 - **Standard Operations**: `mint`, `transfer`, `burn`, `approve`, `transfer_from` matching ERC-721 semantics
+- **Atomic Batch Transfer**: `batch_transfer` moves multiple tokens in one call with a single auth check; ownership of every token is validated before any transfer is applied
 - **Per-Token Metadata**: Each token has an associated URI stored on-chain; collection has name and symbol
 - **Approval System**: Single-token approvals cleared automatically on transfer or burn
 - **Property Tests**: Proptest suite verifies supply invariants and ownership correctness
@@ -360,6 +361,9 @@ A special thanks to all our [contributors](CONTRIBUTORS.md) who have helped make
 ## 📚 Resources
 
 - [Directory Tree](docs/directory-tree.md) — Purpose of every directory in the repository
+- [Glossary](docs/glossary.md) — Soroban/Stellar terms used across the repo
+- [Threat Model](docs/threat-model.md) — Trust assumptions and attack surface per contract
+- [Known Issues](docs/known-issues.md) — Accepted design tradeoffs per contract
 - [Translations](docs/translations.md) — Source-commit checklist for `README.es.md` / `README.fr.md`
 - [FAQ](docs/faq.md) — Common developer questions: setup, testing, deployment, feature flags, token customization
 - [System Architecture](docs/architecture.md) — High-level design, contract relationships, storage tiers, event model, and admin framework
