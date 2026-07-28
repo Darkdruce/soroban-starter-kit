@@ -254,7 +254,7 @@ fn test_resubscribe_after_cancel() {
     client.cancel(&subscriber);
 
     // Re-subscribing after cancel should succeed.
-    let result = client.try_subscribe(&subscriber, &200, &30);
+    let result = client.try_subscribe(&subscriber, &200, &30, &None);
     assert!(result.is_ok());
 
     let info = client.get_subscription(&subscriber).unwrap();
