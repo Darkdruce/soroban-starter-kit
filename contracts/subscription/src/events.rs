@@ -37,3 +37,10 @@ pub fn cancelled(env: &Env, subscriber: &Address) {
     env.events()
         .publish((Symbol::new(env, "cancelled"), subscriber.clone()), ());
 }
+
+/// Emitted when a subscriber's trial period is completed.
+/// Topics: (Symbol, Address) — event name, subscriber
+pub fn trial_completed(env: &Env, subscriber: &Address) {
+    env.events()
+        .publish((Symbol::new(env, "trial_completed"), subscriber.clone()), ());
+}
