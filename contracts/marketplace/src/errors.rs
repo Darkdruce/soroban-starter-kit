@@ -31,3 +31,51 @@ pub enum MarketplaceError {
     /// No offer exists for this (listing, buyer) pair.
     OfferNotFound = 12,
 }
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::MarketplaceError;
+    use std::format;
+    use std::string::String;
+
+    #[allow(clippy::as_conversions)]
+    fn render_error_code_snapshot() -> String {
+        format!(
+            "\
+MarketplaceError::AlreadyInitialized = {}\n\
+MarketplaceError::NotInitialized = {}\n\
+MarketplaceError::NotAuthorized = {}\n\
+MarketplaceError::InvalidPrice = {}\n\
+MarketplaceError::ListingNotFound = {}\n\
+MarketplaceError::ListingInactive = {}\n\
+MarketplaceError::InvalidRoyalty = {}\n\
+MarketplaceError::InvalidExpiry = {}\n\
+MarketplaceError::ListingExpired = {}\n\
+MarketplaceError::ListingNotExpired = {}\n\
+MarketplaceError::InvalidOfferAmount = {}\n\
+MarketplaceError::OfferNotFound = {}\n",
+            MarketplaceError::AlreadyInitialized as u32,
+            MarketplaceError::NotInitialized as u32,
+            MarketplaceError::NotAuthorized as u32,
+            MarketplaceError::InvalidPrice as u32,
+            MarketplaceError::ListingNotFound as u32,
+            MarketplaceError::ListingInactive as u32,
+            MarketplaceError::InvalidRoyalty as u32,
+            MarketplaceError::InvalidExpiry as u32,
+            MarketplaceError::ListingExpired as u32,
+            MarketplaceError::ListingNotExpired as u32,
+            MarketplaceError::InvalidOfferAmount as u32,
+            MarketplaceError::OfferNotFound as u32,
+        )
+    }
+
+    #[test]
+    fn marketplace_error_codes_match_snapshot() {
+        assert_eq!(
+            render_error_code_snapshot(),
+            include_str!("../snapshots/error_codes.snap")
+        );
+    }
+}

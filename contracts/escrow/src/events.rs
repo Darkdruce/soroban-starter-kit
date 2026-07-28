@@ -98,10 +98,8 @@ pub fn dispute_raised(env: &Env, caller: &Address) {
 /// Emitted when a buyer claims a refund after dispute timeout (#709).
 /// Topics: (Symbol, Address) — event name, buyer
 pub fn dispute_timeout_claimed(env: &Env, buyer: &Address, amount: i128) {
-    env.events().publish(
-        (Symbol::new(env, "dispute_timeout"), buyer.clone()),
-        amount,
-    );
+    env.events()
+        .publish((Symbol::new(env, "dispute_timeout"), buyer.clone()), amount);
 }
 
 /// Emitted when the contract is paused.

@@ -46,3 +46,49 @@ impl_display_error!(
     InsufficientApprovals => "insufficient approvals",
     ProposalExpired     => "proposal expired",
 );
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::MultisigError;
+    use std::format;
+    use std::string::String;
+
+    #[allow(clippy::as_conversions)]
+    fn render_error_code_snapshot() -> String {
+        format!(
+            "\
+MultisigError::AlreadyInitialized = {}\n\
+MultisigError::NotInitialized = {}\n\
+MultisigError::InvalidThreshold = {}\n\
+MultisigError::InvalidSigners = {}\n\
+MultisigError::NotSigner = {}\n\
+MultisigError::TransactionNotFound = {}\n\
+MultisigError::AlreadyExecuted = {}\n\
+MultisigError::AlreadySigned = {}\n\
+MultisigError::ThresholdNotMet = {}\n\
+MultisigError::InsufficientApprovals = {}\n\
+MultisigError::ProposalExpired = {}\n",
+            MultisigError::AlreadyInitialized as u32,
+            MultisigError::NotInitialized as u32,
+            MultisigError::InvalidThreshold as u32,
+            MultisigError::InvalidSigners as u32,
+            MultisigError::NotSigner as u32,
+            MultisigError::TransactionNotFound as u32,
+            MultisigError::AlreadyExecuted as u32,
+            MultisigError::AlreadySigned as u32,
+            MultisigError::ThresholdNotMet as u32,
+            MultisigError::InsufficientApprovals as u32,
+            MultisigError::ProposalExpired as u32,
+        )
+    }
+
+    #[test]
+    fn multisig_error_codes_match_snapshot() {
+        assert_eq!(
+            render_error_code_snapshot(),
+            include_str!("../snapshots/error_codes.snap")
+        );
+    }
+}

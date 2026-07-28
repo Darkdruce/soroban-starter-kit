@@ -1,4 +1,10 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing
+)]
 #![cfg(test)]
 
 use super::*;
@@ -94,7 +100,9 @@ fn setup_funded_escrow<'a>(
     let deadline = env.ledger().sequence() + 100;
 
     let (client, contract_address) = create_escrow_contract(env);
-    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None,
+    );
     client.fund();
 
     (
@@ -127,7 +135,9 @@ fn test_initialize() {
 
     let (client, contract_address) = create_escrow_contract(&env);
 
-    client.initialize(&admin, &buyer,
+    client.initialize(
+        &admin,
+        &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -152,12 +162,7 @@ fn test_initialize() {
             &env,
             (
                 contract_address.clone(),
-                (
-                    Symbol::new(&env, "created"),
-                    buyer.clone(),
-                    seller.clone()
-                )
-                    .into_val(&env),
+                (Symbol::new(&env, "created"), buyer.clone(), seller.clone()).into_val(&env),
                 amount.into_val(&env),
             ),
             (
@@ -191,7 +196,9 @@ fn test_initialize_twice() {
 
     let (client, _) = create_escrow_contract(&env);
 
-    client.initialize(&admin, &buyer,
+    client.initialize(
+        &admin,
+        &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -201,7 +208,9 @@ fn test_initialize_twice() {
         &None,
     );
     // Second call must fail with AlreadyInitialized (#5)
-    client.initialize(&admin, &buyer,
+    client.initialize(
+        &admin,
+        &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -228,7 +237,9 @@ fn test_initialize_past_deadline() {
     let deadline = 5u32; // 5 < 10, already in the past
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&admin, &buyer,
+    client.initialize(
+        &admin,
+        &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -250,7 +261,9 @@ fn test_initialize_buyer_equals_seller_fails() {
     let token = create_mock_token(&env);
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&admin, &same, &same, &arbiter, &token, &1_000, &deadline, &0, &None);
+    client.initialize(
+        &admin, &same, &same, &arbiter, &token, &1_000, &deadline, &0, &None,
+    );
 }
 
 #[test]
@@ -264,7 +277,9 @@ fn test_initialize_buyer_equals_arbiter_fails() {
     let token = create_mock_token(&env);
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&admin, &same, &seller, &same, &token, &1_000, &deadline, &0, &None);
+    client.initialize(
+        &admin, &same, &seller, &same, &token, &1_000, &deadline, &0, &None,
+    );
 }
 
 #[test]
@@ -278,7 +293,9 @@ fn test_initialize_seller_equals_arbiter_fails() {
     let token = create_mock_token(&env);
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&admin, &buyer, &same, &same, &token, &1_000, &deadline, &0, &None);
+    client.initialize(
+        &admin, &buyer, &same, &same, &token, &1_000, &deadline, &0, &None,
+    );
 }
 
 #[test]
@@ -295,7 +312,9 @@ fn test_initialize_zero_amount_fails() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &0, &deadline, &0, &None);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &0, &deadline, &0, &None,
+    );
 }
 
 #[test]
@@ -312,7 +331,9 @@ fn test_initialize_negative_amount_fails() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &-1, &deadline, &0, &None);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &-1, &deadline, &0, &None,
+    );
 }
 
 #[test]
@@ -343,7 +364,9 @@ fn test_fund() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, contract_address) = create_escrow_contract(&env);
-    client.initialize(&admin, &buyer,
+    client.initialize(
+        &admin,
+        &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -493,7 +516,9 @@ fn test_deadline_passed() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&admin, &buyer,
+    client.initialize(
+        &admin,
+        &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -526,7 +551,9 @@ fn test_get_remaining_ledgers_positive() {
     let deadline = current_sequence + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&admin, &buyer,
+    client.initialize(
+        &admin,
+        &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -556,7 +583,9 @@ fn test_get_remaining_ledgers_negative() {
     let deadline = current_sequence + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&admin, &buyer,
+    client.initialize(
+        &admin,
+        &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -579,7 +608,8 @@ fn test_arbiter_resolve_to_seller() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, _contract_address, buyer, _seller, arbiter, _, _amount) = setup_funded_escrow(&env);
+    let (client, _contract_address, buyer, _seller, arbiter, _, _amount) =
+        setup_funded_escrow(&env);
     client.raise_dispute(&buyer);
     client.resolve_dispute(&arbiter, &true);
 
@@ -616,7 +646,9 @@ fn test_initialize_invalid_token_address() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&admin, &buyer,
+    client.initialize(
+        &admin,
+        &buyer,
         &seller,
         &arbiter,
         &invalid_token,
@@ -642,7 +674,9 @@ fn test_cancel_by_seller_fails() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, contract_address) = create_escrow_contract(&env);
-    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None,
+    );
 
     // Only authorize the seller — buyer.require_auth() inside cancel() will fail.
     use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
@@ -689,7 +723,9 @@ fn test_fund_insufficient_funds() {
     });
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None,
+    );
     // buyer has balance 0 < amount 1000 → InsufficientFunds (#7)
     client.fund();
 }
@@ -836,7 +872,9 @@ fn test_release_partial_invalid_state() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None,
+    );
 
     // Try to release_partial in Created state — should fail with InvalidState
     client.release_partial(&500i128);
@@ -1025,7 +1063,9 @@ fn test_update_amount() {
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
 
-    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None,
+    );
 
     // Update amount before funding
     client.update_amount(&2_000);
@@ -1047,7 +1087,9 @@ fn test_update_amount_zero_fails() {
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
 
-    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None,
+    );
     client.update_amount(&0);
 }
 
@@ -1077,7 +1119,9 @@ fn test_initialize_with_arbiters() {
     let (client, _) = create_escrow_contract(&env);
 
     let arbiters = soroban_sdk::vec![&env, arbiter1.clone(), arbiter2.clone(), arbiter3.clone()];
-    client.initialize_with_arbiters(&admin, &buyer, &seller, &arbiters, &token, &1_000, &deadline, &2, &0, &None);
+    client.initialize_with_arbiters(
+        &admin, &buyer, &seller, &arbiters, &token, &1_000, &deadline, &2, &0, &None,
+    );
 
     let info = client.get_escrow_info();
     assert_eq!(info.amount, 1_000);
@@ -1098,7 +1142,17 @@ fn test_initialize_with_metadata_hash_stores_it() {
     let (client, _) = create_escrow_contract(&env);
     let hash = soroban_sdk::BytesN::from_array(&env, &[0xabu8; 32]);
 
-    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &Some(hash.clone()));
+    client.initialize(
+        &admin,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token,
+        &1_000,
+        &deadline,
+        &0,
+        &Some(hash.clone()),
+    );
 
     let info = client.get_escrow_info();
     assert_eq!(info.metadata_hash, hash);
@@ -1116,7 +1170,9 @@ fn test_initialize_without_metadata_hash_is_none() {
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
 
-    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None,
+    );
 
     let info = client.get_escrow_info();
     assert_eq!(
@@ -1141,7 +1197,9 @@ fn setup_funded_escrow_with_timeout<'a>(
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(env);
-    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &timeout, &None);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &timeout, &None,
+    );
     client.fund();
     (client, buyer, seller)
 }
@@ -1240,7 +1298,9 @@ fn test_request_partial_refund_wrong_state_fails() {
     let token = create_mock_token(&env);
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None,
+    );
 
     // Still Created, not Funded → InvalidState (#2)
     client.request_partial_refund();
@@ -1306,10 +1366,7 @@ fn test_set_fee_config_stores_bps_and_treasury() {
     assert_eq!(fee_bps, 500);
     assert_eq!(stored_treasury, Some(treasury.clone()));
 
-    assert_eq!(
-        last_event_data::<(u32, Address)>(&env),
-        (500u32, treasury)
-    );
+    assert_eq!(last_event_data::<(u32, Address)>(&env), (500u32, treasury));
 }
 
 #[test]
@@ -1358,10 +1415,7 @@ fn test_release_to_seller_with_no_fee_configured_pays_full_amount() {
     client.approve_delivery();
 
     // No fee configured: net == full amount, fee == 0.
-    assert_eq!(
-        last_event_data::<(i128, i128)>(&env),
-        (1_000i128, 0i128)
-    );
+    assert_eq!(last_event_data::<(i128, i128)>(&env), (1_000i128, 0i128));
     let _ = seller;
 }
 
@@ -1388,10 +1442,7 @@ fn test_release_to_seller_deducts_configured_fee() {
     client.approve_delivery();
 
     // 1_000 * 500 / 10_000 = 50 fee, 950 net to the seller.
-    assert_eq!(
-        last_event_data::<(i128, i128)>(&env),
-        (950i128, 50i128)
-    );
+    assert_eq!(last_event_data::<(i128, i128)>(&env), (950i128, 50i128));
 }
 
 #[test]
@@ -1417,10 +1468,7 @@ fn test_release_partial_deducts_configured_fee() {
     client.release_partial(&200i128);
 
     // 200 * 1_000 / 10_000 = 20 fee, 180 net to the seller.
-    assert_eq!(
-        last_event_data::<(i128, i128)>(&env),
-        (180i128, 20i128)
-    );
+    assert_eq!(last_event_data::<(i128, i128)>(&env), (180i128, 20i128));
 
     // The full gross 200 (not just the net) is deducted from the remaining
     // escrowed amount, so the fee is paid out of the release, not on top of it.

@@ -44,3 +44,59 @@ impl_display_error!(
     PledgeCapExceeded       => "pledge would exceed the per-address cap",
     DeadlineAlreadyExtended => "deadline has already been extended once",
 );
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::CrowdfundError;
+    use std::format;
+    use std::string::String;
+
+    #[allow(clippy::as_conversions)]
+    fn render_error_code_snapshot() -> String {
+        format!(
+            "\
+CrowdfundError::AlreadyInitialized = {}\n\
+CrowdfundError::NotInitialized = {}\n\
+CrowdfundError::DeadlinePassed = {}\n\
+CrowdfundError::DeadlineNotReached = {}\n\
+CrowdfundError::GoalAlreadyMet = {}\n\
+CrowdfundError::GoalNotMet = {}\n\
+CrowdfundError::AlreadyClaimed = {}\n\
+CrowdfundError::NothingToPledge = {}\n\
+CrowdfundError::NothingToWithdraw = {}\n\
+CrowdfundError::InvalidAmount = {}\n\
+CrowdfundError::InvalidDeadline = {}\n\
+CrowdfundError::InvalidGoal = {}\n\
+CrowdfundError::NotAuthorized = {}\n\
+CrowdfundError::InvalidTier = {}\n\
+CrowdfundError::PledgeCapExceeded = {}\n\
+CrowdfundError::DeadlineAlreadyExtended = {}\n",
+            CrowdfundError::AlreadyInitialized as u32,
+            CrowdfundError::NotInitialized as u32,
+            CrowdfundError::DeadlinePassed as u32,
+            CrowdfundError::DeadlineNotReached as u32,
+            CrowdfundError::GoalAlreadyMet as u32,
+            CrowdfundError::GoalNotMet as u32,
+            CrowdfundError::AlreadyClaimed as u32,
+            CrowdfundError::NothingToPledge as u32,
+            CrowdfundError::NothingToWithdraw as u32,
+            CrowdfundError::InvalidAmount as u32,
+            CrowdfundError::InvalidDeadline as u32,
+            CrowdfundError::InvalidGoal as u32,
+            CrowdfundError::NotAuthorized as u32,
+            CrowdfundError::InvalidTier as u32,
+            CrowdfundError::PledgeCapExceeded as u32,
+            CrowdfundError::DeadlineAlreadyExtended as u32,
+        )
+    }
+
+    #[test]
+    fn crowdfund_error_codes_match_snapshot() {
+        assert_eq!(
+            render_error_code_snapshot(),
+            include_str!("../snapshots/error_codes.snap")
+        );
+    }
+}

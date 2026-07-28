@@ -10,6 +10,7 @@ publish = false
 soroban-sdk = { workspace = true, features = ["testutils"] }
 soroban-token-template = { path = "../contracts/token" }
 soroban-escrow-template = { path = "../contracts/escrow" }
+soroban-swap-template = { path = "../contracts/swap" }
 libfuzzer-sys = "0.4"
 
 [[bin]]
@@ -27,6 +28,12 @@ doc = false
 [[bin]]
 name = "token_mint_burn"
 path = "fuzz_targets/token_mint_burn.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "swap_state_machine"
+path = "fuzz_targets/swap_state_machine.rs"
 test = false
 doc = false
 

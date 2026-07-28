@@ -35,9 +35,11 @@ pub(crate) fn vested_amount(amount: i128, cliff_ledger: u32, end_ledger: u32, le
         return amount;
     }
     // Linear interpolation between cliff and end.
-    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)] // u32 ledger difference fits in i128
+    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+    // u32 ledger difference fits in i128
     let elapsed = (ledger - cliff_ledger) as i128;
-    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)] // u32 ledger difference fits in i128
+    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+    // u32 ledger difference fits in i128
     let total = (end_ledger - cliff_ledger) as i128;
     amount * elapsed / total
 }
@@ -355,9 +357,7 @@ mod contract {
             // Mark as revoked, cap amount to zero (nothing more to claim).
             env.storage().instance().set(&DataKey::Revoked, &true);
             env.storage().instance().set(&DataKey::Amount, &releasable);
-            env.storage()
-                .instance()
-                .set(&DataKey::Claimed, &releasable);
+            env.storage().instance().set(&DataKey::Claimed, &releasable);
 
             // Audit log: accumulate total admin-released tokens.
             let prev_released: i128 = env
@@ -476,10 +476,7 @@ mod contract {
 
         /// Return the on-chain contract version number.
         pub fn contract_version(env: Env) -> u32 {
-            env.storage()
-                .instance()
-                .get(&DataKey::Version)
-                .unwrap_or(0)
+            env.storage().instance().get(&DataKey::Version).unwrap_or(0)
         }
     }
 }
