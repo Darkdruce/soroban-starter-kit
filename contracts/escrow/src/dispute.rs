@@ -69,7 +69,6 @@ pub fn claim_dispute_timeout(env: Env) -> Result<(), EscrowError> {
     refund_to_buyer(env)
 }
 
-pub fn resolve_dispute(env: Env, release_to_seller_flag: bool) -> Result<(), EscrowError> {
 pub fn resolve_dispute(
     env: Env,
     caller: Address,

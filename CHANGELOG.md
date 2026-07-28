@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Escrow: admin-configurable basis-point protocol fee (`set_fee_config` / `get_fee_config`), deducted from `release_to_seller` and `release_partial` and routed to a treasury address. Only the escrow's platform admin (set at `initialize*` time, not the buyer or seller) may change it. `fee_bps` is capped at 10 000 (100%); exceeding it returns `EscrowError::FeeTooHigh`.
+- Escrow: multi-milestone escrows (`initialize_with_milestones` / `release_milestone` / `get_milestones`), each milestone releasable independently and fee-deducted the same way as a full release.
 - `cargo audit` security scanning job in CI workflow (#238)
 - Error Reference section in README documenting all `TokenError` and `EscrowError` codes (#234)
 - This CHANGELOG file (#231)
@@ -18,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Migrated all workspace crates to the Rust 2024 edition and bumped the pinned toolchain to 1.85.0 (#703)
 - Pinned the nightly toolchain used by the `cargo-udeps` CI job for reproducible unused-dependency checks (#699)
+- **Breaking:** `EscrowContract::initialize` / `initialize_with_arbiters` / `initialize_with_milestones` now take a leading `admin: Address` parameter, stored as the escrow's platform admin. Bumped the on-chain escrow schema `Version` to 2.
+- **Breaking:** `EscrowInfo.metadata_hash` changed from `Option<BytesN<32>>` to `BytesN<32>` (all-zero = unset); `soroban-sdk`'s `#[contracttype]` derive cannot generate the `testutils`-only `ScVal` conversions for `Option<BytesN<N>>` fields.
+- `released` / `released_partial` events now carry `(net_amount, fee_amount)` instead of a single `amount`, reflecting the new fee deduction.
 
 ## [0.1.0] - 2026-04-24
 

@@ -18,19 +18,22 @@ fn setup_escrow<'a>(
     env: &'a Env,
     amount: i128,
 ) -> (EscrowContractClient<'a>, Address, Address, Address, Address) {
+    let admin = Address::generate(env);
     let buyer = Address::generate(env);
     let seller = Address::generate(env);
     let arbiter = Address::generate(env);
 
-    let admin = Address::generate(env);
-    let sac = env.register_stellar_asset_contract_v2(admin.clone());
+    let token_admin = Address::generate(env);
+    let sac = env.register_stellar_asset_contract_v2(token_admin.clone());
     let token_addr = sac.address();
     StellarAssetClient::new(env, &token_addr).mint(&buyer, &amount);
 
     let escrow_addr = env.register_contract(None, EscrowContract);
     let client = EscrowContractClient::new(env, &escrow_addr);
     let deadline = env.ledger().sequence() + MIN_DEADLINE_BUFFER + 10;
-    client.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline, &0, &None);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token_addr, &amount, &deadline, &0, &None,
+    );
 
     (client, buyer, seller, arbiter, token_addr)
 }
@@ -67,11 +70,11 @@ proptest! {
     fn prop_arbiter_resolve_seller(amount in 1i128..=1_000_000i128) {
         let env = Env::default();
         env.mock_all_auths();
-        let (client, buyer, ..) = setup_escrow(&env, amount);
+        let (client, buyer, _seller, arbiter, _token) = setup_escrow(&env, amount);
 
         client.fund();
         client.raise_dispute(&buyer);
-        client.resolve_dispute(&true);
+        client.resolve_dispute(&arbiter, &true);
 
         prop_assert_eq!(client.get_state(), Some(EscrowState::Completed));
     }
@@ -81,11 +84,11 @@ proptest! {
     fn prop_arbiter_resolve_buyer(amount in 1i128..=1_000_000i128) {
         let env = Env::default();
         env.mock_all_auths();
-        let (client, buyer, ..) = setup_escrow(&env, amount);
+        let (client, buyer, _seller, arbiter, _token) = setup_escrow(&env, amount);
 
         client.fund();
         client.raise_dispute(&buyer);
-        client.resolve_dispute(&false);
+        client.resolve_dispute(&arbiter, &false);
 
         prop_assert_eq!(client.get_state(), Some(EscrowState::Refunded));
     }
@@ -116,11 +119,12 @@ proptest! {
         env.mock_all_auths();
         env.ledger().with_mut(|l| l.sequence_number = 200);
 
+        let admin = Address::generate(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let arbiter = Address::generate(&env);
-        let admin = Address::generate(&env);
-        let sac = env.register_stellar_asset_contract_v2(admin);
+        let token_admin = Address::generate(&env);
+        let sac = env.register_stellar_asset_contract_v2(token_admin);
         let token_addr = sac.address();
         StellarAssetClient::new(&env, &token_addr).mint(&buyer, &1000i128);
 
@@ -129,7 +133,7 @@ proptest! {
         let bad_deadline = env.ledger().sequence() + offset; // < MIN_DEADLINE_BUFFER
 
         let result = client.try_initialize(
-            &buyer, &seller, &arbiter, &token_addr, &1000i128, &bad_deadline, &None,
+            &admin, &buyer, &seller, &arbiter, &token_addr, &1000i128, &bad_deadline, &0, &None,
         );
         prop_assert!(result.is_err());
     }
@@ -143,7 +147,7 @@ proptest! {
     ) {
         let env = Env::default();
         env.mock_all_auths();
-        let (client, buyer, ..) = setup_escrow(&env, 1_000i128);
+        let (client, buyer, _seller, arbiter, _token) = setup_escrow(&env, 1_000i128);
 
         for action in actions {
             let state = client.get_state();
@@ -181,7 +185,7 @@ proptest! {
                 4 => {
                     // resolve_dispute (only from Disputed)
                     if state == Some(EscrowState::Disputed) {
-                        let _ = client.try_resolve_dispute(&true);
+                        let _ = client.try_resolve_dispute(&arbiter, &true);
                     }
                 }
                 5 => {

@@ -241,3 +241,132 @@ where
         Ok(())
     }
 }
+
+// ─── Cursor-based pagination ──────────────────────────────────────────────────
+
+/// A single page of results produced by [`paginate`].
+///
+/// `T` is the item type.  `C` is the cursor type (must be `Clone + PartialOrd`).
+///
+/// # Usage
+///
+/// ```ignore
+/// use soroban_common::Page;
+/// use soroban_sdk::{Env, Vec};
+///
+/// // A page containing two items, with a cursor to fetch the next page.
+/// let page: Page<u64, u64> = Page {
+///     items: soroban_sdk::Vec::new(&env),
+///     next_cursor: Some(10u64),
+/// };
+/// ```
+// Note: `#[contracttype]` does not support generic structs, so `Page` is a
+// plain Rust type. Contracts that want to expose a page over the contract
+// spec should define a concrete `#[contracttype]` wrapper for their `T`/`C`.
+#[derive(Clone)]
+pub struct Page<T, C>
+where
+    T: soroban_sdk::TryFromVal<Env, soroban_sdk::Val>
+        + soroban_sdk::IntoVal<Env, soroban_sdk::Val>
+        + Clone,
+    C: soroban_sdk::TryFromVal<Env, soroban_sdk::Val>
+        + soroban_sdk::IntoVal<Env, soroban_sdk::Val>
+        + Clone,
+{
+    /// The items in this page, in the order they were yielded by the iterator.
+    pub items: soroban_sdk::Vec<T>,
+    /// The cursor value to pass to the next call to continue scanning, or
+    /// `None` if the end of the range has been reached.
+    pub next_cursor: Option<C>,
+}
+
+/// Advance a cursor through an ordered sequence and collect at most `limit` items.
+///
+/// This is the shared implementation that every contract's `get_*` endpoint can
+/// delegate to instead of reimplementing the same loop.
+///
+/// # Parameters
+///
+/// - `env`        — the contract [`Env`].
+/// - `cursor`     — the first cursor value to visit.  Pass the value returned
+///                  in `Page::next_cursor` from the previous call to continue
+///                  paginating; pass the sentinel start value (e.g. `0u64`) to
+///                  start from the beginning.
+/// - `limit`      — maximum number of items to include in the returned page.
+///                  Clamped to `[1, max_page_size]`.
+/// - `max_page_size` — hard upper bound on items per page enforced by the
+///                  caller's contract.
+/// - `next_cursor_fn` — a closure `(C) -> Option<C>` that advances the cursor
+///                  by one step. Returning `None` signals the end of the range.
+/// - `fetch_fn`   — a closure `(C) -> Option<T>` that loads an item for the
+///                  given cursor, or `None` if no item exists at that position
+///                  (i.e. the slot is empty or the item should be skipped).
+///
+/// # Returns
+///
+/// A [`Page`] whose `items` contains at most `limit` accepted items and whose
+/// `next_cursor` contains the cursor that was *not yet visited* when the page
+/// filled up, or `None` once the iterator is exhausted.
+///
+/// # Examples
+///
+/// ```ignore
+/// use soroban_common::{Page, paginate};
+/// use soroban_sdk::Env;
+///
+/// let env = Env::default();
+/// // Enumerate u64 IDs 0..next_id, return active ones.
+/// let next_id: u64 = 20;
+/// let page: Page<u64, u64> = paginate(
+///     &env,
+///     /* cursor  */ 0u64,
+///     /* limit   */ 10,
+///     /* max     */ 50,
+///     /* advance */ |c| if c + 1 < next_id { Some(c + 1) } else { None },
+///     /* fetch   */ |c| if c % 2 == 0 { Some(c) } else { None },
+/// );
+/// ```
+pub fn paginate<T, C, AdvanceFn, FetchFn>(
+    env: &Env,
+    cursor: C,
+    limit: u32,
+    max_page_size: u32,
+    advance_fn: AdvanceFn,
+    fetch_fn: FetchFn,
+) -> Page<T, C>
+where
+    T: soroban_sdk::TryFromVal<Env, soroban_sdk::Val>
+        + soroban_sdk::IntoVal<Env, soroban_sdk::Val>
+        + Clone,
+    C: soroban_sdk::TryFromVal<Env, soroban_sdk::Val>
+        + soroban_sdk::IntoVal<Env, soroban_sdk::Val>
+        + Clone,
+    AdvanceFn: Fn(C) -> Option<C>,
+    FetchFn: Fn(C) -> Option<T>,
+{
+    let capped = limit.clamp(1, max_page_size);
+    let mut items = soroban_sdk::Vec::new(env);
+    let mut current: Option<C> = Some(cursor);
+    let mut next_cursor: Option<C> = None;
+
+    loop {
+        let c = match current {
+            Some(ref v) => v.clone(),
+            None => break,
+        };
+
+        // Page is full — record where to resume.
+        if items.len() >= capped {
+            next_cursor = Some(c);
+            break;
+        }
+
+        if let Some(item) = fetch_fn(c.clone()) {
+            items.push_back(item);
+        }
+
+        current = advance_fn(c);
+    }
+
+    Page { items, next_cursor }
+}

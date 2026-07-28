@@ -15,7 +15,11 @@ pub fn get_escrow_info(env: Env) -> Result<EscrowInfo, EscrowError> {
         amount: get_required(&env, &Amount)?,
         deadline: get_required(&env, &Deadline)?,
         state: get_required(&env, &State)?,
-        metadata_hash: env.storage().instance().get(&MetadataHash),
+        metadata_hash: env
+            .storage()
+            .instance()
+            .get(&MetadataHash)
+            .unwrap_or_else(|| soroban_sdk::BytesN::from_array(&env, &[0u8; 32])),
     })
 }
 

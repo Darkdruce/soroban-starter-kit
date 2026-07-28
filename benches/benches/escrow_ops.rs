@@ -71,6 +71,7 @@ fn bench_initialize(c: &mut Criterion) {
         b.iter(|| {
             let env = Env::default();
             env.mock_all_auths();
+            let admin = Address::generate(&env);
             let buyer = Address::generate(&env);
             let seller = Address::generate(&env);
             let arbiter = Address::generate(&env);
@@ -80,6 +81,7 @@ fn bench_initialize(c: &mut Criterion) {
             let escrow_addr = env.register_contract(None, EscrowContract);
             let escrow = EscrowContractClient::new(&env, &escrow_addr);
             escrow.initialize(
+                black_box(&admin),
                 black_box(&buyer),
                 black_box(&seller),
                 black_box(&arbiter),
@@ -100,6 +102,7 @@ fn bench_fund(c: &mut Criterion) {
             env.mock_all_auths();
 
             let token_admin = Address::generate(&env);
+            let admin = Address::generate(&env);
             let buyer = Address::generate(&env);
             let seller = Address::generate(&env);
             let arbiter = Address::generate(&env);
@@ -112,6 +115,7 @@ fn bench_fund(c: &mut Criterion) {
             let escrow_addr = env.register_contract(None, EscrowContract);
             let escrow = EscrowContractClient::new(&env, &escrow_addr);
             escrow.initialize(
+                &admin,
                 &buyer,
                 &seller,
                 &arbiter,
@@ -134,6 +138,7 @@ fn bench_approve_delivery(c: &mut Criterion) {
             env.mock_all_auths();
 
             let token_admin = Address::generate(&env);
+            let admin = Address::generate(&env);
             let buyer = Address::generate(&env);
             let seller = Address::generate(&env);
             let arbiter = Address::generate(&env);
@@ -146,6 +151,7 @@ fn bench_approve_delivery(c: &mut Criterion) {
             let escrow_addr = env.register_contract(None, EscrowContract);
             let escrow = EscrowContractClient::new(&env, &escrow_addr);
             escrow.initialize(
+                &admin,
                 &buyer,
                 &seller,
                 &arbiter,
@@ -170,6 +176,7 @@ fn bench_resolve_dispute(c: &mut Criterion) {
             env.mock_all_auths();
 
             let token_admin = Address::generate(&env);
+            let admin = Address::generate(&env);
             let buyer = Address::generate(&env);
             let seller = Address::generate(&env);
             let arbiter = Address::generate(&env);
@@ -182,6 +189,7 @@ fn bench_resolve_dispute(c: &mut Criterion) {
             let escrow_addr = env.register_contract(None, EscrowContract);
             let escrow = EscrowContractClient::new(&env, &escrow_addr);
             escrow.initialize(
+                &admin,
                 &buyer,
                 &seller,
                 &arbiter,
@@ -193,7 +201,7 @@ fn bench_resolve_dispute(c: &mut Criterion) {
             );
             escrow.fund();
 
-            escrow.resolve_dispute(black_box(&true));
+            escrow.resolve_dispute(black_box(&arbiter), black_box(&true));
         });
     });
 }
@@ -205,6 +213,7 @@ fn bench_full_lifecycle(c: &mut Criterion) {
             env.mock_all_auths();
 
             let token_admin = Address::generate(&env);
+            let admin = Address::generate(&env);
             let buyer = Address::generate(&env);
             let seller = Address::generate(&env);
             let arbiter = Address::generate(&env);
@@ -217,6 +226,7 @@ fn bench_full_lifecycle(c: &mut Criterion) {
             let escrow_addr = env.register_contract(None, EscrowContract);
             let escrow = EscrowContractClient::new(&env, &escrow_addr);
             escrow.initialize(
+                &admin,
                 &buyer,
                 &seller,
                 &arbiter,

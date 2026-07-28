@@ -34,6 +34,7 @@ fn test_full_escrow_lifecycle_with_real_token() {
     env.mock_all_auths();
 
     let token_admin = Address::generate(&env);
+    let escrow_admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -51,7 +52,17 @@ fn test_full_escrow_lifecycle_with_real_token() {
     assert_eq!(token.total_supply(), amount);
 
     let (escrow, escrow_addr) = deploy_escrow(&env);
-    escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline);
+    escrow.initialize(
+        &escrow_admin,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_addr,
+        &amount,
+        &deadline,
+        &0u32,
+        &None,
+    );
 
     escrow.fund();
     assert_eq!(token.balance(&buyer), 0);
