@@ -39,12 +39,13 @@ pub(crate) fn setup(
     let admin = Address::generate(env);
     let beneficiary = Address::generate(env);
     let amount = 1_000i128;
-    let token = make_token(env, &admin, amount);
+    let token = make_token(env, &admin, amount * 2); // Mint extra to allow for potential multiple schedules
     let cliff = env.ledger().sequence() + 10;
     let end = cliff + 100;
     let addr = env.register_contract(None, VestingContract);
     let client = VestingContractClient::new(env, &addr);
-    client.initialize(&admin, &beneficiary, &token, &cliff, &end, &amount);
+    client.initialize(&admin, &token);
+    client.create_schedule(&beneficiary, &cliff, &end, &amount);
     (client, admin, beneficiary, token, cliff, end, amount)
 }
 
@@ -54,8 +55,7 @@ pub(crate) fn setup(
 fn test_initialize_stores_info() {
     let env = setup_env();
     let (client, _admin, beneficiary, _token, cliff, end, amount) = setup(&env);
-    let info = client.get_info().unwrap();
-    assert_eq!(info.beneficiary, beneficiary);
+    let info = client.get_info(&beneficiary).unwrap();
     assert_eq!(info.amount, amount);
     assert_eq!(info.cliff_ledger, cliff);
     assert_eq!(info.end_ledger, end);

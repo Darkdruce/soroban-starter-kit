@@ -283,7 +283,7 @@ mod contract {
             }
 
             bump(&env);
-            events::revoked(&env, &beneficiary, returnable);
+            events::revoked(&env, &beneficiary, &admin, returnable);
             Ok(returnable)
         }
 
