@@ -69,31 +69,68 @@ mod contract {
 
     #[contractimpl]
     impl VestingContract {
-        /// Set up the vesting schedule and transfer `amount` tokens from the caller into the contract.
+        /// Initialize the vesting contract with admin and token. Must be called once before creating any schedules.
         ///
         /// # Errors
         /// - [`VestingError::AlreadyInitialized`] if called more than once.
-        /// - [`VestingError::InvalidAmount`] if `amount` <= 0.
-        /// - [`VestingError::InvalidSchedule`] if `cliff_ledger` >= `end_ledger` or
-        ///   `end_ledger` <= current ledger.
         pub fn initialize(
             env: Env,
             admin: Address,
-            beneficiary: Address,
             token: Address,
-            cliff_ledger: u32,
-            end_ledger: u32,
-            amount: i128,
         ) -> Result<(), VestingError> {
             if env.storage().instance().has(&DataKey::Admin) {
                 return Err(VestingError::AlreadyInitialized);
             }
+
+            admin.require_auth();
+
+            env.storage().instance().set(&DataKey::Admin, &admin);
+            env.storage().instance().set(&DataKey::Token, &token);
+            env.storage().instance().set(&DataKey::Version, &1u32);
+            env.storage().instance().set(&DataKey::AdminReleased, &0i128);
+
+            bump(&env);
+            Ok(())
+        }
+
+        /// Create a new vesting schedule for a beneficiary and transfer `amount` tokens from the caller into the contract.
+        ///
+        /// # Errors
+        /// - [`VestingError::NotInitialized`] if the contract has not been initialized.
+        /// - [`VestingError::InvalidAmount`] if `amount` <= 0.
+        /// - [`VestingError::InvalidSchedule`] if `cliff_ledger` >= `end_ledger` or
+        ///   `end_ledger` <= current ledger.
+        /// - [`VestingError::ScheduleAlreadyExists`] if a schedule already exists for this beneficiary.
+        pub fn create_schedule(
+            env: Env,
+            beneficiary: Address,
+            cliff_ledger: u32,
+            end_ledger: u32,
+            amount: i128,
+        ) -> Result<(), VestingError> {
+            let admin: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Admin)
+                .ok_or(VestingError::NotInitialized)?;
+            let token: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Token)
+                .ok_or(VestingError::NotInitialized)?;
+
+            admin.require_auth();
+
             if amount <= 0 {
                 return Err(VestingError::InvalidAmount);
             }
             validate_schedule(cliff_ledger, end_ledger, env.ledger().sequence())?;
 
-            admin.require_auth();
+            // Check if schedule already exists for this beneficiary
+            let schedule_key = DataKey::Schedule(beneficiary.clone());
+            if env.storage().persistent().has(&schedule_key) {
+                return Err(VestingError::ScheduleAlreadyExists);
+            }
 
             // Pull tokens from admin into the contract.
             token::Client::new(&env, &token).transfer(
@@ -102,23 +139,17 @@ mod contract {
                 &amount,
             );
 
-            env.storage().instance().set(&DataKey::Admin, &admin);
-            env.storage()
-                .instance()
-                .set(&DataKey::Beneficiary, &beneficiary);
-            env.storage().instance().set(&DataKey::Token, &token);
-            env.storage()
-                .instance()
-                .set(&DataKey::CliffLedger, &cliff_ledger);
-            env.storage()
-                .instance()
-                .set(&DataKey::EndLedger, &end_ledger);
-            env.storage().instance().set(&DataKey::Amount, &amount);
-            env.storage().instance().set(&DataKey::Claimed, &0i128);
-            env.storage().instance().set(&DataKey::Revoked, &false);
-            env.storage().instance().set(&DataKey::Version, &1u32);
-
+            // Store the new schedule
+            let schedule = BeneficiarySchedule {
+                amount,
+                cliff_ledger,
+                end_ledger,
+                claimed: 0,
+                revoked: false,
+            };
+            env.storage().persistent().set(&schedule_key, &schedule);
             bump(&env);
+
             events::initialized(&env, &beneficiary, amount, cliff_ledger, end_ledger);
             Ok(())
         }
