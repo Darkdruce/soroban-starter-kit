@@ -91,6 +91,9 @@ mod contract {
             amount_b: i128,
             expires_at: u32,
         ) -> Result<u32, SwapError> {
+            if !env.storage().instance().has(&DataKey::Initialized) {
+                return Err(SwapError::NotInitialized);
+            }
             if amount_a <= 0 || amount_b <= 0 {
                 return Err(SwapError::InvalidAmount);
             }
