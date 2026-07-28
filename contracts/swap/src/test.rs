@@ -201,10 +201,10 @@ fn test_multiple_swaps_increment_id() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, party_a, _, token_a, token_b) = setup(&env);
-    let deadline = env.ledger().sequence() + 100;
+    let expires_at = env.ledger().sequence() + 100;
 
-    let id0 = client.propose_swap(&party_a, &token_a, &100, &token_b, &50, &deadline);
-    let id1 = client.propose_swap(&party_a, &token_a, &200, &token_b, &100, &deadline);
+    let id0 = client.propose_swap(&party_a, &token_a, &100, &token_b, &50, &expires_at);
+    let id1 = client.propose_swap(&party_a, &token_a, &200, &token_b, &100, &expires_at);
     assert_eq!(id0, 0);
     assert_eq!(id1, 1);
     assert_eq!(client.swap_count(), 2);
