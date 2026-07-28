@@ -98,6 +98,7 @@ mod contract {
             subscriber: Address,
             amount: i128,
             interval_ledgers: u32,
+            trial_ledgers: Option<u32>,
         ) -> Result<(), SubscriptionError> {
             if !env.storage().instance().has(&DataKey::Provider) {
                 return Err(SubscriptionError::NotInitialized);
@@ -118,9 +119,12 @@ mod contract {
                 }
             }
 
+            let trial_ledgers = trial_ledgers.unwrap_or(0);
             let info = SubscriptionInfo {
                 amount,
                 interval_ledgers,
+                trial_ledgers,
+                trial_completed: trial_ledgers == 0,
                 last_charged_ledger: env.ledger().sequence(),
                 active: true,
             };
