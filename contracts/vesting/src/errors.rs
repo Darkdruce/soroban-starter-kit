@@ -10,8 +10,8 @@ pub enum VestingError {
     AlreadyInitialized = 1,
     /// An operation was attempted before the contract was initialized.
     NotInitialized = 2,
-    /// Caller is not the admin.
-    Unauthorized = 3,
+    /// Caller is not authorized to perform this action.
+    NotAuthorized = 3,
     /// Amount is zero or negative.
     InvalidAmount = 4,
     /// `cliff_ledger` >= `end_ledger`, or `end_ledger` <= current ledger.
@@ -62,4 +62,9 @@ VestingError::CliffAlreadyPassed = {}\n",
             include_str!("../snapshots/error_codes.snap")
         );
     }
+}
+    /// A schedule already exists for the specified beneficiary.
+    ScheduleAlreadyExists = 9,
+    /// No schedule was found for the specified beneficiary.
+    ScheduleNotFound = 10,
 }

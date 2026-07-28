@@ -14,6 +14,9 @@ pub enum SwapError {
     InvalidDeadline = 6,
     AlreadyCompleted = 7,
     AlreadyCancelled = 8,
+    AlreadyInitialized = 9,
+    NotInitialized = 10,
+    InvalidFee = 11,
 }
 
 impl_display_error!(
@@ -67,3 +70,7 @@ SwapError::AlreadyCancelled = {}\n",
         );
     }
 }
+    AlreadyInitialized => "contract already initialized",
+    NotInitialized    => "contract not initialized",
+    InvalidFee       => "invalid fee basis points",
+);

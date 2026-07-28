@@ -11,6 +11,7 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 soroban-token-template = { path = "../contracts/token" }
 soroban-escrow-template = { path = "../contracts/escrow" }
 soroban-swap-template = { path = "../contracts/swap" }
+soroban-airdrop-template = { path = "../contracts/airdrop" }
 libfuzzer-sys = "0.4"
 
 [[bin]]
@@ -34,6 +35,8 @@ doc = false
 [[bin]]
 name = "swap_state_machine"
 path = "fuzz_targets/swap_state_machine.rs"
+name = "airdrop_merkle_proof"
+path = "fuzz_targets/airdrop_merkle_proof.rs"
 test = false
 doc = false
 

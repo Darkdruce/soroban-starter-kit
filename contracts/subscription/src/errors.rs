@@ -71,3 +71,10 @@ SubscriptionError::InsufficientAllowance = {}\n",
         );
     }
 }
+    /// Plan with this ID already exists.
+    PlanAlreadyExists = 11,
+    /// Plan does not exist.
+    PlanNotFound = 12,
+    /// Plan is not active and cannot be subscribed to.
+    PlanInactive = 13,
+}
