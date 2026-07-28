@@ -99,6 +99,16 @@ env.events().publish((topic_1, topic_2, ...), data);
 
 ---
 
+## Timelock Contract
+
+| Event | Symbol | Topics | Data Type | When Fired |
+|-------|--------|--------|-----------|-----------|
+| Initialized | `initialized` | `(Symbol, Address, Address)` → event name, admin, beneficiary | `(u32, i128)` → release ledger, amount | `initialize()` called |
+| Released | `released` | `(Symbol, Address)` → event name, beneficiary | `i128` → amount released | `release()` called |
+| Cancelled | `cancelled` | `(Symbol, Address)` → event name, admin | `i128` → amount returned to admin | `cancel()` called |
+
+---
+
 ## Event Publishing Patterns
 
 ### Indexing Strategy

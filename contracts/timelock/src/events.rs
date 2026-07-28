@@ -22,7 +22,7 @@ pub fn released(env: &Env, beneficiary: &Address, amount: i128) {
         .publish((Symbol::new(env, "released"), beneficiary.clone()), amount);
 }
 
-pub fn cancelled(env: &Env, admin: &Address) {
+pub fn cancelled(env: &Env, admin: &Address, amount: i128) {
     env.events()
-        .publish((Symbol::new(env, "cancelled"), admin.clone()), ());
+        .publish((Symbol::new(env, "cancelled"), admin.clone()), amount);
 }
