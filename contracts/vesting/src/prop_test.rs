@@ -64,21 +64,22 @@ proptest! {
         let end = cliff + duration;
         let addr = env.register_contract(None, VestingContract);
         let client = VestingContractClient::new(&env, &addr);
-        client.initialize(&admin, &beneficiary, &token, &cliff, &end, &amount);
+        client.initialize(&admin, &token);
+        client.create_schedule(&beneficiary, &cliff, &end, &amount);
 
         let before_cliff = cliff - 1;
         env.ledger().with_mut(|l| l.sequence_number = before_cliff);
-        prop_assert_eq!(client.claimable(), 0);
+        prop_assert_eq!(client.claimable(&beneficiary), 0);
 
         let partial_checkpoint = cliff + duration * checkpoint_pct / 100;
         env.ledger().with_mut(|l| l.sequence_number = partial_checkpoint);
         prop_assert_eq!(
-            client.claimable(),
+            client.claimable(&beneficiary),
             vested_amount(amount, cliff, end, partial_checkpoint)
         );
 
         env.ledger().with_mut(|l| l.sequence_number = end);
-        prop_assert_eq!(client.claimable(), amount);
+        prop_assert_eq!(client.claimable(&beneficiary), amount);
     }
 
     #[test]
