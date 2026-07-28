@@ -3,25 +3,31 @@
 
 use soroban_sdk::{Address, contracttype};
 
+/// Stores all vesting schedule details for a single beneficiary.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct BeneficiarySchedule {
+    /// Total tokens to vest for this beneficiary.
+    pub amount: i128,
+    /// Ledger sequence at which vesting begins (cliff).
+    pub cliff_ledger: u32,
+    /// Ledger sequence at which all tokens are fully vested.
+    pub end_ledger: u32,
+    /// Tokens already claimed by the beneficiary.
+    pub claimed: i128,
+    /// Whether the schedule has been revoked by admin.
+    pub revoked: bool,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
-    /// Beneficiary address.
-    Beneficiary,
-    /// Token contract address.
-    Token,
-    /// Ledger sequence at which vesting begins (cliff).
-    CliffLedger,
-    /// Ledger sequence at which all tokens are fully vested.
-    EndLedger,
-    /// Total tokens to vest.
-    Amount,
-    /// Tokens already claimed by the beneficiary.
-    Claimed,
-    /// Whether the schedule has been revoked by admin.
-    Revoked,
     /// Admin address.
     Admin,
+    /// Token contract address.
+    Token,
+    /// Vesting schedule for a specific beneficiary.
+    Schedule(Address),
     /// Total tokens released early by admin (audit log).
     AdminReleased,
     /// Contract version number (`u32`).
@@ -32,7 +38,6 @@ pub enum DataKey {
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub struct VestingInfo {
-    pub beneficiary: Address,
     pub token: Address,
     pub cliff_ledger: u32,
     pub end_ledger: u32,
