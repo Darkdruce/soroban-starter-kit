@@ -8,12 +8,15 @@
 #[cfg(test)]
 extern crate std;
 
-use soroban_sdk::{Address, Env, String, contract, contractimpl, token, token::TokenInterface};
+use soroban_sdk::{
+    Address, BytesN, Env, String, contract, contractimpl, token, token::TokenInterface,
+};
 
 mod admin;
 mod allowance;
 mod errors;
 mod events;
+mod permit;
 mod storage;
 mod token_interface;
 
@@ -370,6 +373,58 @@ mod contract {
                 .persistent()
                 .get(&DataKey::Snapshot(account, ledger))
         }
+
+        /// Register (or rotate) the ed25519 public key `owner` will sign permits with.
+        /// Owner-authenticated.
+        pub fn set_permit_signer(env: Env, owner: Address, public_key: BytesN<32>) {
+            permit::set_permit_signer(env, owner, public_key)
+        }
+
+        /// Return the ed25519 public key registered for `owner`'s permits, if any.
+        #[must_use]
+        pub fn permit_signer(env: Env, owner: Address) -> Option<BytesN<32>> {
+            permit::permit_signer(env, owner)
+        }
+
+        /// Return the nonce `owner` must use in their next `approve_with_signature` call.
+        #[must_use]
+        pub fn permit_nonce(env: Env, owner: Address) -> u32 {
+            permit::permit_nonce(env, owner)
+        }
+
+        /// Grant `spender` an allowance over `owner`'s tokens using a pre-signed,
+        /// owner-authorized message instead of the owner submitting the transaction
+        /// themselves. Analogous to ERC-2612 `permit`.
+        ///
+        /// The signed message covers `(owner, spender, amount, nonce, expiry_ledger)`;
+        /// see [`permit`] for the exact wire format and replay-protection model.
+        ///
+        /// # Errors
+        /// - [`TokenError::PermitExpired`] if the current ledger is past `expiry_ledger`.
+        /// - [`TokenError::InvalidNonce`] if `nonce` doesn't match `permit_nonce(owner)`.
+        /// - [`TokenError::PermitSignerNotSet`] if `owner` never called `set_permit_signer`.
+        ///
+        /// # Panics
+        /// If `signature` is not a valid ed25519 signature over the expected payload.
+        pub fn approve_with_signature(
+            env: Env,
+            owner: Address,
+            spender: Address,
+            amount: i128,
+            nonce: u32,
+            expiry_ledger: u32,
+            signature: BytesN<64>,
+        ) -> Result<(), TokenError> {
+            permit::approve_with_signature(
+                env,
+                owner,
+                spender,
+                amount,
+                nonce,
+                expiry_ledger,
+                signature,
+            )
+        }
     }
 
     /// Pause / unpause — only compiled when the `pausable` feature is enabled.
@@ -495,17 +550,12 @@ mod contract {
         /// Pass `None` to disable the hook. When set, every transfer will attempt
         /// to call `on_transfer(from, to, amount)` on the hook contract. A failure
         /// in the hook does NOT revert the transfer.
-        pub fn set_transfer_hook(
-            env: Env,
-            hook: Option<Address>,
-        ) -> Result<(), TokenError> {
+        pub fn set_transfer_hook(env: Env, hook: Option<Address>) -> Result<(), TokenError> {
             let admin = require_admin(&env)?;
             admin.require_auth();
             match hook {
                 Some(ref addr) => {
-                    env.storage()
-                        .instance()
-                        .set(&DataKey::TransferHook, addr);
+                    env.storage().instance().set(&DataKey::TransferHook, addr);
                 }
                 None => {
                     env.storage().instance().remove(&DataKey::TransferHook);
@@ -575,9 +625,15 @@ mod contract {
                 {
                     let args = soroban_sdk::vec![
                         env,
-                        soroban_sdk::IntoVal::<soroban_sdk::Env, soroban_sdk::Val>::into_val(&from, env),
-                        soroban_sdk::IntoVal::<soroban_sdk::Env, soroban_sdk::Val>::into_val(&to, env),
-                        soroban_sdk::IntoVal::<soroban_sdk::Env, soroban_sdk::Val>::into_val(&amount, env),
+                        soroban_sdk::IntoVal::<soroban_sdk::Env, soroban_sdk::Val>::into_val(
+                            &from, env
+                        ),
+                        soroban_sdk::IntoVal::<soroban_sdk::Env, soroban_sdk::Val>::into_val(
+                            &to, env
+                        ),
+                        soroban_sdk::IntoVal::<soroban_sdk::Env, soroban_sdk::Val>::into_val(
+                            &amount, env
+                        ),
                     ];
                     // Ignore the return value and any error from the hook.
                     let _ = env.try_invoke_contract::<soroban_sdk::Val, soroban_sdk::Error>(

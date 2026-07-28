@@ -23,6 +23,8 @@ soroban-common = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 proptest = { workspace = true }
+ed25519-dalek = "2"
+rand = "0.8"
 
 
 [[bin]]

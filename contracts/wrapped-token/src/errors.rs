@@ -18,4 +18,6 @@ pub enum WrappedTokenError {
     InsufficientBalance = 5,
     /// Insufficient XLM in reserve to unwrap.
     InsufficientReserve = 6,
+    /// Wrapping this amount would exceed the per-address cap set at `initialize`.
+    MaxWrapExceeded = 7,
 }

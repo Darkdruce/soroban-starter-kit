@@ -15,4 +15,18 @@ pub fn unwrapped(env: &Env, user: &Address, amount: i128, total: i128) {
     env.events().publish(topics, (user.clone(), amount, total));
 }
 
+/// Emitted when the contract is paused. Only used when the `pausable` feature is enabled.
+#[cfg(feature = "pausable")]
+pub fn paused(env: &Env, admin: &Address) {
+    env.events()
+        .publish((Symbol::new(env, "paused"), admin.clone()), ());
+}
+
+/// Emitted when the contract is unpaused. Only used when the `pausable` feature is enabled.
+#[cfg(feature = "pausable")]
+pub fn unpaused(env: &Env, admin: &Address) {
+    env.events()
+        .publish((Symbol::new(env, "unpaused"), admin.clone()), ());
+}
+
 use soroban_sdk::Symbol;
