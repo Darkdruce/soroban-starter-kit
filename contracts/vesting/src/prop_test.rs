@@ -15,12 +15,13 @@ fn prop_setup(
 ) -> (VestingContractClient, Address, Address, Address, u32, u32) {
     let admin = Address::generate(env);
     let beneficiary = Address::generate(env);
-    let token = make_token(env, &admin, amount);
+    let token = make_token(env, &admin, amount * 2);
     let cliff = env.ledger().sequence() + 10;
     let end = cliff + 100;
     let addr = env.register_contract(None, VestingContract);
     let client = VestingContractClient::new(env, &addr);
-    client.initialize(&admin, &beneficiary, &token, &cliff, &end, &amount);
+    client.initialize(&admin, &token);
+    client.create_schedule(&beneficiary, &cliff, &end, &amount);
     (client, admin, beneficiary, token, cliff, end)
 }
 
