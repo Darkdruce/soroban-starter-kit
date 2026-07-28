@@ -99,27 +99,27 @@ fn test_initialize_invalid_schedule_fails() {
 #[test]
 fn test_claim_before_cliff_fails() {
     let env = setup_env();
-    let (client, ..) = setup(&env);
-    let result = client.try_claim();
+    let (client, _admin, beneficiary, ..) = setup(&env);
+    let result = client.try_claim(&beneficiary);
     assert_eq!(result, Err(Ok(VestingError::NothingToClaim)));
 }
 
 #[test]
 fn test_claim_at_cliff_returns_zero() {
     let env = setup_env();
-    let (client, _admin, _beneficiary, _token, cliff, _end, _amount) = setup(&env);
+    let (client, _admin, beneficiary, _token, cliff, _end, _amount) = setup(&env);
     env.ledger().with_mut(|l| l.sequence_number = cliff);
-    let result = client.try_claim();
+    let result = client.try_claim(&beneficiary);
     assert_eq!(result, Err(Ok(VestingError::NothingToClaim)));
 }
 
 #[test]
 fn test_claim_halfway_through_vesting() {
     let env = setup_env();
-    let (client, _admin, _beneficiary, _token, cliff, end, amount) = setup(&env);
+    let (client, _admin, beneficiary, _token, cliff, end, amount) = setup(&env);
     let mid = cliff + (end - cliff) / 2;
     env.ledger().with_mut(|l| l.sequence_number = mid);
-    let claimed = client.claim();
+    let claimed = client.claim(&beneficiary);
     assert!(claimed > 0 && claimed <= amount / 2 + 1);
 }
 
@@ -128,7 +128,7 @@ fn test_claim_after_end_returns_full_amount() {
     let env = setup_env();
     let (client, _admin, beneficiary, token, _cliff, end, amount) = setup(&env);
     env.ledger().with_mut(|l| l.sequence_number = end + 1);
-    let claimed = client.claim();
+    let claimed = client.claim(&beneficiary);
     assert_eq!(claimed, amount);
     let token_client = soroban_sdk::token::Client::new(&env, &token);
     assert_eq!(token_client.balance(&beneficiary), amount);
@@ -137,10 +137,10 @@ fn test_claim_after_end_returns_full_amount() {
 #[test]
 fn test_double_claim_second_returns_nothing() {
     let env = setup_env();
-    let (client, _admin, _beneficiary, _token, _cliff, end, _amount) = setup(&env);
+    let (client, _admin, beneficiary, _token, _cliff, end, _amount) = setup(&env);
     env.ledger().with_mut(|l| l.sequence_number = end + 1);
-    client.claim();
-    let result = client.try_claim();
+    client.claim(&beneficiary);
+    let result = client.try_claim(&beneficiary);
     assert_eq!(result, Err(Ok(VestingError::NothingToClaim)));
 }
 
