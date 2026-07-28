@@ -85,8 +85,8 @@ proptest! {
     #[test]
     fn prop_initialize_stores_amount(amount in 1i128..=1_000_000i128) {
         let env = setup_env();
-        let (client, ..) = prop_setup(&env, amount);
-        let info = client.get_info().unwrap();
+        let (client, _admin, beneficiary, ..) = prop_setup(&env, amount);
+        let info = client.get_info(&beneficiary).unwrap();
         assert_eq!(info.amount, amount);
         assert_eq!(info.claimed, 0);
         assert!(!info.revoked);
@@ -97,7 +97,7 @@ proptest! {
         let env = setup_env();
         let (client, _admin, beneficiary, token, _cliff, end) = prop_setup(&env, amount);
         env.ledger().with_mut(|l| l.sequence_number = end + 1);
-        let claimed = client.claim();
+        let claimed = client.claim(&beneficiary);
         assert_eq!(claimed, amount);
         let token_client = soroban_sdk::token::Client::new(&env, &token);
         assert_eq!(token_client.balance(&beneficiary), amount);
