@@ -279,3 +279,90 @@ fn test_get_subscription_returns_none_for_unknown() {
     let stranger = Address::generate(&env);
     assert_eq!(client.get_subscription(&stranger), None);
 }
+
+#[test]
+fn test_charge_during_trial_fails() {
+    let env = setup_env();
+    let (client, addr, provider, token) = setup(&env);
+    let subscriber = Address::generate(&env);
+
+    // Subscribe with a 100 ledger trial period, 50 ledger billing interval
+    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, 100, 50, 500, Some(100));
+
+    // Advance only 50 ledgers - still within trial period (need 100 to complete trial)
+    env.ledger().with_mut(|l| l.sequence_number += 50);
+
+    let result = client.try_charge(&subscriber);
+    assert_eq!(result, Err(Ok(SubscriptionError::IntervalNotElapsed)));
+    let _ = provider;
+}
+
+#[test]
+fn test_charge_after_trial_marks_trial_completed_no_charge() {
+    let env = setup_env();
+    let (client, addr, provider, token) = setup(&env);
+    let subscriber = Address::generate(&env);
+
+    // Subscribe with 100 ledger trial period
+    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, 100, 50, 500, Some(100));
+
+    // Advance 100 ledgers to complete the trial
+    env.ledger().with_mut(|l| l.sequence_number += 100);
+
+    // First charge after trial completes - should succeed but not charge anything yet
+    client.charge(&subscriber);
+
+    // Verify trial is marked as completed
+    let info = client.get_subscription(&subscriber).unwrap();
+    assert!(info.trial_completed);
+    // Verify no tokens were transferred yet
+    let token_client = soroban_sdk::token::Client::new(&env, &token);
+    assert_eq!(token_client.balance(&provider), 0);
+    assert_eq!(token_client.balance(&subscriber), 500);
+}
+
+#[test]
+fn test_charge_after_trial_and_first_interval_charges() {
+    let env = setup_env();
+    let (client, addr, provider, token) = setup(&env);
+    let subscriber = Address::generate(&env);
+
+    // Subscribe with 100 ledger trial period, 50 ledger billing interval
+    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, 100, 50, 500, Some(100));
+
+    // Complete the trial period
+    env.ledger().with_mut(|l| l.sequence_number += 100);
+    client.charge(&subscriber); // Trial completed, no charge
+
+    // Now advance another 50 ledgers to complete the first billing interval after trial
+    env.ledger().with_mut(|l| l.sequence_number += 50);
+    client.charge(&subscriber); // First actual charge
+
+    // Verify tokens were transferred
+    let token_client = soroban_sdk::token::Client::new(&env, &token);
+    assert_eq!(token_client.balance(&provider), 100);
+    assert_eq!(token_client.balance(&subscriber), 400);
+}
+
+#[test]
+fn test_subscribe_with_zero_trial_ledgers_skips_trial() {
+    let env = setup_env();
+    let (client, addr, provider, token) = setup(&env);
+    let subscriber = Address::generate(&env);
+
+    // Subscribe with explicit 0 trial ledgers (should behave like None)
+    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, 100, 50, 500, Some(0));
+
+    // Verify trial is already marked as completed
+    let info = client.get_subscription(&subscriber).unwrap();
+    assert!(info.trial_completed);
+
+    // Advance 50 ledgers and charge normally
+    env.ledger().with_mut(|l| l.sequence_number += 50);
+    client.charge(&subscriber);
+
+    // Verify tokens were transferred
+    let token_client = soroban_sdk::token::Client::new(&env, &token);
+    assert_eq!(token_client.balance(&provider), 100);
+    assert_eq!(token_client.balance(&subscriber), 400);
+}
