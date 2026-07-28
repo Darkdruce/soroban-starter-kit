@@ -176,9 +176,9 @@ fn test_accept_completed_swap_fails() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, party_a, party_b, token_a, token_b) = setup(&env);
-    let deadline = env.ledger().sequence() + 100;
+    let expires_at = env.ledger().sequence() + 100;
 
-    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &deadline);
+    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &expires_at);
     client.accept_swap(&swap_id, &party_b);
     client.accept_swap(&swap_id, &party_b);
 }
@@ -189,11 +189,51 @@ fn test_cancel_already_cancelled_fails() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, party_a, _, token_a, token_b) = setup(&env);
-    let deadline = env.ledger().sequence() + 100;
+    let expires_at = env.ledger().sequence() + 100;
 
-    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &deadline);
+    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &expires_at);
     client.cancel_swap(&swap_id);
     client.cancel_swap(&swap_id);
+}
+
+#[test]
+fn test_fee_deducted_when_swap_accepted() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, party_a, party_b, token_a, token_b) = setup(&env);
+    
+    // Create treasury address
+    let treasury = Address::generate(&env);
+    
+    // Initialize contract with 0.5% fee (50 basis points)
+    client.initialize(&party_a, &treasury, &50);
+    
+    // Get token clients
+    let token_b_client = token::StellarAssetClient::new(&env, &token_b);
+    let contract_address = client.address();
+    
+    // Get initial balances
+    let initial_party_b_balance = token_b_client.balance(&party_b);
+    let initial_party_a_balance = token_b_client.balance(&party_a);
+    let initial_treasury_balance = token_b_client.balance(&treasury);
+    
+    // Propose swap
+    let expires_at = env.ledger().sequence() + 100;
+    let swap_amount_b = 500;
+    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &swap_amount_b, &expires_at);
+    
+    // Accept swap
+    client.accept_swap(&swap_id, &party_b);
+    
+    // Calculate expected fee (0.5% of 500 = 2.5 → 2 tokens due to integer division)
+    let fee = (swap_amount_b * 50) / 10_000; // 2
+    let party_a_receives = swap_amount_b - fee; // 498
+    
+    // Verify balances
+    assert_eq!(token_b_client.balance(&party_b), initial_party_b_balance - swap_amount_b);
+    assert_eq!(token_b_client.balance(&party_a), initial_party_a_balance + party_a_receives);
+    assert_eq!(token_b_client.balance(&treasury), initial_treasury_balance + fee);
+    assert_eq!(token_b_client.balance(&contract_address), 0); // Contract should have 0 left
 }
 
 #[test]
