@@ -386,91 +386,32 @@ mod contract {
             Ok(releasable)
         }
 
-        /// Returns a snapshot of the vesting schedule, or `None` if uninitialized.
-        pub fn get_info(env: Env) -> Option<VestingInfo> {
+        /// Returns a snapshot of the vesting schedule for a beneficiary, or `None` if not found.
+        pub fn get_info(env: Env, beneficiary: Address) -> Option<BeneficiarySchedule> {
             if !env.storage().instance().has(&DataKey::Admin) {
                 return None;
             }
             bump(&env);
-            Some(VestingInfo {
-                beneficiary: env
-                    .storage()
-                    .instance()
-                    .get(&DataKey::Beneficiary)
-                    .ok_or(VestingError::NotInitialized)
-                    .ok()?,
-                token: env
-                    .storage()
-                    .instance()
-                    .get(&DataKey::Token)
-                    .ok_or(VestingError::NotInitialized)
-                    .ok()?,
-                cliff_ledger: env
-                    .storage()
-                    .instance()
-                    .get(&DataKey::CliffLedger)
-                    .ok_or(VestingError::NotInitialized)
-                    .ok()?,
-                end_ledger: env
-                    .storage()
-                    .instance()
-                    .get(&DataKey::EndLedger)
-                    .ok_or(VestingError::NotInitialized)
-                    .ok()?,
-                amount: env
-                    .storage()
-                    .instance()
-                    .get(&DataKey::Amount)
-                    .ok_or(VestingError::NotInitialized)
-                    .ok()?,
-                claimed: env
-                    .storage()
-                    .instance()
-                    .get(&DataKey::Claimed)
-                    .ok_or(VestingError::NotInitialized)
-                    .ok()?,
-                revoked: env
-                    .storage()
-                    .instance()
-                    .get(&DataKey::Revoked)
-                    .unwrap_or(false),
-            })
+            let schedule_key = DataKey::Schedule(beneficiary);
+            env.storage().persistent().get(&schedule_key)
         }
 
-        /// Returns the amount claimable right now (vested minus already claimed).
-        pub fn claimable(env: Env) -> i128 {
+        /// Returns the amount claimable right now (vested minus already claimed) for a beneficiary.
+        pub fn claimable(env: Env, beneficiary: Address) -> i128 {
             if !env.storage().instance().has(&DataKey::Admin) {
                 return 0;
             }
-            let amount: i128 = env
-                .storage()
-                .instance()
-                .get(&DataKey::Amount)
-                .ok_or(VestingError::NotInitialized)
-                .unwrap_or(0);
-            let cliff_ledger: u32 = env
-                .storage()
-                .instance()
-                .get(&DataKey::CliffLedger)
-                .ok_or(VestingError::NotInitialized)
-                .unwrap_or(0);
-            let end_ledger: u32 = env
-                .storage()
-                .instance()
-                .get(&DataKey::EndLedger)
-                .ok_or(VestingError::NotInitialized)
-                .unwrap_or(0);
-            let claimed: i128 = env
-                .storage()
-                .instance()
-                .get(&DataKey::Claimed)
-                .ok_or(VestingError::NotInitialized)
-                .unwrap_or(0);
-            let revoked: bool = env
-                .storage()
-                .instance()
-                .get(&DataKey::Revoked)
-                .unwrap_or(false);
+            let schedule_key = DataKey::Schedule(beneficiary);
+            let schedule: BeneficiarySchedule = match env.storage().persistent().get(&schedule_key) {
+                Some(s) => s,
+                None => return 0,
+            };
+            
+            let amount = schedule.amount;
+            let cliff_ledger = schedule.cliff_ledger;
+            let end_ledger = schedule.end_ledger;
+            let claimed = schedule.claimed;
+            let revoked = schedule.revoked;
             // After revoke, amount is already capped to what was vested at revoke time.
             let vested = if revoked {
                 amount
