@@ -294,6 +294,33 @@ fn test_admin_can_update_configuration() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #9)")]
+fn test_cannot_initialize_twice() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, party_a, _, _, _) = setup(&env);
+    let treasury = Address::generate(&env);
+    
+    // Initialize once
+    client.initialize(&party_a, &treasury, &50);
+    
+    // Try to initialize again - should fail
+    client.initialize(&party_a, &treasury, &50);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #11)")]
+fn test_cannot_set_invalid_fee() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, party_a, _, _, _) = setup(&env);
+    let treasury = Address::generate(&env);
+    
+    // Try to initialize with 101% fee (10100 bps > 10000) - should fail
+    client.initialize(&party_a, &treasury, &10100);
+}
+
+#[test]
 fn test_multiple_swaps_increment_id() {
     let env = Env::default();
     env.mock_all_auths();
