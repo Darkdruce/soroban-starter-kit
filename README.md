@@ -369,6 +369,8 @@ A special thanks to all our [contributors](CONTRIBUTORS.md) who have helped make
 - [System Architecture](docs/architecture.md) — High-level design, contract relationships, storage tiers, event model, and admin framework
 - [Contract API Reference](docs/contract-api.md) — Full public API for all contracts (parameters, return types, errors)
 - [Upgrade Guide](docs/upgrade-guide.md) — Step-by-step on-chain WASM upgrade with timelock and key rotation
+- [Upgrade Compatibility Matrix](docs/upgrade-compatibility-matrix.md) — Storage layouts and storage-breaking change categories per contract
+- [Access-Control Reference](docs/access-control-reference.md) — Entry point -> role `require_auth` table for every contract
 - [Security Best Practices](docs/security.md)
 - [Integration Guide](docs/integration-guide.md)
 - [Deployment Guide](docs/deployment-guide.md)

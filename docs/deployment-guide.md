@@ -214,6 +214,10 @@ Deploy all contracts:
 ./scripts/deploy.sh testnet
 ```
 
+Or use `./scripts/deploy-all.sh testnet` for the same full-workspace deploy with a
+`contract -> contract ID` summary table printed at the end, and a fail-fast stop on
+the first contract that errors.
+
 Deploy a single contract:
 
 ```bash

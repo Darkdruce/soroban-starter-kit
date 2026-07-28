@@ -12,6 +12,11 @@ On-chain upgrades follow a timelock-protected flow:
 
 This ensures security by preventing instant unauthorized upgrades.
 
+Before writing the new WASM, check the
+[Upgrade Compatibility Matrix](upgrade-compatibility-matrix.md) for what
+storage your contract shares with other contracts and which changes would
+break existing on-chain data.
+
 ## Prerequisites
 
 - Stellar CLI installed and configured
