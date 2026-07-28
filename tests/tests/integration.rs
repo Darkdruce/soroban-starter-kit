@@ -376,3 +376,140 @@ fn test_token_allowance_expiry_in_integration() {
     assert_eq!(token.balance(&owner), amount);
     assert_eq!(token.balance(&receiver), 0);
 }
+
+// ── #857: marketplace integration test ───────────────────────────────────────
+
+use soroban_marketplace_template::{MarketplaceContract, MarketplaceContractClient};
+use soroban_nft_template::{NftContract, NftContractClient};
+
+fn deploy_nft<'a>(env: &'a Env, admin: &Address) -> (NftContractClient<'a>, Address) {
+    let addr = env.register_contract(None, NftContract);
+    let client = NftContractClient::new(env, &addr);
+    client.initialize(
+        admin,
+        &String::from_str(env, "Test NFT"),
+        &String::from_str(env, "TNFT"),
+        &10u32,
+    );
+    (client, addr)
+}
+
+fn deploy_marketplace<'a>(env: &'a Env) -> (MarketplaceContractClient<'a>, Address) {
+    let addr = env.register_contract(None, MarketplaceContract);
+    let client = MarketplaceContractClient::new(env, &addr);
+    (client, addr)
+}
+
+/// Full lifecycle: list → buy (with royalty split) → verify NFT ownership transfer
+/// Closes #857 – integration test harness for marketplace (post build-fix)
+#[test]
+fn test_marketplace_full_lifecycle_with_royalty() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let nft_admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let marketplace_admin = Address::generate(&env);
+    let royalty_recipient = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    // Deploy NFT contract and mint a token to seller
+    let (nft, nft_addr) = deploy_nft(&env, &nft_admin);
+    let token_id = 1u32;
+    nft.mint(
+        &seller,
+        &token_id,
+        &String::from_str(&env, "https://example.com/token/1"),
+    );
+    assert_eq!(nft.owner_of(token_id).unwrap(), seller);
+
+    // Deploy payment token and mint to buyer
+    let (token, token_addr) = deploy_token(&env, &token_admin);
+    let price = 1_000i128;
+    let buyer_initial_balance = 5_000i128;
+    token.mint(&buyer, &buyer_initial_balance);
+    assert_eq!(token.balance(&buyer), buyer_initial_balance);
+
+    // Deploy and initialize marketplace with 2.5% royalty
+    let (marketplace, marketplace_addr) = deploy_marketplace(&env);
+    let royalty_bps = 250u32; // 2.5%
+    marketplace.initialize(
+        &marketplace_admin,
+        &token_addr,
+        &royalty_bps,
+        &royalty_recipient,
+    );
+
+    // Seller approves marketplace to transfer the NFT
+    nft.approve(&token_id, &marketplace_addr);
+
+    // Seller lists the NFT
+    let listing_id = marketplace.list(&seller, &nft_addr, &token_id, &price);
+    let listing = marketplace.get_listing(listing_id).unwrap();
+    assert_eq!(listing.seller, seller);
+    assert_eq!(listing.price, price);
+    assert_eq!(listing.active, true);
+
+    // Buyer purchases the NFT
+    marketplace.buy(&buyer, &listing_id);
+
+    // Verify NFT ownership transferred to buyer
+    assert_eq!(nft.owner_of(token_id).unwrap(), buyer);
+
+    // Verify payment distribution with royalty split
+    let royalty_amount = (price * i128::from(royalty_bps)) / 10_000i128;
+    let seller_amount = price - royalty_amount;
+    assert_eq!(token.balance(&seller), seller_amount);
+    assert_eq!(token.balance(&royalty_recipient), royalty_amount);
+    assert_eq!(token.balance(&buyer), buyer_initial_balance - price);
+
+    // Verify listing is now inactive
+    let listing_after = marketplace.get_listing(listing_id).unwrap();
+    assert_eq!(listing_after.active, false);
+}
+
+/// List → cancel → verify NFT remains with seller
+/// Closes #857 – integration test harness for marketplace (post build-fix)
+#[test]
+fn test_marketplace_cancel_listing() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let nft_admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let marketplace_admin = Address::generate(&env);
+    let royalty_recipient = Address::generate(&env);
+    let seller = Address::generate(&env);
+
+    // Deploy NFT contract and mint a token to seller
+    let (nft, nft_addr) = deploy_nft(&env, &nft_admin);
+    let token_id = 1u32;
+    nft.mint(
+        &seller,
+        &token_id,
+        &String::from_str(&env, "https://example.com/token/1"),
+    );
+    assert_eq!(nft.owner_of(token_id).unwrap(), seller);
+
+    // Deploy payment token
+    let (_, token_addr) = deploy_token(&env, &token_admin);
+
+    // Deploy and initialize marketplace
+    let (marketplace, marketplace_addr) = deploy_marketplace(&env);
+    marketplace.initialize(&marketplace_admin, &token_addr, &250u32, &royalty_recipient);
+
+    // Seller approves and lists the NFT
+    nft.approve(&token_id, &marketplace_addr);
+    let listing_id = marketplace.list(&seller, &nft_addr, &token_id, &1_000i128);
+
+    // Seller cancels the listing
+    marketplace.cancel(&seller, &listing_id);
+
+    // Verify NFT still belongs to seller
+    assert_eq!(nft.owner_of(token_id).unwrap(), seller);
+
+    // Verify listing is now inactive
+    let listing = marketplace.get_listing(listing_id).unwrap();
+    assert_eq!(listing.active, false);
+}

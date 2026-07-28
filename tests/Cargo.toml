@@ -10,6 +10,8 @@ publish = false
 soroban-sdk = { workspace = true, features = ["testutils"] }
 soroban-escrow-template = { path = "../contracts/escrow" }
 soroban-token-template = { path = "../contracts/token" }
+soroban-marketplace-template = { path = "../contracts/marketplace" }
+soroban-nft-template = { path = "../contracts/nft" }
 
 [[test]]
 name = "integration"
