@@ -50,7 +50,7 @@ mod contract {
         /// # Errors
         ///
         /// Returns [`SwapError::InvalidAmount`] if either amount is <= 0.
-        /// Returns [`SwapError::InvalidDeadline`] if `deadline` <= current ledger.
+        /// Returns [`SwapError::InvalidDeadline`] if `expires_at` <= current ledger.
         pub fn propose_swap(
             env: Env,
             party_a: Address,
@@ -188,9 +188,9 @@ mod contract {
                 SwapState::Open => {}
             }
 
-            let deadline_passed = env.ledger().sequence() > swap.deadline;
-            if !deadline_passed {
-                // Before deadline: only party A may cancel.
+            let expires_at_passed = env.ledger().sequence() > swap.expires_at;
+            if !expires_at_passed {
+                // Before expiry: only party A may cancel.
                 swap.party_a.require_auth();
             }
             // After deadline: no auth required; anyone can trigger to return party A's funds.
