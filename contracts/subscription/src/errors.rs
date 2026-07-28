@@ -26,4 +26,10 @@ pub enum SubscriptionError {
     IntervalNotElapsed = 9,
     /// Subscriber has not granted sufficient token allowance to this contract.
     InsufficientAllowance = 10,
+    /// Plan with this ID already exists.
+    PlanAlreadyExists = 11,
+    /// Plan does not exist.
+    PlanNotFound = 12,
+    /// Plan is not active and cannot be subscribed to.
+    PlanInactive = 13,
 }

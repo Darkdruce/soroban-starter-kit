@@ -80,7 +80,91 @@ mod contract {
             Ok(())
         }
 
-        /// Register a recurring payment subscription.
+        /// Register a new subscription plan. Only the provider (admin) can call this.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SubscriptionError::NotInitialized`] if the contract is not initialized.
+        /// Returns [`SubscriptionError::NotAuthorized`] if the caller is not the provider.
+        /// Returns [`SubscriptionError::InvalidAmount`] if `amount` <= 0.
+        /// Returns [`SubscriptionError::InvalidInterval`] if `interval_ledgers` == 0.
+        /// Returns [`SubscriptionError::PlanAlreadyExists`] if a plan with this ID already exists.
+        pub fn register_plan(
+            env: Env,
+            plan_id: Symbol,
+            amount: i128,
+            interval_ledgers: u32,
+        ) -> Result<(), SubscriptionError> {
+            let provider: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Provider)
+                .ok_or(SubscriptionError::NotInitialized)?;
+            
+            provider.require_auth();
+
+            if amount <= 0 {
+                return Err(SubscriptionError::InvalidAmount);
+            }
+            if interval_ledgers == 0 {
+                return Err(SubscriptionError::InvalidInterval);
+            }
+
+            let key = DataKey::Plan(plan_id.clone());
+            if env.storage().persistent().has(&key) {
+                return Err(SubscriptionError::PlanAlreadyExists);
+            }
+
+            let plan = Plan {
+                plan_id: plan_id.clone(),
+                amount,
+                interval_ledgers,
+                active: true,
+            };
+
+            env.storage().persistent().set(&key, &plan);
+            bump_instance(&env);
+
+            events::plan_registered(&env, &plan_id, amount, interval_ledgers);
+            Ok(())
+        }
+
+        /// Update an existing plan's status. Only the provider (admin) can call this.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`SubscriptionError::NotInitialized`] if the contract is not initialized.
+        /// Returns [`SubscriptionError::NotAuthorized`] if the caller is not the provider.
+        /// Returns [`SubscriptionError::PlanNotFound`] if no plan exists with this ID.
+        pub fn set_plan_active(
+            env: Env,
+            plan_id: Symbol,
+            active: bool,
+        ) -> Result<(), SubscriptionError> {
+            let provider: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Provider)
+                .ok_or(SubscriptionError::NotInitialized)?;
+            
+            provider.require_auth();
+
+            let key = DataKey::Plan(plan_id.clone());
+            let mut plan: Plan = env
+                .storage()
+                .persistent()
+                .get(&key)
+                .ok_or(SubscriptionError::PlanNotFound)?;
+
+            plan.active = active;
+            env.storage().persistent().set(&key, &plan);
+            bump_instance(&env);
+
+            events::plan_updated(&env, &plan_id, active);
+            Ok(())
+        }
+
+        /// Register a recurring payment subscription by selecting an existing plan.
         ///
         /// The subscriber must pre-approve this contract as a spender on the payment token
         /// before the provider can call `charge`. Concretely, the subscriber should call
@@ -90,30 +174,35 @@ mod contract {
         /// # Errors
         ///
         /// Returns [`SubscriptionError::NotInitialized`] if the contract is not initialized.
-        /// Returns [`SubscriptionError::InvalidAmount`] if `amount` <= 0.
-        /// Returns [`SubscriptionError::InvalidInterval`] if `interval_ledgers` == 0.
+        /// Returns [`SubscriptionError::PlanNotFound`] if no plan exists with the provided ID.
+        /// Returns [`SubscriptionError::PlanInactive`] if the selected plan is not active.
         /// Returns [`SubscriptionError::AlreadySubscribed`] if the subscriber already has an active plan.
         pub fn subscribe(
             env: Env,
             subscriber: Address,
-            amount: i128,
-            interval_ledgers: u32,
+            plan_id: Symbol,
             trial_ledgers: Option<u32>,
         ) -> Result<(), SubscriptionError> {
             if !env.storage().instance().has(&DataKey::Provider) {
                 return Err(SubscriptionError::NotInitialized);
             }
-            if amount <= 0 {
-                return Err(SubscriptionError::InvalidAmount);
-            }
-            if interval_ledgers == 0 {
-                return Err(SubscriptionError::InvalidInterval);
+
+            // Get the plan details
+            let plan_key = DataKey::Plan(plan_id.clone());
+            let plan: Plan = env
+                .storage()
+                .persistent()
+                .get(&plan_key)
+                .ok_or(SubscriptionError::PlanNotFound)?;
+
+            if !plan.active {
+                return Err(SubscriptionError::PlanInactive);
             }
 
             subscriber.require_auth();
 
-            let key = DataKey::Subscription(subscriber.clone());
-            if let Some(existing) = env.storage().persistent().get::<_, SubscriptionInfo>(&key) {
+            let sub_key = DataKey::Subscription(subscriber.clone());
+            if let Some(existing) = env.storage().persistent().get::<_, SubscriptionInfo>(&sub_key) {
                 if existing.active {
                     return Err(SubscriptionError::AlreadySubscribed);
                 }
@@ -121,19 +210,20 @@ mod contract {
 
             let trial_ledgers = trial_ledgers.unwrap_or(0);
             let info = SubscriptionInfo {
-                amount,
-                interval_ledgers,
+                plan_id,
+                amount: plan.amount,
+                interval_ledgers: plan.interval_ledgers,
                 trial_ledgers,
                 trial_completed: trial_ledgers == 0,
                 last_charged_ledger: env.ledger().sequence(),
                 active: true,
             };
 
-            env.storage().persistent().set(&key, &info);
+            env.storage().persistent().set(&sub_key, &info);
             bump_subscription(&env, &subscriber);
             bump_instance(&env);
 
-            events::subscribed(&env, &subscriber, amount, interval_ledgers);
+            events::subscribed(&env, &subscriber, &info.plan_id, plan.amount, plan.interval_ledgers);
             Ok(())
         }
 
