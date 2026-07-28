@@ -89,7 +89,7 @@ mod contract {
                 amount_a,
                 token_b: token_b.clone(),
                 amount_b,
-                deadline,
+                expires_at,
                 state: SwapState::Open,
             };
 
@@ -131,7 +131,7 @@ mod contract {
                 SwapState::Open => {}
             }
 
-            if env.ledger().sequence() > swap.deadline {
+            if env.ledger().sequence() > swap.expires_at {
                 return Err(SwapError::DeadlineExpired);
             }
 
