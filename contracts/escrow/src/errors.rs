@@ -1,7 +1,7 @@
-use soroban_common::impl_display_error;
 // #[contracterror] generates undocumented public associated items.
 #![allow(missing_docs)]
 
+use soroban_common::impl_display_error;
 use soroban_sdk::contracterror;
 
 /// Error codes returned by [`EscrowContract`](crate::EscrowContract) methods.
@@ -42,6 +42,10 @@ pub enum EscrowError {
     DisputeTimeoutNotReached = 10,
     /// A dispute timeout claim was attempted but no timeout is configured.
     NoDisputeTimeout = 11,
+    /// The requested milestone index does not exist in this escrow.
+    MilestoneNotFound = 12,
+    /// The requested fee in basis points exceeds the maximum allowed (10 000).
+    FeeTooHigh = 13,
 }
 
 /// Converts the unit error returned by `soroban_common::validate_deadline`
@@ -69,6 +73,8 @@ impl_display_error!(
     InvalidParties            => "invalid parties",
     DisputeTimeoutNotReached  => "dispute timeout not reached",
     NoDisputeTimeout          => "no dispute timeout configured",
+    MilestoneNotFound         => "milestone not found",
+    FeeTooHigh                => "fee exceeds maximum (10 000 bps)",
 );
 
 #[cfg(test)]
@@ -91,7 +97,11 @@ EscrowError::AlreadyInitialized = {}\n\
 EscrowError::NotInitialized = {}\n\
 EscrowError::InsufficientFunds = {}\n\
 EscrowError::InvalidAmount = {}\n\
-EscrowError::InvalidParties = {}\n",
+EscrowError::InvalidParties = {}\n\
+EscrowError::DisputeTimeoutNotReached = {}\n\
+EscrowError::NoDisputeTimeout = {}\n\
+EscrowError::MilestoneNotFound = {}\n\
+EscrowError::FeeTooHigh = {}\n",
             EscrowError::NotAuthorized as u32,
             EscrowError::InvalidState as u32,
             EscrowError::DeadlinePassed as u32,
@@ -101,6 +111,10 @@ EscrowError::InvalidParties = {}\n",
             EscrowError::InsufficientFunds as u32,
             EscrowError::InvalidAmount as u32,
             EscrowError::InvalidParties as u32,
+            EscrowError::DisputeTimeoutNotReached as u32,
+            EscrowError::NoDisputeTimeout as u32,
+            EscrowError::MilestoneNotFound as u32,
+            EscrowError::FeeTooHigh as u32,
         )
     }
 

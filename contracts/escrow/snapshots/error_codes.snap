@@ -7,3 +7,7 @@ EscrowError::NotInitialized = 6
 EscrowError::InsufficientFunds = 7
 EscrowError::InvalidAmount = 8
 EscrowError::InvalidParties = 9
+EscrowError::DisputeTimeoutNotReached = 10
+EscrowError::NoDisputeTimeout = 11
+EscrowError::MilestoneNotFound = 12
+EscrowError::FeeTooHigh = 13

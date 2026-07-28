@@ -39,17 +39,22 @@ pub fn delivery_marked(env: &Env, seller: &Address) {
 
 /// Emitted when funds are released to the seller.
 /// Topics: (Symbol, Address) — event name, seller
-pub fn funds_released(env: &Env, seller: &Address, amount: i128) {
-    env.events()
-        .publish((Symbol::new(env, "released"), seller.clone()), amount);
+/// Data: (net_amount, fee_amount) — `net_amount` is what the seller received;
+/// `fee_amount` is what was routed to the treasury (0 if no fee configured).
+pub fn funds_released(env: &Env, seller: &Address, net_amount: i128, fee_amount: i128) {
+    env.events().publish(
+        (Symbol::new(env, "released"), seller.clone()),
+        (net_amount, fee_amount),
+    );
 }
 
-/// Emitted when funds are refunded to the buyer.
-/// Topics: (Symbol, Address) — event name, buyer
-pub fn partial_release(env: &Env, seller: &Address, amount: i128) {
+/// Emitted when a partial release is made to the seller.
+/// Topics: (Symbol, Address) — event name, seller
+/// Data: (net_amount, fee_amount) — see [`funds_released`].
+pub fn partial_release(env: &Env, seller: &Address, net_amount: i128, fee_amount: i128) {
     env.events().publish(
         (Symbol::new(env, "released_partial"), seller.clone()),
-        amount,
+        (net_amount, fee_amount),
     );
 }
 
@@ -119,5 +124,29 @@ pub fn upgraded(env: &Env, admin: &Address, new_wasm_hash: &soroban_sdk::BytesN<
     env.events().publish(
         (Symbol::new(env, "upgraded"), admin.clone()),
         new_wasm_hash.clone(),
+    );
+}
+
+/// Emitted when a milestone's funds are released to the seller.
+/// Topics: (Symbol, Address, u32) — event name, seller, milestone_index
+/// Data: (amount, fee_amount)
+pub fn milestone_released(env: &Env, seller: &Address, index: u32, amount: i128, fee: i128) {
+    env.events().publish(
+        (
+            Symbol::new(env, "milestone_released"),
+            seller.clone(),
+            index,
+        ),
+        (amount, fee),
+    );
+}
+
+/// Emitted when the fee configuration is updated by the admin.
+/// Topics: (Symbol, Address) — event name, admin
+/// Data: (fee_bps, treasury)
+pub fn fee_config_set(env: &Env, admin: &Address, fee_bps: u32, treasury: &Address) {
+    env.events().publish(
+        (Symbol::new(env, "fee_config_set"), admin.clone()),
+        (fee_bps, treasury.clone()),
     );
 }

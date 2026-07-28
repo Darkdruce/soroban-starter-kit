@@ -3,7 +3,7 @@ use soroban_sdk::{Address, Env, Vec, token};
 use crate::admin;
 use crate::errors::EscrowError;
 use crate::events;
-use crate::storage::{DataKey, EscrowState, require_state};
+use crate::storage::{DataKey, EscrowState, Milestone, require_state};
 use soroban_common::{
     LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD, extend_ttl_instance, validate_deadline,
 };
@@ -83,7 +83,7 @@ fn store_escrow_data(
     env.storage()
         .instance()
         .set(&RequiredSignatures, &required_signatures);
-    env.storage().instance().set(&Version, &1u32);
+    env.storage().instance().set(&Version, &2u32);
     env.storage()
         .instance()
         .set(&DisputeTimeoutLedgers, &dispute_timeout_ledgers);
@@ -94,8 +94,10 @@ fn emit_init_events(env: &Env, buyer: &Address, seller: &Address, arbiter: &Addr
     events::initialized(env, buyer, seller, arbiter, amount);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn initialize(
     env: Env,
+    admin: Address,
     buyer: Address,
     seller: Address,
     arbiter: Address,
@@ -112,6 +114,9 @@ pub fn initialize(
     validate_parties(&buyer, &seller, &arbiter)?;
     validate_deadline::<EscrowError>(&env, deadline_ledger)?;
     token::Client::new(&env, &token_contract).decimals();
+    env.storage()
+        .instance()
+        .set(&soroban_common::AdminKey::Admin, &admin);
     store_escrow_data(
         &env,
         &buyer,
@@ -131,8 +136,10 @@ pub fn initialize(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn initialize_with_arbiters(
     env: Env,
+    admin: Address,
     buyer: Address,
     seller: Address,
     arbiters: soroban_sdk::Vec<Address>,
@@ -150,6 +157,9 @@ pub fn initialize_with_arbiters(
     validate_parties_multi(&buyer, &seller, &arbiters, required_signatures)?;
     validate_deadline::<EscrowError>(&env, deadline_ledger)?;
     token::Client::new(&env, &token_contract).decimals();
+    env.storage()
+        .instance()
+        .set(&soroban_common::AdminKey::Admin, &admin);
     #[allow(clippy::unwrap_used)] // arbiters is validated non-empty before this point
     let primary_arbiter = arbiters.get(0).unwrap();
     store_escrow_data(
@@ -280,8 +290,10 @@ pub fn release_partial(env: Env, amount: i128) -> Result<(), EscrowError> {
     env.storage().instance().set(&Amount, &new_amount);
     extend_ttl(&env);
 
-    admin::transfer_token(&env, &env.current_contract_address(), &seller, amount);
-    events::partial_release(&env, &seller, amount);
+    let (net, fee) = apply_fee(&env, amount);
+    admin::transfer_token(&env, &env.current_contract_address(), &seller, net);
+    maybe_pay_fee(&env, fee);
+    events::partial_release(&env, &seller, net, fee);
 
     Ok(())
 }
@@ -390,9 +402,11 @@ pub fn release_to_seller(env: Env) -> Result<(), EscrowError> {
         .set(&State, &EscrowState::Completed);
     extend_ttl(&env);
 
-    admin::transfer_token(&env, &env.current_contract_address(), &seller, amount);
+    let (net, fee) = apply_fee(&env, amount);
+    admin::transfer_token(&env, &env.current_contract_address(), &seller, net);
+    maybe_pay_fee(&env, fee);
 
-    events::funds_released(&env, &seller, amount);
+    events::funds_released(&env, &seller, net, fee);
 
     Ok(())
 }
@@ -411,4 +425,231 @@ pub fn refund_to_buyer(env: Env) -> Result<(), EscrowError> {
     events::funds_refunded(&env, &buyer, amount);
 
     Ok(())
+}
+
+// ─── Fee configuration ────────────────────────────────────────────────────────
+
+/// Set (or update) the fee configuration.  The caller must be the escrow's
+/// platform admin (the address passed to `initialize*` and stored as
+/// [`soroban_common::AdminKey::Admin`]) — deliberately not the buyer or
+/// seller, so that neither party to a specific deal can unilaterally waive
+/// or alter the platform's fee.
+///
+/// `fee_bps` is in basis points (0 = no fee, 10 000 = 100 %).  Any value
+/// greater than 10 000 returns [`EscrowError::FeeTooHigh`].
+pub fn set_fee_config(
+    env: Env,
+    fee_bps: u32,
+    treasury: Address,
+) -> Result<(), EscrowError> {
+    // Must be initialized.
+    if !env.storage().instance().has(&DataKey::State) {
+        return Err(EscrowError::NotInitialized);
+    }
+    let admin = admin::require_admin(&env)?;
+    admin.require_auth();
+
+    if fee_bps > 10_000 {
+        return Err(EscrowError::FeeTooHigh);
+    }
+    env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
+    env.storage().instance().set(&DataKey::Treasury, &treasury);
+    extend_ttl(&env);
+    events::fee_config_set(&env, &admin, fee_bps, &treasury);
+    Ok(())
+}
+
+/// Compute and apply the fee on a gross release amount.
+///
+/// Returns `(net_to_seller, fee_amount)`.
+fn apply_fee(env: &Env, gross: i128) -> (i128, i128) {
+    let fee_bps: u32 = env
+        .storage()
+        .instance()
+        .get(&DataKey::FeeBps)
+        .unwrap_or(0);
+    if fee_bps == 0 {
+        return (gross, 0);
+    }
+    // fee = gross * fee_bps / 10_000  (integer division — intentional)
+    #[allow(clippy::integer_division, clippy::arithmetic_side_effects, clippy::as_conversions, clippy::cast_possible_truncation)]
+    let fee = (gross * fee_bps as i128) / 10_000;
+    #[allow(clippy::arithmetic_side_effects)]
+    let net = gross - fee;
+    (net, fee)
+}
+
+/// Route the fee to the treasury if non-zero.
+fn maybe_pay_fee(env: &Env, fee: i128) {
+    if fee <= 0 {
+        return;
+    }
+    if let Some(treasury) = env
+        .storage()
+        .instance()
+        .get::<DataKey, Address>(&DataKey::Treasury)
+    {
+        admin::transfer_token(env, &env.current_contract_address(), &treasury, fee);
+    }
+}
+
+// ─── Multi-milestone support ──────────────────────────────────────────────────
+
+/// Initialize an escrow with explicit milestones.
+///
+/// The `milestones` list must be non-empty.  The `amount` parameter is
+/// ignored; the total escrowed amount is derived from the sum of all milestone
+/// amounts.  All other parameters are identical to [`initialize`].
+///
+/// The buyer funds the escrow with the total amount via the regular [`fund`]
+/// call once initialized.
+#[allow(clippy::too_many_arguments)]
+pub fn initialize_with_milestones(
+    env: Env,
+    admin: Address,
+    buyer: Address,
+    seller: Address,
+    arbiter: Address,
+    token_contract: Address,
+    milestones: Vec<Milestone>,
+    deadline_ledger: u32,
+    dispute_timeout_ledgers: u32,
+    metadata_hash: Option<soroban_sdk::BytesN<32>>,
+) -> Result<(), EscrowError> {
+    if env.storage().instance().has(&DataKey::State) {
+        return Err(EscrowError::AlreadyInitialized);
+    }
+    if milestones.is_empty() {
+        return Err(EscrowError::InvalidAmount);
+    }
+    // Validate milestone amounts and sum them.
+    let mut total: i128 = 0i128;
+    for m in milestones.iter() {
+        if m.amount <= 0 {
+            return Err(EscrowError::InvalidAmount);
+        }
+        total = total
+            .checked_add(m.amount)
+            .ok_or(EscrowError::InsufficientFunds)?;
+    }
+    validate_amount(total)?;
+    validate_parties(&buyer, &seller, &arbiter)?;
+    validate_deadline::<EscrowError>(&env, deadline_ledger)?;
+    token::Client::new(&env, &token_contract).decimals();
+    env.storage()
+        .instance()
+        .set(&soroban_common::AdminKey::Admin, &admin);
+
+    store_escrow_data(
+        &env,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_contract,
+        total,
+        deadline_ledger,
+        1u32,
+        dispute_timeout_ledgers,
+    );
+    env.storage()
+        .instance()
+        .set(&DataKey::Milestones, &milestones);
+    if let Some(hash) = metadata_hash {
+        env.storage().instance().set(&DataKey::MetadataHash, &hash);
+    }
+    extend_ttl(&env);
+    emit_init_events(&env, &buyer, &seller, &arbiter, total);
+    Ok(())
+}
+
+/// Release a specific milestone's funds to the seller.
+///
+/// Can be called by the buyer or the arbiter while the escrow is `Funded`.
+/// The milestone at `milestone_index` must not already have been released.
+///
+/// If a fee is configured, the fee amount is routed to the treasury and the
+/// net amount goes to the seller.
+///
+/// When all milestones have been released the escrow state transitions to
+/// `Completed`.
+pub fn release_milestone(
+    env: Env,
+    caller: Address,
+    milestone_index: u32,
+) -> Result<(), EscrowError> {
+    #[cfg(feature = "pausable")]
+    crate::EscrowContract::require_not_paused(&env)?;
+
+    let buyer: Address = get_required(&env, &Buyer)?;
+    let arbiter: Address = get_required(&env, &Arbiter)?;
+
+    // Only the buyer or the arbiter may release a milestone.
+    if caller != buyer && caller != arbiter {
+        return Err(EscrowError::NotAuthorized);
+    }
+    caller.require_auth();
+
+    let state: EscrowState = get_required(&env, &State)?;
+    if state != EscrowState::Funded {
+        return Err(EscrowError::InvalidState);
+    }
+
+    let mut milestones: Vec<Milestone> = env
+        .storage()
+        .instance()
+        .get(&DataKey::Milestones)
+        .ok_or(EscrowError::MilestoneNotFound)?;
+
+    let idx = milestone_index as usize;
+    if idx >= milestones.len() as usize {
+        return Err(EscrowError::MilestoneNotFound);
+    }
+
+    let mut m = milestones.get(milestone_index).ok_or(EscrowError::MilestoneNotFound)?;
+    if m.released {
+        return Err(EscrowError::InvalidState);
+    }
+    let gross = m.amount;
+    m.released = true;
+    milestones.set(milestone_index, m);
+
+    // Update stored milestones.
+    env.storage()
+        .instance()
+        .set(&DataKey::Milestones, &milestones);
+
+    // Deduct this milestone from the stored remaining amount so existing
+    // queries still reflect unreleased funds.
+    let remaining: i128 = get_required(&env, &Amount)?;
+    #[allow(clippy::arithmetic_side_effects)]
+    let new_remaining = remaining - gross;
+    env.storage().instance().set(&Amount, &new_remaining);
+
+    extend_ttl(&env);
+
+    let seller: Address = get_required(&env, &Seller)?;
+    let (net, fee) = apply_fee(&env, gross);
+    admin::transfer_token(&env, &env.current_contract_address(), &seller, net);
+    maybe_pay_fee(&env, fee);
+
+    events::milestone_released(&env, &seller, milestone_index, net, fee);
+
+    // Transition to Completed when all milestones are released.
+    let all_done = milestones.iter().all(|m| m.released);
+    if all_done {
+        env.storage()
+            .instance()
+            .set(&State, &EscrowState::Completed);
+        events::funds_released(&env, &seller, 0, 0);
+    }
+
+    Ok(())
+}
+
+/// Return the stored milestone list, or an empty Vec if none.
+pub fn get_milestones(env: Env) -> Vec<Milestone> {
+    env.storage()
+        .instance()
+        .get(&DataKey::Milestones)
+        .unwrap_or_else(|| Vec::new(&env))
 }

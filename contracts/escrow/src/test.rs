@@ -17,7 +17,7 @@ use soroban_sdk::{
 pub struct MockToken;
 
 #[contractimpl]
-impl token::TokenInterface for MockToken {
+impl TokenInterface for MockToken {
     fn allowance(_env: Env, _from: Address, _spender: Address) -> i128 {
         0
     }
@@ -85,6 +85,7 @@ fn setup_funded_escrow<'a>(
     Address,
     i128,
 ) {
+    let admin = Address::generate(env);
     let buyer = Address::generate(env);
     let seller = Address::generate(env);
     let arbiter = Address::generate(env);
@@ -93,7 +94,7 @@ fn setup_funded_escrow<'a>(
     let deadline = env.ledger().sequence() + 100;
 
     let (client, contract_address) = create_escrow_contract(env);
-    client.initialize(&buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None);
+    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None);
     client.fund();
 
     (
@@ -116,6 +117,7 @@ fn test_initialize() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -125,8 +127,7 @@ fn test_initialize() {
 
     let (client, contract_address) = create_escrow_contract(&env);
 
-    client.initialize(
-        &buyer,
+    client.initialize(&admin, &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -152,7 +153,7 @@ fn test_initialize() {
             (
                 contract_address.clone(),
                 (
-                    Symbol::new(&env, "escrow_created"),
+                    Symbol::new(&env, "created"),
                     buyer.clone(),
                     seller.clone()
                 )
@@ -180,6 +181,7 @@ fn test_initialize_twice() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -189,8 +191,7 @@ fn test_initialize_twice() {
 
     let (client, _) = create_escrow_contract(&env);
 
-    client.initialize(
-        &buyer,
+    client.initialize(&admin, &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -200,8 +201,7 @@ fn test_initialize_twice() {
         &None,
     );
     // Second call must fail with AlreadyInitialized (#5)
-    client.initialize(
-        &buyer,
+    client.initialize(&admin, &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -219,6 +219,7 @@ fn test_initialize_past_deadline() {
     env.mock_all_auths();
     env.ledger().with_mut(|l| l.sequence_number = 10);
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -227,8 +228,7 @@ fn test_initialize_past_deadline() {
     let deadline = 5u32; // 5 < 10, already in the past
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(
-        &buyer,
+    client.initialize(&admin, &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -244,12 +244,13 @@ fn test_initialize_past_deadline() {
 fn test_initialize_buyer_equals_seller_fails() {
     let env = Env::default();
     env.mock_all_auths();
+    let admin = Address::generate(&env);
     let same = Address::generate(&env);
     let arbiter = Address::generate(&env);
     let token = create_mock_token(&env);
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&same, &same, &arbiter, &token, &1_000, &deadline, &0, &None);
+    client.initialize(&admin, &same, &same, &arbiter, &token, &1_000, &deadline, &0, &None);
 }
 
 #[test]
@@ -257,12 +258,13 @@ fn test_initialize_buyer_equals_seller_fails() {
 fn test_initialize_buyer_equals_arbiter_fails() {
     let env = Env::default();
     env.mock_all_auths();
+    let admin = Address::generate(&env);
     let same = Address::generate(&env);
     let seller = Address::generate(&env);
     let token = create_mock_token(&env);
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&same, &seller, &same, &token, &1_000, &deadline, &0, &None);
+    client.initialize(&admin, &same, &seller, &same, &token, &1_000, &deadline, &0, &None);
 }
 
 #[test]
@@ -270,12 +272,13 @@ fn test_initialize_buyer_equals_arbiter_fails() {
 fn test_initialize_seller_equals_arbiter_fails() {
     let env = Env::default();
     env.mock_all_auths();
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let same = Address::generate(&env);
     let token = create_mock_token(&env);
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&buyer, &same, &same, &token, &1_000, &deadline, &0, &None);
+    client.initialize(&admin, &buyer, &same, &same, &token, &1_000, &deadline, &0, &None);
 }
 
 #[test]
@@ -284,6 +287,7 @@ fn test_initialize_zero_amount_fails() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -291,7 +295,7 @@ fn test_initialize_zero_amount_fails() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&buyer, &seller, &arbiter, &token, &0, &deadline, &0, &None);
+    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &0, &deadline, &0, &None);
 }
 
 #[test]
@@ -300,6 +304,7 @@ fn test_initialize_negative_amount_fails() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -307,7 +312,7 @@ fn test_initialize_negative_amount_fails() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&buyer, &seller, &arbiter, &token, &-1, &deadline, &0, &None);
+    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &-1, &deadline, &0, &None);
 }
 
 #[test]
@@ -329,6 +334,7 @@ fn test_fund() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -337,8 +343,7 @@ fn test_fund() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, contract_address) = create_escrow_contract(&env);
-    client.initialize(
-        &buyer,
+    client.initialize(&admin, &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -455,9 +460,9 @@ fn test_resolve_dispute_to_seller() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, _, buyer, ..) = setup_funded_escrow(&env);
+    let (client, _, buyer, _seller, arbiter, ..) = setup_funded_escrow(&env);
     client.raise_dispute(&buyer);
-    client.resolve_dispute(&true);
+    client.resolve_dispute(&arbiter, &true);
 
     assert_eq!(client.get_state(), Some(EscrowState::Completed));
 }
@@ -467,9 +472,9 @@ fn test_resolve_dispute_to_buyer() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, _, buyer, ..) = setup_funded_escrow(&env);
+    let (client, _, buyer, _seller, arbiter, ..) = setup_funded_escrow(&env);
     client.raise_dispute(&buyer);
-    client.resolve_dispute(&false);
+    client.resolve_dispute(&arbiter, &false);
 
     assert_eq!(client.get_state(), Some(EscrowState::Refunded));
 }
@@ -479,6 +484,7 @@ fn test_deadline_passed() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -487,8 +493,7 @@ fn test_deadline_passed() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(
-        &buyer,
+    client.initialize(&admin, &buyer,
         &seller,
         &arbiter,
         &token_contract,
@@ -511,6 +516,7 @@ fn test_get_remaining_ledgers_positive() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -520,13 +526,13 @@ fn test_get_remaining_ledgers_positive() {
     let deadline = current_sequence + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(
-        &buyer,
+    client.initialize(&admin, &buyer,
         &seller,
         &arbiter,
         &token_contract,
         &amount,
         &deadline,
+        &0u32,
         &None,
     );
 
@@ -540,6 +546,7 @@ fn test_get_remaining_ledgers_negative() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -549,13 +556,13 @@ fn test_get_remaining_ledgers_negative() {
     let deadline = current_sequence + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(
-        &buyer,
+    client.initialize(&admin, &buyer,
         &seller,
         &arbiter,
         &token_contract,
         &amount,
         &deadline,
+        &0u32,
         &None,
     );
 
@@ -572,9 +579,9 @@ fn test_arbiter_resolve_to_seller() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, contract_address, buyer, seller, _, _, amount) = setup_funded_escrow(&env);
+    let (client, _contract_address, buyer, _seller, arbiter, _, _amount) = setup_funded_escrow(&env);
     client.raise_dispute(&buyer);
-    client.resolve_dispute(&true);
+    client.resolve_dispute(&arbiter, &true);
 
     assert_eq!(client.get_state(), Some(EscrowState::Completed));
     assert!(!env.events().all().is_empty());
@@ -585,9 +592,9 @@ fn test_arbiter_resolve_to_buyer() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, _, buyer, ..) = setup_funded_escrow(&env);
+    let (client, _, buyer, _seller, arbiter, ..) = setup_funded_escrow(&env);
     client.raise_dispute(&buyer);
-    client.resolve_dispute(&false);
+    client.resolve_dispute(&arbiter, &false);
 
     assert_eq!(client.get_state(), Some(EscrowState::Refunded));
     assert!(!env.events().all().is_empty());
@@ -599,6 +606,7 @@ fn test_initialize_invalid_token_address() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -608,8 +616,7 @@ fn test_initialize_invalid_token_address() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(
-        &buyer,
+    client.initialize(&admin, &buyer,
         &seller,
         &arbiter,
         &invalid_token,
@@ -626,6 +633,7 @@ fn test_cancel_by_seller_fails() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -634,7 +642,7 @@ fn test_cancel_by_seller_fails() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, contract_address) = create_escrow_contract(&env);
-    client.initialize(&buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None);
+    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None);
 
     // Only authorize the seller — buyer.require_auth() inside cancel() will fail.
     use soroban_sdk::testutils::{MockAuth, MockAuthInvoke};
@@ -667,6 +675,7 @@ fn test_fund_insufficient_funds() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -680,7 +689,7 @@ fn test_fund_insufficient_funds() {
     });
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None);
+    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None);
     // buyer has balance 0 < amount 1000 → InsufficientFunds (#7)
     client.fund();
 }
@@ -818,6 +827,7 @@ fn test_release_partial_invalid_state() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -826,7 +836,7 @@ fn test_release_partial_invalid_state() {
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None);
+    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None);
 
     // Try to release_partial in Created state — should fail with InvalidState
     client.release_partial(&500i128);
@@ -863,8 +873,8 @@ fn test_resolve_dispute_wrong_state_fails() {
     env.mock_all_auths();
 
     // Escrow is Funded but never Disputed — resolve_dispute must reject with InvalidState (#2)
-    let (client, ..) = setup_funded_escrow(&env);
-    client.resolve_dispute(&true);
+    let (client, _, _, _, arbiter, ..) = setup_funded_escrow(&env);
+    client.resolve_dispute(&arbiter, &true);
 }
 
 // ---------------------------------------------------------------------------
@@ -874,7 +884,6 @@ fn test_resolve_dispute_wrong_state_fails() {
 #[cfg(feature = "pausable")]
 mod pausable_tests {
     use super::*;
-    use soroban_common::AdminKey;
 
     fn setup_with_admin<'a>(env: &'a Env) -> (EscrowContractClient<'a>, Address, Address) {
         let admin = Address::generate(env);
@@ -885,12 +894,10 @@ mod pausable_tests {
         let amount = 1_000i128;
         let deadline = env.ledger().sequence() + 100;
 
-        let (client, contract_address) = create_escrow_contract(env);
-        // Set admin directly in contract storage before initializing
-        env.as_contract(&contract_address, || {
-            env.storage().instance().set(&AdminKey::Admin, &admin);
-        });
-        client.initialize(&buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None);
+        let (client, _contract_address) = create_escrow_contract(env);
+        client.initialize(
+            &admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &0, &None,
+        );
         (client, admin, buyer)
     }
 
@@ -951,7 +958,10 @@ mod pausable_tests {
     }
 }
 
-#[cfg(feature = "upgradeable")]
+// `propose_upgrade`/`execute_upgrade` live under the `pausable` feature gate in
+// lib.rs (not a separate `upgradeable` gate, which exists in Cargo.toml but
+// currently guards nothing in production code) — this module follows that.
+#[cfg(feature = "pausable")]
 mod upgradeable_tests {
     use super::*;
     use soroban_common::AdminKey;
@@ -967,8 +977,10 @@ mod upgradeable_tests {
             env.storage().instance().set(&AdminKey::Admin, &admin);
         });
         let dummy_hash = soroban_sdk::BytesN::from_array(&env, &[0u8; 32]);
-        // Auth passes; the upgrade itself fails because the hash is invalid.
-        let _ = client.try_upgrade(&dummy_hash);
+        client.propose_upgrade(&dummy_hash);
+        // Auth passes; execute_upgrade still fails because the delay hasn't elapsed
+        // and the hash isn't a real uploaded WASM.
+        let _ = client.try_execute_upgrade();
     }
 
     #[test]
@@ -982,9 +994,13 @@ mod upgradeable_tests {
             env.storage().instance().set(&AdminKey::Admin, &admin);
         });
         let dummy_hash = soroban_sdk::BytesN::from_array(&env, &[1u8; 32]);
+        client.propose_upgrade(&dummy_hash);
+        // Advance past the upgrade delay so execute_upgrade proceeds far enough
+        // to emit the `upgraded` event before failing on the fake WASM hash.
+        env.ledger().with_mut(|l| l.sequence_number += 20_000);
         // The upgraded event is emitted before update_current_contract_wasm, so
         // even though the call fails (invalid hash), the event is still captured.
-        let _ = client.try_upgrade(&dummy_hash);
+        let _ = client.try_execute_upgrade();
 
         use soroban_sdk::{IntoVal, Symbol, testutils::Events as _};
         let all = env.events().all();
@@ -1001,6 +1017,7 @@ mod upgradeable_tests {
 fn test_update_amount() {
     let env = Env::default();
     env.mock_all_auths();
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -1008,7 +1025,7 @@ fn test_update_amount() {
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
 
-    client.initialize(&buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None);
+    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None);
 
     // Update amount before funding
     client.update_amount(&2_000);
@@ -1022,6 +1039,7 @@ fn test_update_amount() {
 fn test_update_amount_zero_fails() {
     let env = Env::default();
     env.mock_all_auths();
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -1029,7 +1047,7 @@ fn test_update_amount_zero_fails() {
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
 
-    client.initialize(&buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None);
+    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None);
     client.update_amount(&0);
 }
 
@@ -1048,6 +1066,7 @@ fn test_update_amount_after_funding_fails() {
 fn test_initialize_with_arbiters() {
     let env = Env::default();
     env.mock_all_auths();
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter1 = Address::generate(&env);
@@ -1058,7 +1077,7 @@ fn test_initialize_with_arbiters() {
     let (client, _) = create_escrow_contract(&env);
 
     let arbiters = soroban_sdk::vec![&env, arbiter1.clone(), arbiter2.clone(), arbiter3.clone()];
-    client.initialize_with_arbiters(&buyer, &seller, &arbiters, &token, &1_000, &deadline, &2, &0, &None);
+    client.initialize_with_arbiters(&admin, &buyer, &seller, &arbiters, &token, &1_000, &deadline, &2, &0, &None);
 
     let info = client.get_escrow_info();
     assert_eq!(info.amount, 1_000);
@@ -1070,6 +1089,7 @@ fn test_initialize_with_arbiters() {
 fn test_initialize_with_metadata_hash_stores_it() {
     let env = Env::default();
     env.mock_all_auths();
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -1078,16 +1098,17 @@ fn test_initialize_with_metadata_hash_stores_it() {
     let (client, _) = create_escrow_contract(&env);
     let hash = soroban_sdk::BytesN::from_array(&env, &[0xabu8; 32]);
 
-    client.initialize(&buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &Some(hash.clone()));
+    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &Some(hash.clone()));
 
     let info = client.get_escrow_info();
-    assert_eq!(info.metadata_hash, Some(hash));
+    assert_eq!(info.metadata_hash, hash);
 }
 
 #[test]
 fn test_initialize_without_metadata_hash_is_none() {
     let env = Env::default();
     env.mock_all_auths();
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
@@ -1095,10 +1116,13 @@ fn test_initialize_without_metadata_hash_is_none() {
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
 
-    client.initialize(&buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None);
+    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None);
 
     let info = client.get_escrow_info();
-    assert_eq!(info.metadata_hash, None);
+    assert_eq!(
+        info.metadata_hash,
+        soroban_sdk::BytesN::from_array(&env, &[0u8; 32])
+    );
 }
 
 // ── #709 dispute timeout tests ────────────────────────────────────────────────
@@ -1108,6 +1132,7 @@ fn setup_funded_escrow_with_timeout<'a>(
     env: &'a Env,
     timeout: u32,
 ) -> (EscrowContractClient<'a>, Address, Address) {
+    let admin = Address::generate(env);
     let buyer = Address::generate(env);
     let seller = Address::generate(env);
     let arbiter = Address::generate(env);
@@ -1116,7 +1141,7 @@ fn setup_funded_escrow_with_timeout<'a>(
     let deadline = env.ledger().sequence() + 100;
 
     let (client, _) = create_escrow_contract(env);
-    client.initialize(&buyer, &seller, &arbiter, &token, &amount, &deadline, &timeout, &None);
+    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &amount, &deadline, &timeout, &None);
     client.fund();
     (client, buyer, seller)
 }
@@ -1208,13 +1233,14 @@ fn test_request_partial_refund_wrong_state_fails() {
     let env = Env::default();
     env.mock_all_auths();
 
+    let admin = Address::generate(&env);
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
     let token = create_mock_token(&env);
     let deadline = env.ledger().sequence() + 100;
     let (client, _) = create_escrow_contract(&env);
-    client.initialize(&buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None);
+    client.initialize(&admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None);
 
     // Still Created, not Funded → InvalidState (#2)
     client.request_partial_refund();
@@ -1236,4 +1262,168 @@ fn test_request_refund_after_partial_release_past_deadline() {
     // Remaining amount (750) should have been refunded
     let info = client.get_escrow_info();
     assert_eq!(info.amount, amount - amount / 4);
+}
+
+// ── Admin-configurable fee tests ───────────────────────────────────────────────
+
+fn last_event_data<T: FromVal<Env, soroban_sdk::Val>>(env: &Env) -> T {
+    let all = env.events().all();
+    let (_, _, data) = all.last().unwrap();
+    T::from_val(env, &data)
+}
+
+#[test]
+fn test_get_fee_config_defaults_to_zero() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, ..) = setup_funded_escrow(&env);
+    let (fee_bps, treasury) = client.get_fee_config();
+    assert_eq!(fee_bps, 0);
+    assert_eq!(treasury, None);
+}
+
+#[test]
+fn test_set_fee_config_stores_bps_and_treasury() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let arbiter = Address::generate(&env);
+    let token = create_mock_token(&env);
+    let treasury = Address::generate(&env);
+    let deadline = env.ledger().sequence() + 100;
+    let (client, _) = create_escrow_contract(&env);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None,
+    );
+
+    client.set_fee_config(&500u32, &treasury);
+
+    let (fee_bps, stored_treasury) = client.get_fee_config();
+    assert_eq!(fee_bps, 500);
+    assert_eq!(stored_treasury, Some(treasury.clone()));
+
+    assert_eq!(
+        last_event_data::<(u32, Address)>(&env),
+        (500u32, treasury)
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #13)")]
+fn test_set_fee_config_above_10000_bps_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, ..) = setup_funded_escrow(&env);
+    let treasury = Address::generate(&env);
+
+    // 10_001 bps > 100% — must reject with FeeTooHigh (#13)
+    client.set_fee_config(&10_001u32, &treasury);
+}
+
+#[test]
+fn test_set_fee_config_at_10000_bps_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let arbiter = Address::generate(&env);
+    let token = create_mock_token(&env);
+    let treasury = Address::generate(&env);
+    let deadline = env.ledger().sequence() + 100;
+    let (client, _) = create_escrow_contract(&env);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None,
+    );
+
+    // 10_000 bps == 100% is the maximum allowed value, not an error.
+    client.set_fee_config(&10_000u32, &treasury);
+    let (fee_bps, _) = client.get_fee_config();
+    assert_eq!(fee_bps, 10_000);
+}
+
+#[test]
+fn test_release_to_seller_with_no_fee_configured_pays_full_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, _buyer, seller, ..) = setup_funded_escrow(&env);
+    client.mark_delivered();
+    client.approve_delivery();
+
+    // No fee configured: net == full amount, fee == 0.
+    assert_eq!(
+        last_event_data::<(i128, i128)>(&env),
+        (1_000i128, 0i128)
+    );
+    let _ = seller;
+}
+
+#[test]
+fn test_release_to_seller_deducts_configured_fee() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let arbiter = Address::generate(&env);
+    let token = create_mock_token(&env);
+    let treasury = Address::generate(&env);
+    let deadline = env.ledger().sequence() + 100;
+    let (client, _) = create_escrow_contract(&env);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None,
+    );
+    // 5% fee.
+    client.set_fee_config(&500u32, &treasury);
+    client.fund();
+    client.mark_delivered();
+    client.approve_delivery();
+
+    // 1_000 * 500 / 10_000 = 50 fee, 950 net to the seller.
+    assert_eq!(
+        last_event_data::<(i128, i128)>(&env),
+        (950i128, 50i128)
+    );
+}
+
+#[test]
+fn test_release_partial_deducts_configured_fee() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let arbiter = Address::generate(&env);
+    let token = create_mock_token(&env);
+    let treasury = Address::generate(&env);
+    let deadline = env.ledger().sequence() + 100;
+    let (client, _) = create_escrow_contract(&env);
+    client.initialize(
+        &admin, &buyer, &seller, &arbiter, &token, &1_000, &deadline, &0, &None,
+    );
+    // 10% fee.
+    client.set_fee_config(&1_000u32, &treasury);
+    client.fund();
+
+    client.release_partial(&200i128);
+
+    // 200 * 1_000 / 10_000 = 20 fee, 180 net to the seller.
+    assert_eq!(
+        last_event_data::<(i128, i128)>(&env),
+        (180i128, 20i128)
+    );
+
+    // The full gross 200 (not just the net) is deducted from the remaining
+    // escrowed amount, so the fee is paid out of the release, not on top of it.
+    let info = client.get_escrow_info();
+    assert_eq!(info.amount, 800);
 }

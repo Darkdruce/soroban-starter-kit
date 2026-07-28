@@ -19,7 +19,7 @@ mod queries;
 mod storage;
 
 pub use errors::EscrowError;
-pub use storage::{DataKey, EscrowInfo, EscrowState};
+pub use storage::{DataKey, EscrowInfo, EscrowState, Milestone};
 
 #[cfg(feature = "pausable")]
 use admin::require_admin;
@@ -42,8 +42,10 @@ mod contract {
 
     #[contractimpl]
     impl EscrowContract {
+        #[allow(clippy::too_many_arguments)]
         pub fn initialize(
             env: Env,
+            admin: Address,
             buyer: Address,
             seller: Address,
             arbiter: Address,
@@ -55,6 +57,7 @@ mod contract {
         ) -> Result<(), EscrowError> {
             lifecycle::initialize(
                 env,
+                admin,
                 buyer,
                 seller,
                 arbiter,
@@ -66,8 +69,10 @@ mod contract {
             )
         }
 
+        #[allow(clippy::too_many_arguments)]
         pub fn initialize_with_arbiters(
             env: Env,
+            admin: Address,
             buyer: Address,
             seller: Address,
             arbiters: soroban_sdk::Vec<Address>,
@@ -80,6 +85,7 @@ mod contract {
         ) -> Result<(), EscrowError> {
             lifecycle::initialize_with_arbiters(
                 env,
+                admin,
                 buyer,
                 seller,
                 arbiters,
@@ -146,6 +152,80 @@ mod contract {
 
         pub fn bump(env: Env) -> Result<(), EscrowError> {
             queries::bump(env)
+        }
+
+        /// Initialize an escrow with a list of independent milestones.
+        ///
+        /// The total escrowed amount is the sum of all milestone amounts.
+        /// Each milestone can be released individually via [`release_milestone`].
+        #[allow(clippy::too_many_arguments)]
+        pub fn initialize_with_milestones(
+            env: Env,
+            admin: Address,
+            buyer: Address,
+            seller: Address,
+            arbiter: Address,
+            token_contract: Address,
+            milestones: soroban_sdk::Vec<Milestone>,
+            deadline_ledger: u32,
+            dispute_timeout_ledgers: u32,
+            metadata_hash: Option<soroban_sdk::BytesN<32>>,
+        ) -> Result<(), EscrowError> {
+            lifecycle::initialize_with_milestones(
+                env,
+                admin,
+                buyer,
+                seller,
+                arbiter,
+                token_contract,
+                milestones,
+                deadline_ledger,
+                dispute_timeout_ledgers,
+                metadata_hash,
+            )
+        }
+
+        /// Release a single milestone's funds to the seller.
+        ///
+        /// `caller` must be the buyer or the arbiter.
+        /// `milestone_index` is the zero-based position in the milestone list.
+        pub fn release_milestone(
+            env: Env,
+            caller: Address,
+            milestone_index: u32,
+        ) -> Result<(), EscrowError> {
+            lifecycle::release_milestone(env, caller, milestone_index)
+        }
+
+        /// Configure the fee deducted from each release and the treasury address
+        /// it is routed to.  Must be called by the buyer.
+        ///
+        /// `fee_bps` is in basis points (0 = no fee, 10 000 = 100 %).
+        pub fn set_fee_config(
+            env: Env,
+            fee_bps: u32,
+            treasury: Address,
+        ) -> Result<(), EscrowError> {
+            lifecycle::set_fee_config(env, fee_bps, treasury)
+        }
+
+        /// Return the current fee in basis points and treasury address, or
+        /// `(0, None)` if not configured.
+        #[must_use]
+        pub fn get_fee_config(env: Env) -> (u32, Option<Address>) {
+            let fee_bps: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::FeeBps)
+                .unwrap_or(0);
+            let treasury: Option<Address> = env.storage().instance().get(&DataKey::Treasury);
+            (fee_bps, treasury)
+        }
+
+        /// Return the list of milestones, or an empty list for a standard (non-milestone) escrow.
+        #[must_use]
+        pub fn get_milestones(env: Env) -> soroban_sdk::Vec<Milestone> {
+            lifecycle::get_milestones(env)
         }
 
         #[must_use]

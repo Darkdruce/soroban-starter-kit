@@ -42,6 +42,14 @@ pub enum DataKey {
     DisputeTimeoutLedgers,
     /// Ledger sequence at which the current dispute was raised (`u32`).
     DisputeRaisedAt,
+    /// List of milestones for multi-milestone escrows (`Vec<Milestone>`).
+    /// Only present when the escrow was initialized with milestones.
+    Milestones,
+    /// Fee in basis points (0–10 000) deducted from each released amount and
+    /// routed to [`DataKey::Treasury`] (`u32`).
+    FeeBps,
+    /// Treasury [`Address`] that receives the deducted fee on each release.
+    Treasury,
 }
 
 /// Lifecycle states of an escrow.
@@ -137,7 +145,7 @@ mod tests {
             amount: 1_000i128,
             deadline: 500u32,
             state: EscrowState::Created,
-            metadata_hash: None,
+            metadata_hash: soroban_sdk::BytesN::from_array(&env, &[0u8; 32]),
         };
 
         // Round-trip: encode → decode must produce the same value.
@@ -236,6 +244,11 @@ mod discriminant_tests {
             DataKey::RequiredSignatures => 11,
             DataKey::ArbiterVotes => 12,
             DataKey::MetadataHash => 13,
+            DataKey::DisputeTimeoutLedgers => 14,
+            DataKey::DisputeRaisedAt => 15,
+            DataKey::Milestones => 16,
+            DataKey::FeeBps => 17,
+            DataKey::Treasury => 18,
         }
     }
 
@@ -255,7 +268,28 @@ mod discriminant_tests {
         assert_eq!(escrow_data_key_index(&DataKey::RequiredSignatures), 11);
         assert_eq!(escrow_data_key_index(&DataKey::ArbiterVotes), 12);
         assert_eq!(escrow_data_key_index(&DataKey::MetadataHash), 13);
+        assert_eq!(escrow_data_key_index(&DataKey::DisputeTimeoutLedgers), 14);
+        assert_eq!(escrow_data_key_index(&DataKey::DisputeRaisedAt), 15);
+        assert_eq!(escrow_data_key_index(&DataKey::Milestones), 16);
+        assert_eq!(escrow_data_key_index(&DataKey::FeeBps), 17);
+        assert_eq!(escrow_data_key_index(&DataKey::Treasury), 18);
     }
+}
+
+/// A single work milestone within a multi-milestone escrow.
+///
+/// Each milestone holds a portion of the total escrowed funds and can be
+/// released independently by the buyer (or an arbiter) once the corresponding
+/// work is completed.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Milestone {
+    /// Human-readable description of the deliverable (at most 64 bytes).
+    pub description: soroban_sdk::String,
+    /// Token amount reserved for this milestone.
+    pub amount: i128,
+    /// Whether this milestone's funds have already been released.
+    pub released: bool,
 }
 
 /// Snapshot of all escrow fields returned by
@@ -290,6 +324,13 @@ pub struct EscrowInfo {
     pub deadline: u32,
     /// Current lifecycle state.
     pub state: EscrowState,
-    /// Optional off-chain deal reference hash (32 bytes).
-    pub metadata_hash: Option<soroban_sdk::BytesN<32>>,
+    /// Off-chain deal reference hash (32 bytes). All-zero means unset.
+    ///
+    /// Note: this is a fixed `BytesN<32>` rather than `Option<BytesN<32>>`
+    /// because `soroban-sdk`'s `#[contracttype]` derive cannot generate the
+    /// `testutils`-only `ScVal` conversions for `Option<BytesN<N>>` fields
+    /// (`BytesN<N>` only implements the fallible `TryFrom<&BytesN<N>> for
+    /// ScVal`, not the infallible `From` the generated `Option<T>` glue
+    /// requires).
+    pub metadata_hash: soroban_sdk::BytesN<32>,
 }
