@@ -9,6 +9,9 @@ use soroban_sdk::{Address, contracttype};
 pub enum DataKey {
     SwapCount,
     Initialized,
+    Admin,
+    Treasury,
+    FeeBps,
 }
 
 /// Persistent-storage key for individual swaps.
@@ -45,6 +48,6 @@ pub struct SwapInfo {
     pub amount_a: i128,
     pub token_b: Address,
     pub amount_b: i128,
-    pub deadline: u32,
+    pub expires_at: u32,
     pub state: SwapState,
 }
