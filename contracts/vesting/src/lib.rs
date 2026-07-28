@@ -287,70 +287,24 @@ mod contract {
             Ok(returnable)
         }
 
-        /// Emergency unlock: admin releases all tokens to the beneficiary before the cliff.
+        /// Emergency unlock: admin releases all tokens to a beneficiary before their cliff.
         ///
-        /// Only callable before the cliff ledger. Transfers the full unvested amount
+        /// Only callable before the beneficiary's cliff ledger. Transfers the full unvested amount
         /// to the beneficiary, emits an `admin_released` event, and records the
         /// released amount in an on-chain audit-log entry.
         ///
         /// # Errors
         /// - [`VestingError::NotInitialized`] if the contract has not been initialized.
-        /// - [`VestingError::Unauthorized`] if the caller is not the admin.
+        /// - [`VestingError::NotAuthorized`] if the caller is not the admin.
+        /// - [`VestingError::ScheduleNotFound`] if no schedule exists for the beneficiary.
         /// - [`VestingError::AlreadyRevoked`] if the schedule has already been revoked.
         /// - [`VestingError::CliffAlreadyPassed`] if the cliff has already been reached.
         /// - [`VestingError::NothingToClaim`] if there are no tokens left to release.
-        pub fn admin_release(env: Env) -> Result<i128, VestingError> {
-            if !env.storage().instance().has(&DataKey::Admin) {
-                return Err(VestingError::NotInitialized);
-            }
-
-            let revoked: bool = env
-                .storage()
-                .instance()
-                .get(&DataKey::Revoked)
-                .unwrap_or(false);
-            if revoked {
-                return Err(VestingError::AlreadyRevoked);
-            }
-
+        pub fn admin_release(env: Env, beneficiary: Address) -> Result<i128, VestingError> {
             let admin: Address = env
                 .storage()
                 .instance()
                 .get(&DataKey::Admin)
-                .ok_or(VestingError::NotInitialized)?;
-            admin.require_auth();
-
-            let cliff_ledger: u32 = env
-                .storage()
-                .instance()
-                .get(&DataKey::CliffLedger)
-                .ok_or(VestingError::NotInitialized)?;
-
-            // Only callable before the cliff.
-            if env.ledger().sequence() >= cliff_ledger {
-                return Err(VestingError::CliffAlreadyPassed);
-            }
-
-            let amount: i128 = env
-                .storage()
-                .instance()
-                .get(&DataKey::Amount)
-                .ok_or(VestingError::NotInitialized)?;
-            let claimed: i128 = env
-                .storage()
-                .instance()
-                .get(&DataKey::Claimed)
-                .ok_or(VestingError::NotInitialized)?;
-
-            let releasable = amount - claimed;
-            if releasable <= 0 {
-                return Err(VestingError::NothingToClaim);
-            }
-
-            let beneficiary: Address = env
-                .storage()
-                .instance()
-                .get(&DataKey::Beneficiary)
                 .ok_or(VestingError::NotInitialized)?;
             let token: Address = env
                 .storage()
@@ -358,12 +312,35 @@ mod contract {
                 .get(&DataKey::Token)
                 .ok_or(VestingError::NotInitialized)?;
 
-            // Mark as revoked, cap amount to zero (nothing more to claim).
-            env.storage().instance().set(&DataKey::Revoked, &true);
-            env.storage().instance().set(&DataKey::Amount, &releasable);
-            env.storage()
-                .instance()
-                .set(&DataKey::Claimed, &releasable);
+            admin.require_auth();
+
+            // Get the schedule for this beneficiary
+            let schedule_key = DataKey::Schedule(beneficiary.clone());
+            let mut schedule: BeneficiarySchedule = env
+                .storage()
+                .persistent()
+                .get(&schedule_key)
+                .ok_or(VestingError::ScheduleNotFound)?;
+
+            if schedule.revoked {
+                return Err(VestingError::AlreadyRevoked);
+            }
+
+            // Only callable before the cliff.
+            if env.ledger().sequence() >= schedule.cliff_ledger {
+                return Err(VestingError::CliffAlreadyPassed);
+            }
+
+            let releasable = schedule.amount - schedule.claimed;
+            if releasable <= 0 {
+                return Err(VestingError::NothingToClaim);
+            }
+
+            // Mark as revoked, cap amount to what's being released (nothing more to claim).
+            schedule.revoked = true;
+            schedule.amount = releasable;
+            schedule.claimed += releasable;
+            env.storage().persistent().set(&schedule_key, &schedule);
 
             // Audit log: accumulate total admin-released tokens.
             let prev_released: i128 = env
