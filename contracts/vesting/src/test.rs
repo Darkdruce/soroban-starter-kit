@@ -147,8 +147,8 @@ fn test_double_claim_second_returns_nothing() {
 #[test]
 fn test_revoke_before_cliff_returns_all() {
     let env = setup_env();
-    let (client, admin, _beneficiary, token, _cliff, _end, amount) = setup(&env);
-    let returned = client.revoke();
+    let (client, admin, beneficiary, token, _cliff, _end, amount) = setup(&env);
+    let returned = client.revoke(&beneficiary);
     assert_eq!(returned, amount);
     let token_client = soroban_sdk::token::Client::new(&env, &token);
     assert_eq!(token_client.balance(&admin), amount);
@@ -157,19 +157,19 @@ fn test_revoke_before_cliff_returns_all() {
 #[test]
 fn test_revoke_after_end_returns_nothing() {
     let env = setup_env();
-    let (client, _admin, _beneficiary, _token, _cliff, end, _amount) = setup(&env);
+    let (client, _admin, beneficiary, _token, _cliff, end, _amount) = setup(&env);
     env.ledger().with_mut(|l| l.sequence_number = end + 1);
-    let returned = client.revoke();
+    let returned = client.revoke(&beneficiary);
     assert_eq!(returned, 0);
 }
 
 #[test]
 fn test_revoke_midway_returns_unvested_portion() {
     let env = setup_env();
-    let (client, admin, _beneficiary, token, cliff, end, amount) = setup(&env);
+    let (client, admin, beneficiary, token, cliff, end, amount) = setup(&env);
     let mid = cliff + (end - cliff) / 2;
     env.ledger().with_mut(|l| l.sequence_number = mid);
-    let returned = client.revoke();
+    let returned = client.revoke(&beneficiary);
     assert!(returned > 0 && returned < amount);
     let token_client = soroban_sdk::token::Client::new(&env, &token);
     assert_eq!(token_client.balance(&admin), returned);
@@ -178,30 +178,30 @@ fn test_revoke_midway_returns_unvested_portion() {
 #[test]
 fn test_claim_after_revoke_gets_vested_portion() {
     let env = setup_env();
-    let (client, _admin, _beneficiary, _token, cliff, end, amount) = setup(&env);
+    let (client, _admin, beneficiary, _token, cliff, end, amount) = setup(&env);
     let mid = cliff + (end - cliff) / 2;
     env.ledger().with_mut(|l| l.sequence_number = mid);
-    let returned = client.revoke();
-    let claimed = client.claim();
+    let returned = client.revoke(&beneficiary);
+    let claimed = client.claim(&beneficiary);
     assert_eq!(claimed + returned, amount);
 }
 
 #[test]
 fn test_revoke_twice_fails() {
     let env = setup_env();
-    let (client, ..) = setup(&env);
-    client.revoke();
-    let result = client.try_revoke();
+    let (client, _admin, beneficiary, ..) = setup(&env);
+    client.revoke(&beneficiary);
+    let result = client.try_revoke(&beneficiary);
     assert_eq!(result, Err(Ok(VestingError::AlreadyRevoked)));
 }
 
 #[test]
 fn test_claim_after_full_revoke_fails() {
     let env = setup_env();
-    let (client, ..) = setup(&env);
+    let (client, _admin, beneficiary, ..) = setup(&env);
     // revoke before cliff — nothing vested, amount capped to 0
-    client.revoke();
-    let result = client.try_claim();
+    client.revoke(&beneficiary);
+    let result = client.try_claim(&beneficiary);
     assert_eq!(result, Err(Ok(VestingError::NothingToClaim)));
 }
 
