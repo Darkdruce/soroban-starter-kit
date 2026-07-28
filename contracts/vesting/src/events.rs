@@ -18,9 +18,9 @@ pub fn claimed(env: &Env, beneficiary: &Address, amount: i128) {
         .publish((Symbol::new(env, "claimed"), beneficiary.clone()), amount);
 }
 
-pub fn revoked(env: &Env, admin: &Address, returned: i128) {
+pub fn revoked(env: &Env, beneficiary: &Address, admin: &Address, returned: i128) {
     env.events()
-        .publish((Symbol::new(env, "revoked"), admin.clone()), returned);
+        .publish((Symbol::new(env, "revoked"), beneficiary.clone()), (admin.clone(), returned));
 }
 
 pub fn admin_released(env: &Env, admin: &Address, amount: i128) {

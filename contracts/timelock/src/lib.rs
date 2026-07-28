@@ -172,7 +172,7 @@ mod contract {
                 &amount,
             );
 
-            events::cancelled(&env, &admin);
+            events::cancelled(&env, &admin, amount);
 
             Ok(())
         }

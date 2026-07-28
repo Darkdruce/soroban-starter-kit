@@ -15,12 +15,13 @@ fn prop_setup(
 ) -> (VestingContractClient, Address, Address, Address, u32, u32) {
     let admin = Address::generate(env);
     let beneficiary = Address::generate(env);
-    let token = make_token(env, &admin, amount);
+    let token = make_token(env, &admin, amount * 2);
     let cliff = env.ledger().sequence() + 10;
     let end = cliff + 100;
     let addr = env.register_contract(None, VestingContract);
     let client = VestingContractClient::new(env, &addr);
-    client.initialize(&admin, &beneficiary, &token, &cliff, &end, &amount);
+    client.initialize(&admin, &token);
+    client.create_schedule(&beneficiary, &cliff, &end, &amount);
     (client, admin, beneficiary, token, cliff, end)
 }
 
@@ -63,28 +64,29 @@ proptest! {
         let end = cliff + duration;
         let addr = env.register_contract(None, VestingContract);
         let client = VestingContractClient::new(&env, &addr);
-        client.initialize(&admin, &beneficiary, &token, &cliff, &end, &amount);
+        client.initialize(&admin, &token);
+        client.create_schedule(&beneficiary, &cliff, &end, &amount);
 
         let before_cliff = cliff - 1;
         env.ledger().with_mut(|l| l.sequence_number = before_cliff);
-        prop_assert_eq!(client.claimable(), 0);
+        prop_assert_eq!(client.claimable(&beneficiary), 0);
 
         let partial_checkpoint = cliff + duration * checkpoint_pct / 100;
         env.ledger().with_mut(|l| l.sequence_number = partial_checkpoint);
         prop_assert_eq!(
-            client.claimable(),
+            client.claimable(&beneficiary),
             vested_amount(amount, cliff, end, partial_checkpoint)
         );
 
         env.ledger().with_mut(|l| l.sequence_number = end);
-        prop_assert_eq!(client.claimable(), amount);
+        prop_assert_eq!(client.claimable(&beneficiary), amount);
     }
 
     #[test]
     fn prop_initialize_stores_amount(amount in 1i128..=1_000_000i128) {
         let env = setup_env();
-        let (client, ..) = prop_setup(&env, amount);
-        let info = client.get_info().unwrap();
+        let (client, _admin, beneficiary, ..) = prop_setup(&env, amount);
+        let info = client.get_info(&beneficiary).unwrap();
         assert_eq!(info.amount, amount);
         assert_eq!(info.claimed, 0);
         assert!(!info.revoked);
@@ -95,7 +97,7 @@ proptest! {
         let env = setup_env();
         let (client, _admin, beneficiary, token, _cliff, end) = prop_setup(&env, amount);
         env.ledger().with_mut(|l| l.sequence_number = end + 1);
-        let claimed = client.claim();
+        let claimed = client.claim(&beneficiary);
         assert_eq!(claimed, amount);
         let token_client = soroban_sdk::token::Client::new(&env, &token);
         assert_eq!(token_client.balance(&beneficiary), amount);
