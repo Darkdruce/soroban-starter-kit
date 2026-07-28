@@ -6,7 +6,7 @@
 
 A curated collection of production-ready Soroban smart contract templates. These templates help developers quickly bootstrap common use cases on Soroban (Stellar's smart contract platform) for DeFi, payments, governance, and more.
 
-**También disponible en**: [Español 🇪🇸](README.es.md)
+**También disponible en**: [Español 🇪🇸](README.es.md) · **Disponible en**: [Français 🇫🇷](README.fr.md)
 
 ## 🚀 Quick Start
 
@@ -364,6 +364,7 @@ A special thanks to all our [contributors](CONTRIBUTORS.md) who have helped make
 - [Glossary](docs/glossary.md) — Soroban/Stellar terms used across the repo
 - [Threat Model](docs/threat-model.md) — Trust assumptions and attack surface per contract
 - [Known Issues](docs/known-issues.md) — Accepted design tradeoffs per contract
+- [Translations](docs/translations.md) — Source-commit checklist for `README.es.md` / `README.fr.md`
 - [FAQ](docs/faq.md) — Common developer questions: setup, testing, deployment, feature flags, token customization
 - [System Architecture](docs/architecture.md) — High-level design, contract relationships, storage tiers, event model, and admin framework
 - [Contract API Reference](docs/contract-api.md) — Full public API for all contracts (parameters, return types, errors)
@@ -371,6 +372,8 @@ A special thanks to all our [contributors](CONTRIBUTORS.md) who have helped make
 - [Security Best Practices](docs/security.md)
 - [Integration Guide](docs/integration-guide.md)
 - [Deployment Guide](docs/deployment-guide.md)
+- [Testing Strategy](docs/testing-strategy.md) — Coverage matrix (unit/property/fuzz/integration) by contract
+- [Gas / Compute Unit Costs](docs/gas-costs.md) — Measured and estimated CU costs per contract function
 - [Soroban Documentation](https://soroban.stellar.org/docs)
 - [Stellar Developer Discord](https://discord.gg/stellardev)
 - [Soroban Examples](https://github.com/stellar/soroban-examples)

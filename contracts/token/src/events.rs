@@ -118,10 +118,8 @@ pub fn upgraded(env: &Env, admin: &Address, new_wasm_hash: &soroban_sdk::BytesN<
 /// Emitted when the transfer hook address is changed.
 /// Topics: (Symbol, Address) — event name, admin
 pub fn transfer_hook_set(env: &Env, admin: &Address, hook: Option<&Address>) {
-    env.events().publish(
-        (Symbol::new(env, "hook_set"), admin.clone()),
-        hook.cloned(),
-    );
+    env.events()
+        .publish((Symbol::new(env, "hook_set"), admin.clone()), hook.cloned());
 }
 
 /// Emitted when a balance snapshot is recorded (issue #717).
@@ -130,5 +128,25 @@ pub fn snapshot_taken(env: &Env, account: &Address, ledger: u32, balance: i128) 
     env.events().publish(
         (Symbol::new(env, "snapshot"), account.clone(), ledger),
         balance,
+    );
+}
+
+/// Emitted when an owner registers (or rotates) their permit signing key.
+/// Topics: (Symbol, Address) — event name, owner
+pub fn permit_signer_set(env: &Env, owner: &Address) {
+    env.events()
+        .publish((Symbol::new(env, "permit_signer_set"), owner.clone()), ());
+}
+
+/// Emitted when a signature-based permit is successfully applied.
+/// Topics: (Symbol, Address, Address) — event name, owner, spender
+pub fn permit_used(env: &Env, owner: &Address, spender: &Address, amount: i128, nonce: u32) {
+    env.events().publish(
+        (
+            Symbol::new(env, "permit_used"),
+            owner.clone(),
+            spender.clone(),
+        ),
+        (amount, nonce),
     );
 }

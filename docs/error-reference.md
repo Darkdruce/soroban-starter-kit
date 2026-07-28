@@ -76,6 +76,36 @@ Comprehensive reference for all error codes returned by the contracts in this re
 
 ---
 
+### `InvalidNonce` (code 8)
+
+**Description:** The nonce supplied to `approve_with_signature` does not match the owner's current expected nonce.
+
+**Common cause:** Replaying an already-consumed permit message, or submitting permits out of order.
+
+**Resolution:** Call `permit_nonce(owner)` to fetch the current nonce and have the owner sign a fresh message with it.
+
+---
+
+### `PermitExpired` (code 9)
+
+**Description:** The current ledger is already past the `expiry_ledger` in the signed permit message.
+
+**Common cause:** Submitting a permit too long after it was signed.
+
+**Resolution:** Have the owner sign a new permit with a later `expiry_ledger`.
+
+---
+
+### `PermitSignerNotSet` (code 10)
+
+**Description:** `approve_with_signature` was called for an `owner` who has never registered a permit signing key.
+
+**Common cause:** Skipping the one-time `set_permit_signer` call before attempting signature-based approvals.
+
+**Resolution:** Have the owner call `set_permit_signer` with their ed25519 public key before any spender submits a permit on their behalf.
+
+---
+
 ## Escrow Contract — `EscrowError`
 
 ### `NotAuthorized` (code 1)
@@ -165,3 +195,75 @@ Comprehensive reference for all error codes returned by the contracts in this re
 **Common cause:** Passing the same address for two different roles (e.g., buyer and seller are the same), or providing an invalid address.
 
 **Resolution:** Ensure buyer, seller, and arbiter are three distinct, valid addresses before calling `initialize`.
+
+---
+
+## Wrapped-Token Contract — `WrappedTokenError`
+
+### `AlreadyInitialized` (code 1)
+
+**Description:** `initialize` was called on a contract that has already been set up.
+
+**Common cause:** Calling `initialize` more than once on the same deployed contract instance.
+
+**Resolution:** `initialize` should only be called once, immediately after deployment.
+
+---
+
+### `NotInitialized` (code 2)
+
+**Description:** An operation was attempted before the contract was initialized.
+
+**Common cause:** Invoking `wrap`, `unwrap`, or `get_reserve_balance` before `initialize` has been called.
+
+**Resolution:** Call `initialize` with the admin, wrapped token, underlying token, and optional per-address cap before any other interaction.
+
+---
+
+### `Unauthorized` (code 3)
+
+**Description:** The caller is not permitted to perform this action, or the contract is currently paused.
+
+**Common cause:** Calling `wrap` or `unwrap` while the contract is paused (only possible when built with the `pausable` feature).
+
+**Resolution:** Check contract state before retrying; wait for the admin to call `unpause()`.
+
+---
+
+### `InvalidAmount` (code 4)
+
+**Description:** The amount is zero or negative, or `max_wrap_per_address` was set to zero or negative at `initialize`.
+
+**Common cause:** Passing `0` or a negative value as an amount to `wrap`/`unwrap`, or an invalid cap to `initialize`.
+
+**Resolution:** Validate that amounts are positive integers. If setting a cap, ensure it is greater than zero (or pass `None` for uncapped).
+
+---
+
+### `InsufficientBalance` (code 5)
+
+**Description:** The caller does not hold enough wrapped tokens to complete the requested `unwrap`.
+
+**Common cause:** Attempting to unwrap more than the wrapped token balance held by the caller.
+
+**Resolution:** Check the wrapped token balance before calling `unwrap`.
+
+---
+
+### `InsufficientReserve` (code 6)
+
+**Description:** The contract does not hold enough of the underlying asset to honor an `unwrap`.
+
+**Common cause:** The underlying reserve has been depleted relative to the wrapped supply — this should never happen under normal 1:1-backed operation; see the reserve-backing invariant in the [monitoring guide](monitoring.md).
+
+**Resolution:** Investigate immediately; this indicates a broken invariant between `get_total_wrapped()` and `get_reserve_balance()`.
+
+---
+
+### `MaxWrapExceeded` (code 7)
+
+**Description:** Wrapping this amount would push the caller's cumulative wrapped total past the `max_wrap_per_address` cap set at `initialize`.
+
+**Common cause:** A single address attempting to wrap more than the configured concentration-risk limit, either in one call or across multiple calls.
+
+**Resolution:** Check `wrapped_by(address)` and `max_wrap_per_address()` before calling `wrap`, and keep cumulative wraps within the cap.
