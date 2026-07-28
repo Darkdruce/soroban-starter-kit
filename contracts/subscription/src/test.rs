@@ -88,7 +88,7 @@ fn test_subscribe_zero_amount_fails() {
     let env = setup_env();
     let (client, _addr, _provider, _token) = setup(&env);
     let subscriber = Address::generate(&env);
-    let result = client.try_subscribe(&subscriber, &0, &10);
+    let result = client.try_subscribe(&subscriber, &0, &10, &None);
     assert_eq!(result, Err(Ok(SubscriptionError::InvalidAmount)));
 }
 
@@ -97,7 +97,7 @@ fn test_subscribe_zero_interval_fails() {
     let env = setup_env();
     let (client, _addr, _provider, _token) = setup(&env);
     let subscriber = Address::generate(&env);
-    let result = client.try_subscribe(&subscriber, &100, &0);
+    let result = client.try_subscribe(&subscriber, &100, &0, &None);
     assert_eq!(result, Err(Ok(SubscriptionError::InvalidInterval)));
 }
 
@@ -108,7 +108,7 @@ fn test_subscribe_twice_fails() {
     let subscriber = Address::generate(&env);
 
     approve_and_subscribe(&env, &client, &addr, &token, &subscriber, 100, 50, 1_000, None);
-    let result = client.try_subscribe(&subscriber, &100, &50);
+    let result = client.try_subscribe(&subscriber, &100, &50, &None);
     assert_eq!(result, Err(Ok(SubscriptionError::AlreadySubscribed)));
 }
 
@@ -188,7 +188,7 @@ fn test_charge_insufficient_allowance_fails() {
     StellarAssetClient::new(&env, &token).mint(&subscriber, &500);
     let token_client = soroban_sdk::token::Client::new(&env, &token);
     token_client.approve(&subscriber, &addr, &50, &1_000_000); // only 50 approved, need 100
-    client.subscribe(&subscriber, &100, &50);
+    client.subscribe(&subscriber, &100, &50, &None);
 
     env.ledger().with_mut(|l| l.sequence_number += 50);
     let result = client.try_charge(&subscriber);
