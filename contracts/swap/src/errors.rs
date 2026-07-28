@@ -1,9 +1,8 @@
 use soroban_common::impl_display_error;
-// `#[contracterror]` generates undocumented public associated items.
-#![allow(missing_docs)]
-
 use soroban_sdk::contracterror;
 
+// `#[contracterror]` generates undocumented public associated items.
+#[allow(missing_docs)]
 #[contracterror]
 #[derive(Clone, Copy, Debug)]
 pub enum SwapError {
@@ -30,6 +29,47 @@ impl_display_error!(
     InvalidDeadline  => "invalid deadline",
     AlreadyCompleted => "swap already completed",
     AlreadyCancelled => "swap already cancelled",
+);
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::SwapError;
+    use std::format;
+    use std::string::String;
+
+    #[allow(clippy::as_conversions)]
+    fn render_error_code_snapshot() -> String {
+        format!(
+            "\
+SwapError::NotAuthorized = {}\n\
+SwapError::SwapNotFound = {}\n\
+SwapError::InvalidState = {}\n\
+SwapError::DeadlineExpired = {}\n\
+SwapError::InvalidAmount = {}\n\
+SwapError::InvalidDeadline = {}\n\
+SwapError::AlreadyCompleted = {}\n\
+SwapError::AlreadyCancelled = {}\n",
+            SwapError::NotAuthorized as u32,
+            SwapError::SwapNotFound as u32,
+            SwapError::InvalidState as u32,
+            SwapError::DeadlineExpired as u32,
+            SwapError::InvalidAmount as u32,
+            SwapError::InvalidDeadline as u32,
+            SwapError::AlreadyCompleted as u32,
+            SwapError::AlreadyCancelled as u32,
+        )
+    }
+
+    #[test]
+    fn swap_error_codes_match_snapshot() {
+        assert_eq!(
+            render_error_code_snapshot(),
+            include_str!("../snapshots/error_codes.snap")
+        );
+    }
+}
     AlreadyInitialized => "contract already initialized",
     NotInitialized    => "contract not initialized",
     InvalidFee       => "invalid fee basis points",

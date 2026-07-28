@@ -35,9 +35,11 @@ pub(crate) fn vested_amount(amount: i128, cliff_ledger: u32, end_ledger: u32, le
         return amount;
     }
     // Linear interpolation between cliff and end.
-    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)] // u32 ledger difference fits in i128
+    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+    // u32 ledger difference fits in i128
     let elapsed = (ledger - cliff_ledger) as i128;
-    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)] // u32 ledger difference fits in i128
+    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+    // u32 ledger difference fits in i128
     let total = (end_ledger - cliff_ledger) as i128;
     amount * elapsed / total
 }
@@ -336,6 +338,21 @@ mod contract {
                 return Err(VestingError::NothingToClaim);
             }
 
+            let beneficiary: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Beneficiary)
+                .ok_or(VestingError::NotInitialized)?;
+            let token: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Token)
+                .ok_or(VestingError::NotInitialized)?;
+
+            // Mark as revoked, cap amount to zero (nothing more to claim).
+            env.storage().instance().set(&DataKey::Revoked, &true);
+            env.storage().instance().set(&DataKey::Amount, &releasable);
+            env.storage().instance().set(&DataKey::Claimed, &releasable);
             // Mark as revoked, cap amount to what's being released (nothing more to claim).
             schedule.revoked = true;
             schedule.amount = releasable;
@@ -400,10 +417,7 @@ mod contract {
 
         /// Return the on-chain contract version number.
         pub fn contract_version(env: Env) -> u32 {
-            env.storage()
-                .instance()
-                .get(&DataKey::Version)
-                .unwrap_or(0)
+            env.storage().instance().get(&DataKey::Version).unwrap_or(0)
         }
     }
 }

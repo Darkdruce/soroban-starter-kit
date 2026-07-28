@@ -213,11 +213,7 @@ mod contract {
         /// `(0, None)` if not configured.
         #[must_use]
         pub fn get_fee_config(env: Env) -> (u32, Option<Address>) {
-            let fee_bps: u32 = env
-                .storage()
-                .instance()
-                .get(&DataKey::FeeBps)
-                .unwrap_or(0);
+            let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
             let treasury: Option<Address> = env.storage().instance().get(&DataKey::Treasury);
             (fee_bps, treasury)
         }
@@ -249,10 +245,7 @@ mod contract {
 
         /// Return the on-chain contract version number.
         pub fn contract_version(env: Env) -> u32 {
-            env.storage()
-                .instance()
-                .get(&DataKey::Version)
-                .unwrap_or(0)
+            env.storage().instance().get(&DataKey::Version).unwrap_or(0)
         }
     }
 

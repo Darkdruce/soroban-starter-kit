@@ -23,3 +23,43 @@ pub enum StakingError {
     /// Stake and reward token must be the same to compound.
     CompoundTokenMismatch = 8,
 }
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::StakingError;
+    use std::format;
+    use std::string::String;
+
+    #[allow(clippy::as_conversions)]
+    fn render_error_code_snapshot() -> String {
+        format!(
+            "\
+StakingError::AlreadyInitialized = {}\n\
+StakingError::NotInitialized = {}\n\
+StakingError::Unauthorized = {}\n\
+StakingError::InvalidAmount = {}\n\
+StakingError::NoStake = {}\n\
+StakingError::InsufficientStake = {}\n\
+StakingError::NoRewards = {}\n\
+StakingError::CompoundTokenMismatch = {}\n",
+            StakingError::AlreadyInitialized as u32,
+            StakingError::NotInitialized as u32,
+            StakingError::Unauthorized as u32,
+            StakingError::InvalidAmount as u32,
+            StakingError::NoStake as u32,
+            StakingError::InsufficientStake as u32,
+            StakingError::NoRewards as u32,
+            StakingError::CompoundTokenMismatch as u32,
+        )
+    }
+
+    #[test]
+    fn staking_error_codes_match_snapshot() {
+        assert_eq!(
+            render_error_code_snapshot(),
+            include_str!("../snapshots/error_codes.snap")
+        );
+    }
+}

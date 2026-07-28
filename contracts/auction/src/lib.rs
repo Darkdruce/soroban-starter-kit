@@ -132,9 +132,7 @@ mod contract {
             env.storage().instance().set(&DataKey::Cancelled, &false);
 
             if let Some(rp) = reserve_price {
-                env.storage()
-                    .instance()
-                    .set(&DataKey::ReservePrice, &rp);
+                env.storage().instance().set(&DataKey::ReservePrice, &rp);
             }
 
             bump_instance(&env);
@@ -329,8 +327,7 @@ mod contract {
             let winner = winner.unwrap();
 
             // Reserve price check
-            let reserve_price: Option<i128> =
-                env.storage().instance().get(&DataKey::ReservePrice);
+            let reserve_price: Option<i128> = env.storage().instance().get(&DataKey::ReservePrice);
             if let Some(rp) = reserve_price {
                 if highest_bid < rp {
                     // Return funds to the highest bidder

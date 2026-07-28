@@ -393,10 +393,7 @@ mod contract {
 
         /// Return the on-chain contract version number.
         pub fn contract_version(env: Env) -> u32 {
-            env.storage()
-                .instance()
-                .get(&DataKey::Version)
-                .unwrap_or(0)
+            env.storage().instance().get(&DataKey::Version).unwrap_or(0)
         }
 
         /// Enable or disable auto-compounding for `staker`.
@@ -404,7 +401,11 @@ mod contract {
         /// When compounding is enabled, calling [`compound`](Self::compound) will
         /// re-stake accrued rewards instead of transferring them out.
         /// Requires stake token == reward token.
-        pub fn set_compounding(env: Env, staker: Address, enabled: bool) -> Result<(), StakingError> {
+        pub fn set_compounding(
+            env: Env,
+            staker: Address,
+            enabled: bool,
+        ) -> Result<(), StakingError> {
             if !env.storage().instance().has(&DataKey::Admin) {
                 return Err(StakingError::NotInitialized);
             }

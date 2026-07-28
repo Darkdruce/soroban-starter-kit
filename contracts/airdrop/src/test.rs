@@ -1,4 +1,10 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing
+)]
 #![cfg(test)]
 
 use super::*;
@@ -244,7 +250,9 @@ fn test_claim_before_deadline_succeeds() {
     let admin = Address::generate(&env);
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
-    let token = env.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let airdrop = env.register_contract(None, AirdropContract);
     let client = AirdropContractClient::new(&env, &airdrop);
     client.initialize(&admin, &token, &200u32);
@@ -270,7 +278,9 @@ fn test_claim_at_deadline_succeeds() {
     let admin = Address::generate(&env);
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
-    let token = env.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let airdrop = env.register_contract(None, AirdropContract);
     let client = AirdropContractClient::new(&env, &airdrop);
     client.initialize(&admin, &token, &200u32);
@@ -296,7 +306,9 @@ fn test_claim_after_deadline_rejected() {
     let admin = Address::generate(&env);
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
-    let token = env.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let airdrop = env.register_contract(None, AirdropContract);
     let client = AirdropContractClient::new(&env, &airdrop);
     client.initialize(&admin, &token, &200u32);
@@ -340,7 +352,10 @@ fn test_claim_batch_success() {
 
     assert!(t.client.is_claimed(&t.alice));
     assert!(t.client.is_claimed(&t.bob));
-    assert_eq!(TokenClient::new(&env, &t.token).balance(&t.alice), alice_amount);
+    assert_eq!(
+        TokenClient::new(&env, &t.token).balance(&t.alice),
+        alice_amount
+    );
     assert_eq!(TokenClient::new(&env, &t.token).balance(&t.bob), bob_amount);
 }
 
@@ -361,7 +376,7 @@ fn test_claim_batch_invalid_proof_aborts_all() {
     // Use bob's proof for alice — invalid
     let mut entries = Vec::new(&env);
     entries.push_back((t.alice.clone(), alice_amount, proof_b)); // wrong proof
-    entries.push_back((t.bob.clone(), bob_amount, proof_a));     // also wrong
+    entries.push_back((t.bob.clone(), bob_amount, proof_a)); // also wrong
 
     let res = t.client.try_claim_batch(&entries);
     assert!(res.is_err());
@@ -410,7 +425,9 @@ fn test_claim_batch_after_deadline_rejected() {
     let admin = Address::generate(&env);
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
-    let token = env.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let airdrop = env.register_contract(None, AirdropContract);
     let client = AirdropContractClient::new(&env, &airdrop);
     client.initialize(&admin, &token, &200u32);

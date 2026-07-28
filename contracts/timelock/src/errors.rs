@@ -1,9 +1,8 @@
 use soroban_common::impl_display_error;
-// `#[contracterror]` generates undocumented public associated items.
-#![allow(missing_docs)]
-
 use soroban_sdk::contracterror;
 
+// `#[contracterror]` generates undocumented public associated items.
+#[allow(missing_docs)]
 #[contracterror]
 #[derive(Clone, Copy, Debug)]
 pub enum TimelockError {
@@ -28,3 +27,43 @@ impl_display_error!(
     InvalidAmount       => "invalid amount",
     InvalidReleaseLedger => "invalid release ledger",
 );
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::TimelockError;
+    use std::format;
+    use std::string::String;
+
+    #[allow(clippy::as_conversions)]
+    fn render_error_code_snapshot() -> String {
+        format!(
+            "\
+TimelockError::NotAuthorized = {}\n\
+TimelockError::AlreadyInitialized = {}\n\
+TimelockError::NotInitialized = {}\n\
+TimelockError::NotYetReleasable = {}\n\
+TimelockError::AlreadyReleased = {}\n\
+TimelockError::AlreadyCancelled = {}\n\
+TimelockError::InvalidAmount = {}\n\
+TimelockError::InvalidReleaseLedger = {}\n",
+            TimelockError::NotAuthorized as u32,
+            TimelockError::AlreadyInitialized as u32,
+            TimelockError::NotInitialized as u32,
+            TimelockError::NotYetReleasable as u32,
+            TimelockError::AlreadyReleased as u32,
+            TimelockError::AlreadyCancelled as u32,
+            TimelockError::InvalidAmount as u32,
+            TimelockError::InvalidReleaseLedger as u32,
+        )
+    }
+
+    #[test]
+    fn timelock_error_codes_match_snapshot() {
+        assert_eq!(
+            render_error_code_snapshot(),
+            include_str!("../snapshots/error_codes.snap")
+        );
+    }
+}

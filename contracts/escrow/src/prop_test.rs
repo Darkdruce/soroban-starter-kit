@@ -1,4 +1,10 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing
+)]
 #![cfg(test)]
 
 use std::format;
@@ -32,7 +38,15 @@ fn setup_escrow<'a>(
     let client = EscrowContractClient::new(env, &escrow_addr);
     let deadline = env.ledger().sequence() + MIN_DEADLINE_BUFFER + 10;
     client.initialize(
-        &admin, &buyer, &seller, &arbiter, &token_addr, &amount, &deadline, &0, &None,
+        &admin,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_addr,
+        &amount,
+        &deadline,
+        &0,
+        &None,
     );
 
     (client, buyer, seller, arbiter, token_addr)

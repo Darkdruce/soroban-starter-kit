@@ -1,4 +1,10 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing
+)]
 #![cfg(test)]
 
 use super::*;
@@ -196,7 +202,15 @@ fn test_reserve_met_settles_to_seller() {
 
     let deadline = env.ledger().sequence() + 100;
     // reserve = 2_000, bid = 2_500 → reserve met
-    client.start(&seller, &token, &1_000, &100, &deadline, &Some(2_000i128), &0);
+    client.start(
+        &seller,
+        &token,
+        &1_000,
+        &100,
+        &deadline,
+        &Some(2_000i128),
+        &0,
+    );
 
     client.bid(&b1, &2_500);
 
@@ -222,7 +236,15 @@ fn test_reserve_not_met_returns_funds_to_bidder() {
 
     let deadline = env.ledger().sequence() + 100;
     // reserve = 5_000, bid = 1_500 → reserve NOT met
-    client.start(&seller, &token, &1_000, &100, &deadline, &Some(5_000i128), &0);
+    client.start(
+        &seller,
+        &token,
+        &1_000,
+        &100,
+        &deadline,
+        &Some(5_000i128),
+        &0,
+    );
 
     client.bid(&b1, &1_500);
 
@@ -289,7 +311,8 @@ fn test_deadline_extended_when_bid_is_near_deadline() {
     let deadline: u32 = 100;
     let window: u32 = 10;
     // Advance ledger to deadline - window exactly (right on the boundary)
-    env.ledger().with_mut(|l| l.sequence_number = deadline - window);
+    env.ledger()
+        .with_mut(|l| l.sequence_number = deadline - window);
     client.start(&seller, &token, &1_000, &100, &deadline, &None, &window);
 
     // Bid at the same ledger — within the window; deadline should be extended

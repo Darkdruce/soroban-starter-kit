@@ -437,11 +437,7 @@ pub fn refund_to_buyer(env: Env) -> Result<(), EscrowError> {
 ///
 /// `fee_bps` is in basis points (0 = no fee, 10 000 = 100 %).  Any value
 /// greater than 10 000 returns [`EscrowError::FeeTooHigh`].
-pub fn set_fee_config(
-    env: Env,
-    fee_bps: u32,
-    treasury: Address,
-) -> Result<(), EscrowError> {
+pub fn set_fee_config(env: Env, fee_bps: u32, treasury: Address) -> Result<(), EscrowError> {
     // Must be initialized.
     if !env.storage().instance().has(&DataKey::State) {
         return Err(EscrowError::NotInitialized);
@@ -463,16 +459,17 @@ pub fn set_fee_config(
 ///
 /// Returns `(net_to_seller, fee_amount)`.
 fn apply_fee(env: &Env, gross: i128) -> (i128, i128) {
-    let fee_bps: u32 = env
-        .storage()
-        .instance()
-        .get(&DataKey::FeeBps)
-        .unwrap_or(0);
+    let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_or(0);
     if fee_bps == 0 {
         return (gross, 0);
     }
     // fee = gross * fee_bps / 10_000  (integer division — intentional)
-    #[allow(clippy::integer_division, clippy::arithmetic_side_effects, clippy::as_conversions, clippy::cast_possible_truncation)]
+    #[allow(
+        clippy::integer_division,
+        clippy::arithmetic_side_effects,
+        clippy::as_conversions,
+        clippy::cast_possible_truncation
+    )]
     let fee = (gross * fee_bps as i128) / 10_000;
     #[allow(clippy::arithmetic_side_effects)]
     let net = gross - fee;
@@ -605,7 +602,9 @@ pub fn release_milestone(
         return Err(EscrowError::MilestoneNotFound);
     }
 
-    let mut m = milestones.get(milestone_index).ok_or(EscrowError::MilestoneNotFound)?;
+    let mut m = milestones
+        .get(milestone_index)
+        .ok_or(EscrowError::MilestoneNotFound)?;
     if m.released {
         return Err(EscrowError::InvalidState);
     }

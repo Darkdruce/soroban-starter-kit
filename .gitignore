@@ -4,6 +4,7 @@ mutants.out/
 **/*.rs.bk
 **/test_snapshots/
 **/proptest-regressions/
+**/snapshots/*.snap
 
 # Environment
 .env

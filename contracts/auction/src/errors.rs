@@ -40,3 +40,53 @@ impl_display_error!(
     ReserveNotMet      => "reserve price not met",
     BidAlreadyPlaced   => "cannot cancel after a bid has been placed",
 );
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::AuctionError;
+    use std::format;
+    use std::string::String;
+
+    #[allow(clippy::as_conversions)]
+    fn render_error_code_snapshot() -> String {
+        format!(
+            "\
+AuctionError::AlreadyInitialized = {}\n\
+AuctionError::NotInitialized = {}\n\
+AuctionError::AuctionEnded = {}\n\
+AuctionError::AuctionNotEnded = {}\n\
+AuctionError::BidTooLow = {}\n\
+AuctionError::AlreadyEnded = {}\n\
+AuctionError::NoBids = {}\n\
+AuctionError::NotAuthorized = {}\n\
+AuctionError::InvalidAmount = {}\n\
+AuctionError::InvalidDeadline = {}\n\
+AuctionError::NothingToWithdraw = {}\n\
+AuctionError::ReserveNotMet = {}\n\
+AuctionError::BidAlreadyPlaced = {}\n",
+            AuctionError::AlreadyInitialized as u32,
+            AuctionError::NotInitialized as u32,
+            AuctionError::AuctionEnded as u32,
+            AuctionError::AuctionNotEnded as u32,
+            AuctionError::BidTooLow as u32,
+            AuctionError::AlreadyEnded as u32,
+            AuctionError::NoBids as u32,
+            AuctionError::NotAuthorized as u32,
+            AuctionError::InvalidAmount as u32,
+            AuctionError::InvalidDeadline as u32,
+            AuctionError::NothingToWithdraw as u32,
+            AuctionError::ReserveNotMet as u32,
+            AuctionError::BidAlreadyPlaced as u32,
+        )
+    }
+
+    #[test]
+    fn auction_error_codes_match_snapshot() {
+        assert_eq!(
+            render_error_code_snapshot(),
+            include_str!("../snapshots/error_codes.snap")
+        );
+    }
+}

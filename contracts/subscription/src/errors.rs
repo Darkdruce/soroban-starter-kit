@@ -26,6 +26,51 @@ pub enum SubscriptionError {
     IntervalNotElapsed = 9,
     /// Subscriber has not granted sufficient token allowance to this contract.
     InsufficientAllowance = 10,
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::SubscriptionError;
+    use std::format;
+    use std::string::String;
+
+    #[allow(clippy::as_conversions)]
+    fn render_error_code_snapshot() -> String {
+        format!(
+            "\
+SubscriptionError::AlreadyInitialized = {}\n\
+SubscriptionError::NotInitialized = {}\n\
+SubscriptionError::NotAuthorized = {}\n\
+SubscriptionError::InvalidAmount = {}\n\
+SubscriptionError::InvalidInterval = {}\n\
+SubscriptionError::AlreadySubscribed = {}\n\
+SubscriptionError::NotSubscribed = {}\n\
+SubscriptionError::SubscriptionInactive = {}\n\
+SubscriptionError::IntervalNotElapsed = {}\n\
+SubscriptionError::InsufficientAllowance = {}\n",
+            SubscriptionError::AlreadyInitialized as u32,
+            SubscriptionError::NotInitialized as u32,
+            SubscriptionError::NotAuthorized as u32,
+            SubscriptionError::InvalidAmount as u32,
+            SubscriptionError::InvalidInterval as u32,
+            SubscriptionError::AlreadySubscribed as u32,
+            SubscriptionError::NotSubscribed as u32,
+            SubscriptionError::SubscriptionInactive as u32,
+            SubscriptionError::IntervalNotElapsed as u32,
+            SubscriptionError::InsufficientAllowance as u32,
+        )
+    }
+
+    #[test]
+    fn subscription_error_codes_match_snapshot() {
+        assert_eq!(
+            render_error_code_snapshot(),
+            include_str!("../snapshots/error_codes.snap")
+        );
+    }
+}
     /// Plan with this ID already exists.
     PlanAlreadyExists = 11,
     /// Plan does not exist.
