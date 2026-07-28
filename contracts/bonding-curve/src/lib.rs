@@ -14,6 +14,9 @@ mod storage;
 #[cfg(test)]
 mod test;
 
+#[cfg(test)]
+mod prop_test;
+
 pub use errors::BondingCurveError;
 pub use storage::{DataKey, PRICE_SCALE};
 
