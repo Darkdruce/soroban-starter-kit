@@ -153,6 +153,13 @@ mod contract {
         pub fn accept_swap(env: Env, swap_id: u32, party_b: Address) -> Result<(), SwapError> {
             party_b.require_auth();
 
+            if !env.storage().instance().has(&DataKey::Initialized) {
+                return Err(SwapError::NotInitialized);
+            }
+
+            let treasury: Address = env.storage().instance().get(&DataKey::Treasury).unwrap();
+            let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap();
+
             let mut swap: SwapInfo = env
                 .storage()
                 .persistent()
@@ -175,7 +182,13 @@ mod contract {
                 .set(&SwapKey::Swap(swap_id), &swap);
             bump_persistent(&env, &SwapKey::Swap(swap_id));
 
-            // Party B sends token_b to this contract, then contract forwards both tokens.
+            // Calculate fee - deducted from party A's token_b amount
+            #[allow(clippy::arithmetic_side_effects)]
+            let fee = (swap.amount_b * fee_bps as i128) / 10_000;
+            #[allow(clippy::arithmetic_side_effects)]
+            let party_a_amount = swap.amount_b - fee;
+
+            // Party B sends token_b to this contract, then contract forwards all tokens.
             token::Client::new(&env, &swap.token_b).transfer(
                 &party_b,
                 &env.current_contract_address(),
@@ -189,12 +202,21 @@ mod contract {
                 &swap.amount_a,
             );
 
-            // Party A receives token_b.
+            // Party A receives token_b minus fee.
             token::Client::new(&env, &swap.token_b).transfer(
                 &env.current_contract_address(),
                 &swap.party_a,
-                &swap.amount_b,
+                &party_a_amount,
             );
+
+            // Treasury receives the fee.
+            if fee > 0 {
+                token::Client::new(&env, &swap.token_b).transfer(
+                    &env.current_contract_address(),
+                    &treasury,
+                    &fee,
+                );
+            }
 
             events::swap_accepted(&env, &party_b, swap_id);
 
