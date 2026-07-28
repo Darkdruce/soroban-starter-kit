@@ -102,7 +102,7 @@ mod contract {
 
             bump_persistent(&env, &SwapKey::Swap(swap_id));
             events::swap_proposed(
-                &env, &party_a, swap_id, &token_a, amount_a, &token_b, amount_b,
+                &env, &party_a, swap_id, &token_a, amount_a, &token_b, amount_b, expires_at,
             );
 
             Ok(swap_id)
