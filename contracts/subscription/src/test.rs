@@ -118,7 +118,7 @@ fn test_charge_before_interval_fails() {
     let (client, addr, provider, token) = setup(&env);
     let subscriber = Address::generate(&env);
 
-    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, 100, 50, 500);
+    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, 100, 50, 500, None);
 
     // Advance only 10 ledgers (interval is 50)
     env.ledger().with_mut(|l| l.sequence_number += 10);
