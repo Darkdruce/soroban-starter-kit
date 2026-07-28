@@ -2,7 +2,7 @@
 #![cfg(test)]
 
 use soroban_sdk::{
-    Address, Env,
+    Address, Env, Symbol,
     testutils::{Address as _, Ledger as _},
     token::StellarAssetClient,
 };
@@ -69,35 +69,87 @@ fn test_initialize_twice_fails() {
 }
 
 #[test]
+fn test_register_plan_stores_plan() {
+    let env = setup_env();
+    let (client, _addr, provider, _token) = setup(&env);
+    let basic_plan = Symbol::new(&env, "basic");
+    
+    client.register_plan(&basic_plan, &100, &50);
+    
+    let plan = client.get_plan(&basic_plan).unwrap();
+    assert_eq!(plan.plan_id, basic_plan);
+    assert_eq!(plan.amount, 100);
+    assert_eq!(plan.interval_ledgers, 50);
+    assert!(plan.active);
+    let _ = provider;
+}
+
+#[test]
+fn test_register_duplicate_plan_fails() {
+    let env = setup_env();
+    let (client, _addr, _provider, _token) = setup(&env);
+    let basic_plan = Symbol::new(&env, "basic");
+    
+    client.register_plan(&basic_plan, &100, &50);
+    let result = client.try_register_plan(&basic_plan, &200, &100);
+    assert_eq!(result, Err(Ok(SubscriptionError::PlanAlreadyExists)));
+}
+
+#[test]
+fn test_non_admin_cannot_register_plan() {
+    let env = setup_env();
+    let (client, _addr, _provider, _token) = setup(&env);
+    let stranger = Address::generate(&env);
+    let basic_plan = Symbol::new(&env, "basic");
+    
+    // Remove mock auths to test authorization
+    env.stop_mock_all_auths();
+    let result = client.try_register_plan(&basic_plan, &100, &50);
+    assert!(result.is_err());
+}
+
+#[test]
 fn test_subscribe_stores_subscription() {
     let env = setup_env();
     let (client, addr, _provider, token) = setup(&env);
     let subscriber = Address::generate(&env);
+    let basic_plan = Symbol::new(&env, "basic");
+    
+    // Register the plan first
+    client.register_plan(&basic_plan, &100, &50);
 
-    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, 100, 50, 500, None);
+    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, &basic_plan, 500, None);
 
     let info = client.get_subscription(&subscriber).unwrap();
+    assert_eq!(info.plan_id, basic_plan);
     assert_eq!(info.amount, 100);
     assert_eq!(info.interval_ledgers, 50);
     assert!(info.active);
 }
 
 #[test]
-fn test_subscribe_zero_amount_fails() {
+fn test_subscribe_to_nonexistent_plan_fails() {
     let env = setup_env();
     let (client, _addr, _provider, _token) = setup(&env);
     let subscriber = Address::generate(&env);
-    let result = client.try_subscribe(&subscriber, &0, &10, &None);
-    assert_eq!(result, Err(Ok(SubscriptionError::InvalidAmount)));
+    let nonexistent_plan = Symbol::new(&env, "noexist");
+    
+    let result = client.try_subscribe(&subscriber, &nonexistent_plan, &None);
+    assert_eq!(result, Err(Ok(SubscriptionError::PlanNotFound)));
 }
 
 #[test]
-fn test_subscribe_zero_interval_fails() {
+fn test_subscribe_to_inactive_plan_fails() {
     let env = setup_env();
-    let (client, _addr, _provider, _token) = setup(&env);
+    let (client, addr, _provider, token) = setup(&env);
     let subscriber = Address::generate(&env);
-    let result = client.try_subscribe(&subscriber, &100, &0, &None);
-    assert_eq!(result, Err(Ok(SubscriptionError::InvalidInterval)));
+    let basic_plan = Symbol::new(&env, "basic");
+    
+    client.register_plan(&basic_plan, &100, &50);
+    client.set_plan_active(&basic_plan, &false);
+    
+    let result = client.try_subscribe(&subscriber, &basic_plan, &None);
+    assert_eq!(result, Err(Ok(SubscriptionError::PlanInactive)));
 }
 
 #[test]
@@ -105,9 +157,12 @@ fn test_subscribe_twice_fails() {
     let env = setup_env();
     let (client, addr, _provider, token) = setup(&env);
     let subscriber = Address::generate(&env);
+    let basic_plan = Symbol::new(&env, "basic");
+    
+    client.register_plan(&basic_plan, &100, &50);
 
-    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, 100, 50, 1_000, None);
-    let result = client.try_subscribe(&subscriber, &100, &50, &None);
+    approve_and_subscribe(&env, &client, &addr, &token, &subscriber, &basic_plan, 1_000, None);
+    let result = client.try_subscribe(&subscriber, &basic_plan, &None);
     assert_eq!(result, Err(Ok(SubscriptionError::AlreadySubscribed)));
 }
 
