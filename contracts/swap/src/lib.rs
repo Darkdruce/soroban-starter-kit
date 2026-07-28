@@ -58,12 +58,12 @@ mod contract {
             amount_a: i128,
             token_b: Address,
             amount_b: i128,
-            deadline: u32,
+            expires_at: u32,
         ) -> Result<u32, SwapError> {
             if amount_a <= 0 || amount_b <= 0 {
                 return Err(SwapError::InvalidAmount);
             }
-            if deadline <= env.ledger().sequence() {
+            if expires_at <= env.ledger().sequence() {
                 return Err(SwapError::InvalidDeadline);
             }
 
