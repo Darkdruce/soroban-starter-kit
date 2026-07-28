@@ -129,13 +129,44 @@ fn test_cancel_swap_after_deadline_by_anyone() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, party_a, _, token_a, token_b) = setup(&env);
-    let deadline = env.ledger().sequence() + 10;
+    let expires_at = env.ledger().sequence() + 10;
 
-    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &deadline);
-    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
+    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &expires_at);
+    env.ledger().with_mut(|l| l.sequence_number = expires_at + 1);
     // anyone can cancel after deadline
     client.cancel_swap(&swap_id);
 
+    assert_eq!(client.get_swap(&swap_id).state, SwapState::Cancelled);
+}
+
+#[test]
+fn test_proposer_reclaims_escrowed_assets_after_expiry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, party_a, party_b, token_a, token_b) = setup(&env);
+    let expires_at = env.ledger().sequence() + 10;
+    
+    // Get initial balances
+    let token_a_client = token::StellarAssetClient::new(&env, &token_a);
+    let initial_balance = token_a_client.balance(&party_a);
+    
+    // Propose swap - party A deposits 1000 tokens
+    let swap_id = client.propose_swap(&party_a, &token_a, &1_000, &token_b, &500, &expires_at);
+    
+    // Check that tokens were transferred to contract
+    let contract_address = client.address();
+    assert_eq!(token_a_client.balance(&contract_address), 1000);
+    assert_eq!(token_a_client.balance(&party_a), initial_balance - 1000);
+    
+    // Advance ledger past expiry
+    env.ledger().with_mut(|l| l.sequence_number = expires_at + 1);
+    
+    // Proposer (party A) cancels the swap to reclaim assets
+    client.cancel_swap(&swap_id);
+    
+    // Check that assets were returned to party A
+    assert_eq!(token_a_client.balance(&contract_address), 0);
+    assert_eq!(token_a_client.balance(&party_a), initial_balance);
     assert_eq!(client.get_swap(&swap_id).state, SwapState::Cancelled);
 }
 
