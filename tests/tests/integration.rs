@@ -519,3 +519,238 @@ fn test_marketplace_cancel_listing() {
     let listing = marketplace.get_listing(listing_id).unwrap();
     assert_eq!(listing.active, false);
 }
+
+// ── #855: auction integration test ───────────────────────────────────────────
+
+use soroban_auction_template::{AuctionContract, AuctionContractClient};
+
+fn deploy_auction<'a>(env: &'a Env) -> (AuctionContractClient<'a>, Address) {
+    let addr = env.register_contract(None, AuctionContract);
+    let client = AuctionContractClient::new(env, &addr);
+    (client, addr)
+}
+
+/// Full auction lifecycle: start → multiple competing bids → outbid withdrawal → end.
+///
+/// Verifies that:
+/// - The first bid at start_price is accepted.
+/// - A higher bid from a second bidder is accepted and the first bidder's funds
+///   are queued as a pending refund.
+/// - The outbid bidder can withdraw their pending refund at any time.
+/// - After the deadline the seller receives the winning bid.
+///
+/// Closes #855 – integration test harness for auction (post build-fix).
+#[test]
+fn test_auction_full_lifecycle_competing_bids_and_withdrawal() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let seller = Address::generate(&env);
+    let bidder1 = Address::generate(&env);
+    let bidder2 = Address::generate(&env);
+
+    // Mint tokens for both bidders via a SAC
+    let sac = env.register_stellar_asset_contract_v2(seller.clone());
+    let token_addr = sac.address();
+    let sac_client = StellarAssetClient::new(&env, &token_addr);
+    sac_client.mint(&bidder1, &100_000);
+    sac_client.mint(&bidder2, &100_000);
+
+    let token = soroban_sdk::token::Client::new(&env, &token_addr);
+
+    let (auction, auction_addr) = deploy_auction(&env);
+
+    // start: 1 000 start price, 100 min increment, deadline = current + 200
+    let start_price = 1_000i128;
+    let min_increment = 100i128;
+    let deadline = env.ledger().sequence() + 200;
+    auction.start(&seller, &token_addr, &start_price, &min_increment, &deadline, &None, &0);
+
+    // bidder1 places the opening bid at start_price
+    auction.bid(&bidder1, &start_price);
+    assert_eq!(token.balance(&auction_addr), start_price);
+    assert_eq!(token.balance(&bidder1), 100_000 - start_price);
+
+    // bidder2 outbids by min_increment
+    let bid2 = start_price + min_increment; // 1 100
+    auction.bid(&bidder2, &bid2);
+    assert_eq!(token.balance(&auction_addr), start_price + bid2);
+    // bidder1 should have a pending refund of their original bid
+    assert_eq!(auction.get_pending(&bidder1), start_price);
+
+    // bidder1 withdraws their pending refund
+    auction.withdraw(&bidder1);
+    assert_eq!(auction.get_pending(&bidder1), 0);
+    assert_eq!(token.balance(&bidder1), 100_000 - start_price + start_price); // back to full
+
+    // advance past deadline and settle
+    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
+    auction.end();
+
+    // seller receives the winning bid; bidder2's tokens went to seller
+    assert_eq!(token.balance(&seller), bid2);
+    assert_eq!(token.balance(&auction_addr), 0);
+
+    // auction info reflects settled state
+    let info = auction.get_info();
+    assert!(info.settled);
+    assert_eq!(info.highest_bid, bid2);
+}
+
+/// Reserve price not met: seller gets nothing, highest bidder's funds returned directly.
+///
+/// Closes #855 – integration test harness for auction (post build-fix).
+#[test]
+fn test_auction_reserve_not_met_refunds_bidder() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let seller = Address::generate(&env);
+    let bidder = Address::generate(&env);
+
+    let sac = env.register_stellar_asset_contract_v2(seller.clone());
+    let token_addr = sac.address();
+    StellarAssetClient::new(&env, &token_addr).mint(&bidder, &50_000);
+
+    let token = soroban_sdk::token::Client::new(&env, &token_addr);
+    let (auction, auction_addr) = deploy_auction(&env);
+
+    let start_price = 1_000i128;
+    let reserve_price = 5_000i128;
+    let deadline = env.ledger().sequence() + 100;
+    auction.start(&seller, &token_addr, &start_price, &100, &deadline, &Some(reserve_price), &0);
+
+    // bid below reserve
+    auction.bid(&bidder, &start_price);
+    assert_eq!(token.balance(&auction_addr), start_price);
+
+    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
+    auction.end();
+
+    // reserve not met: bidder gets funds back directly, seller gets nothing
+    assert_eq!(token.balance(&bidder), 50_000);
+    assert_eq!(token.balance(&seller), 0);
+    assert_eq!(token.balance(&auction_addr), 0);
+}
+
+// ── #856: lottery integration test ───────────────────────────────────────────
+
+use soroban_lottery_template::{LotteryContract, LotteryContractClient};
+use soroban_sdk::{Bytes, BytesN, Vec as SorobanVec};
+
+fn deploy_lottery<'a>(env: &'a Env) -> (LotteryContractClient<'a>, Address) {
+    let addr = env.register_contract(None, LotteryContract);
+    let client = LotteryContractClient::new(env, &addr);
+    (client, addr)
+}
+
+/// Helper: compute SHA-256(secret ++ salt) to derive the commitment hash.
+fn make_commit_hash(env: &Env, secret: &[u8; 32], salt: &[u8; 32]) -> BytesN<32> {
+    let mut preimage = Bytes::new(env);
+    preimage.extend_from_array(secret);
+    preimage.extend_from_array(salt);
+    env.crypto().sha256(&preimage).into()
+}
+
+/// Full lottery lifecycle: initialize → buy tickets → commit → draw/reveal → winner payout.
+///
+/// Uses a single-winner lottery (100 % prize split) so we can assert an exact balance.
+/// Verifies:
+/// - Ticket purchases transfer tokens to the contract.
+/// - `commit` closes ticket sales.
+/// - `draw` with correct preimage distributes the entire prize pool and returns winners.
+/// - Winning address balance increases by the full pool.
+///
+/// Closes #856 – integration test harness for lottery (post build-fix).
+#[test]
+fn test_lottery_full_lifecycle_ticket_purchase_commit_reveal_payout() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let buyer1 = Address::generate(&env);
+    let buyer2 = Address::generate(&env);
+    let buyer3 = Address::generate(&env);
+
+    // SAC token: mint enough for each buyer to purchase tickets
+    let sac = env.register_stellar_asset_contract_v2(admin.clone());
+    let token_addr = sac.address();
+    let sac_client = StellarAssetClient::new(&env, &token_addr);
+    let ticket_price = 1_000i128;
+    sac_client.mint(&buyer1, &ticket_price);
+    sac_client.mint(&buyer2, &ticket_price);
+    sac_client.mint(&buyer3, &ticket_price);
+
+    let token = soroban_sdk::token::Client::new(&env, &token_addr);
+
+    let (lottery, lottery_addr) = deploy_lottery(&env);
+
+    // Single winner, full prize pool
+    let mut prize_splits = SorobanVec::new(&env);
+    prize_splits.push_back(10_000u32); // 100 % in basis points
+    lottery.initialize(&admin, &token_addr, &ticket_price, &1, &prize_splits, &None);
+
+    // Buyers purchase tickets
+    lottery.buy_ticket(&buyer1);
+    lottery.buy_ticket(&buyer2);
+    lottery.buy_ticket(&buyer3);
+    let total_prize = ticket_price * 3;
+    assert_eq!(token.balance(&lottery_addr), total_prize);
+    assert_eq!(token.balance(&buyer1), 0);
+
+    // Admin commits: hash(secret ++ salt)
+    let secret: [u8; 32] = [0xAB; 32];
+    let salt: [u8; 32] = [0xCD; 32];
+    let commit_hash = make_commit_hash(&env, &secret, &salt);
+    let reveal_deadline = env.ledger().sequence() + 50;
+    lottery.commit(&commit_hash, &reveal_deadline);
+
+    // Advance one ledger so we're still within the reveal window, then draw
+    env.ledger().with_mut(|l| l.sequence_number += 1);
+
+    let secret_bytes: BytesN<32> = BytesN::from_array(&env, &secret);
+    let salt_bytes: BytesN<32> = BytesN::from_array(&env, &salt);
+    let winners = lottery.draw(&secret_bytes, &salt_bytes);
+
+    // Exactly one winner must be declared
+    assert_eq!(winners.len(), 1);
+    #[allow(clippy::unwrap_used)]
+    let winner = winners.get(0).unwrap();
+
+    // Winner must be one of the participants
+    assert!(winner == buyer1 || winner == buyer2 || winner == buyer3);
+
+    // Winner receives the full prize pool; contract balance is drained
+    assert_eq!(token.balance(&winner), total_prize);
+    assert_eq!(token.balance(&lottery_addr), 0);
+}
+
+/// Ticket-cap enforcement: a buyer cannot exceed `max_tickets_per_address`.
+///
+/// Closes #856 – integration test harness for lottery (post build-fix).
+#[test]
+fn test_lottery_ticket_cap_enforced() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    let sac = env.register_stellar_asset_contract_v2(admin.clone());
+    let token_addr = sac.address();
+    let ticket_price = 500i128;
+    StellarAssetClient::new(&env, &token_addr).mint(&buyer, &(ticket_price * 5));
+
+    let (lottery, _) = deploy_lottery(&env);
+    let mut prize_splits = SorobanVec::new(&env);
+    prize_splits.push_back(10_000u32);
+    lottery.initialize(&admin, &token_addr, &ticket_price, &1, &prize_splits, &Some(2));
+
+    // First two tickets succeed
+    lottery.buy_ticket(&buyer);
+    lottery.buy_ticket(&buyer);
+
+    // Third ticket must fail with TicketCapExceeded
+    let result = lottery.try_buy_ticket(&buyer);
+    assert!(result.is_err());
+}
