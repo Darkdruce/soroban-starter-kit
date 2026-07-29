@@ -149,6 +149,7 @@ dependencies = [
 name = "bonding-curve"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "soroban-common",
  "soroban-sdk",
 ]
@@ -1715,6 +1716,8 @@ name = "soroban-integration-tests"
 version = "0.1.0"
 dependencies = [
  "soroban-escrow-template",
+ "soroban-marketplace-template",
+ "soroban-nft-template",
  "soroban-sdk",
  "soroban-token-template",
 ]
@@ -1771,6 +1774,7 @@ dependencies = [
 name = "soroban-oracle-template"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "soroban-common",
  "soroban-sdk",
 ]
@@ -1883,8 +1887,10 @@ name = "soroban-token-fuzz"
 version = "0.1.0"
 dependencies = [
  "libfuzzer-sys",
+ "soroban-airdrop-template",
  "soroban-escrow-template",
  "soroban-sdk",
+ "soroban-swap-template",
  "soroban-token-template",
 ]
 

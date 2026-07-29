@@ -32,3 +32,11 @@ pub fn proposal_cancelled(env: &Env, admin: &Address, proposal_id: u32) {
     env.events()
         .publish((Symbol::new(env, "cancelled"), admin.clone()), proposal_id);
 }
+
+/// Emitted when the original proposer self-cancels before any votes are cast.
+pub fn proposal_proposer_cancelled(env: &Env, proposer: &Address, proposal_id: u32) {
+    env.events().publish(
+        (Symbol::new(env, "prop_cancelled"), proposer.clone()),
+        proposal_id,
+    );
+}

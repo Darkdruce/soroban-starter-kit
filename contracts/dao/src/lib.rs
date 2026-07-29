@@ -4,6 +4,21 @@
 //!
 //! Token holders create proposals and cast token-weighted votes; a proposal
 //! passes when it reaches quorum with more yes votes than no votes.
+//!
+//! ## Quorum modes
+//!
+//! Two quorum controls can be set at initialization; both must be satisfied
+//! for a proposal to execute:
+//!
+//! * **`quorum`** — absolute minimum total votes (in token units).
+//! * **`quorum_bps`** — minimum participation as a share of total token supply
+//!   expressed in basis points (0–10 000). Set to `0` to disable.
+//!
+//! ## Proposer self-cancel (#830)
+//!
+//! The original proposer may call `proposer_cancel_proposal` to retract their
+//! proposal **before any vote has been cast**. This lets them correct mistakes
+//! without waiting for the voting period to lapse.
 
 use soroban_sdk::{Address, Env, String, contract, contractimpl, token};
 
@@ -34,7 +49,8 @@ where
 /// DAO governance contract for on-chain proposal creation and token-weighted voting.
 ///
 /// Voting power is the voter's token balance at vote time (simplified snapshot).
-/// A proposal passes when `yes_votes > no_votes` and total votes reach the quorum.
+/// A proposal passes when `yes_votes > no_votes`, total votes reach the absolute
+/// `quorum`, *and* participation reaches `quorum_bps` of the total token supply.
 pub use contract::*;
 
 // The `#[contract]` / `#[contractimpl]` macros generate an undocumented public
@@ -53,19 +69,26 @@ mod contract {
         ///
         /// - `voting_period` — number of ledgers a proposal stays open for voting.
         /// - `quorum` — minimum total votes (in token units) required for a valid result.
+        /// - `quorum_bps` — minimum participation as basis points of total supply (0–10 000).
+        ///   Pass `0` to disable the percentage-based quorum check.
         ///
         /// # Errors
         ///
         /// Returns [`DaoError::AlreadyInitialized`] if called again.
+        /// Returns [`DaoError::InvalidQuorumBps`] if `quorum_bps` > 10 000.
         pub fn initialize(
             env: Env,
             admin: Address,
             token: Address,
             voting_period: u32,
             quorum: i128,
+            quorum_bps: u32,
         ) -> Result<(), DaoError> {
             if env.storage().instance().has(&DataKey::Initialized) {
                 return Err(DaoError::AlreadyInitialized);
+            }
+            if quorum_bps > 10_000 {
+                return Err(DaoError::InvalidQuorumBps);
             }
 
             admin.require_auth();
@@ -76,6 +99,9 @@ mod contract {
                 .instance()
                 .set(&DataKey::VotingPeriod, &voting_period);
             env.storage().instance().set(&DataKey::Quorum, &quorum);
+            env.storage()
+                .instance()
+                .set(&DataKey::QuorumBps, &quorum_bps);
             env.storage().instance().set(&DataKey::ProposalCount, &0u32);
             env.storage().instance().set(&DataKey::Initialized, &true);
 
@@ -220,12 +246,15 @@ mod contract {
 
         /// Execute a passed proposal. Callable after the deadline when quorum and majority are met.
         ///
+        /// Both the absolute `quorum` (token units) and the percentage-based
+        /// `quorum_bps` (share of total supply) must be satisfied.
+        ///
         /// # Errors
         ///
         /// Returns [`DaoError::ProposalNotFound`] if the proposal does not exist.
         /// Returns [`DaoError::InvalidState`] if the proposal is not `Active`.
         /// Returns [`DaoError::DeadlineNotReached`] if the voting deadline has not passed.
-        /// Returns [`DaoError::QuorumNotMet`] if total votes are below the quorum threshold.
+        /// Returns [`DaoError::QuorumNotMet`] if total votes are below either quorum threshold.
         /// Returns [`DaoError::ProposalRejected`] if `no_votes >= yes_votes`.
         pub fn execute_proposal(env: Env, proposal_id: u32) -> Result<(), DaoError> {
             Self::require_initialized(&env)?;
@@ -250,9 +279,31 @@ mod contract {
                 .ok_or(DaoError::NotInitialized)?;
             let total_votes = proposal.yes_votes + proposal.no_votes;
 
+            // Absolute quorum check.
             if total_votes < quorum {
                 return Err(DaoError::QuorumNotMet);
             }
+
+            // Percentage-based quorum check (#829).
+            let quorum_bps: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::QuorumBps)
+                .unwrap_or(0u32);
+            if quorum_bps > 0 {
+                let token: Address = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::Token)
+                    .ok_or(DaoError::NotInitialized)?;
+                let total_supply = token::Client::new(&env, &token).total_supply();
+                // total_votes / total_supply >= quorum_bps / 10_000
+                // ⟺ total_votes * 10_000 >= quorum_bps * total_supply
+                if total_votes * 10_000 < i128::from(quorum_bps) * total_supply {
+                    return Err(DaoError::QuorumNotMet);
+                }
+            }
+
             if proposal.yes_votes <= proposal.no_votes {
                 return Err(DaoError::ProposalRejected);
             }
@@ -268,7 +319,7 @@ mod contract {
             Ok(())
         }
 
-        /// Cancel a proposal. Admin only; works only on `Active` proposals.
+        /// Cancel a proposal. Admin only; works on any `Active` proposal regardless of votes.
         ///
         /// # Errors
         ///
@@ -302,6 +353,57 @@ mod contract {
 
             bump_persistent(&env, &ProposalKey::Proposal(proposal_id));
             events::proposal_cancelled(&env, &admin, proposal_id);
+
+            Ok(())
+        }
+
+        /// Allow the original proposer to cancel their own proposal before any votes are cast.
+        ///
+        /// This lets a proposer correct a mistake (wrong description, bad parameters, etc.)
+        /// without waiting for the entire voting period to lapse.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`DaoError::NotInitialized`] if the DAO has not been set up.
+        /// Returns [`DaoError::ProposalNotFound`] if the proposal does not exist.
+        /// Returns [`DaoError::NotAuthorized`] if the caller is not the original proposer.
+        /// Returns [`DaoError::InvalidState`] if the proposal is not `Active`.
+        /// Returns [`DaoError::VotesAlreadyCast`] if at least one vote has already been recorded.
+        pub fn proposer_cancel_proposal(
+            env: Env,
+            proposer: Address,
+            proposal_id: u32,
+        ) -> Result<(), DaoError> {
+            Self::require_initialized(&env)?;
+            proposer.require_auth();
+
+            let mut proposal: Proposal = env
+                .storage()
+                .persistent()
+                .get(&ProposalKey::Proposal(proposal_id))
+                .ok_or(DaoError::ProposalNotFound)?;
+
+            // Only the original proposer may use this entry point.
+            if proposal.proposer != proposer {
+                return Err(DaoError::NotAuthorized);
+            }
+
+            if proposal.state != ProposalState::Active {
+                return Err(DaoError::InvalidState);
+            }
+
+            // Reject if any votes have already been cast.
+            if proposal.yes_votes > 0 || proposal.no_votes > 0 {
+                return Err(DaoError::VotesAlreadyCast);
+            }
+
+            proposal.state = ProposalState::Cancelled;
+            env.storage()
+                .persistent()
+                .set(&ProposalKey::Proposal(proposal_id), &proposal);
+
+            bump_persistent(&env, &ProposalKey::Proposal(proposal_id));
+            events::proposal_proposer_cancelled(&env, &proposer, proposal_id);
 
             Ok(())
         }

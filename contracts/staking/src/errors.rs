@@ -22,6 +22,10 @@ pub enum StakingError {
     NoRewards = 7,
     /// Stake and reward token must be the same to compound.
     CompoundTokenMismatch = 8,
+    /// `withdraw` called before the unbonding period has elapsed.
+    UnbondingNotComplete = 9,
+    /// `withdraw` called with no pending unbond request.
+    NoUnbondRequest = 10,
 }
 
 #[cfg(test)]
@@ -43,7 +47,9 @@ StakingError::InvalidAmount = {}\n\
 StakingError::NoStake = {}\n\
 StakingError::InsufficientStake = {}\n\
 StakingError::NoRewards = {}\n\
-StakingError::CompoundTokenMismatch = {}\n",
+StakingError::CompoundTokenMismatch = {}\n\
+StakingError::UnbondingNotComplete = {}\n\
+StakingError::NoUnbondRequest = {}\n",
             StakingError::AlreadyInitialized as u32,
             StakingError::NotInitialized as u32,
             StakingError::Unauthorized as u32,
@@ -52,6 +58,8 @@ StakingError::CompoundTokenMismatch = {}\n",
             StakingError::InsufficientStake as u32,
             StakingError::NoRewards as u32,
             StakingError::CompoundTokenMismatch as u32,
+            StakingError::UnbondingNotComplete as u32,
+            StakingError::NoUnbondRequest as u32,
         )
     }
 

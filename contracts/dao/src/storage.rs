@@ -11,6 +11,9 @@ pub enum DataKey {
     Token,
     VotingPeriod,
     Quorum,
+    /// Minimum participation expressed in basis points of total token supply
+    /// (0–10_000). Zero means no percentage-based quorum is enforced.
+    QuorumBps,
     ProposalCount,
     Initialized,
 }
