@@ -242,6 +242,102 @@ where
     }
 }
 
+// ─── Per-address rate limiting (#824) ────────────────────────────────────────
+
+/// Check whether `address` has exceeded `max_calls` within a rolling ledger
+/// `window` and, if not, record this call.
+///
+/// ## Storage
+///
+/// One **persistent** key per `(namespace, address)` pair is written.  The key
+/// is a two-element tuple `(namespace, address)` so that callers can isolate
+/// multiple independent rate-limit rules on the same address by choosing
+/// different `namespace` values.
+///
+/// ## Window semantics
+///
+/// The window is **sliding from the first call**: on the first call for an
+/// address the current ledger is recorded as `window_start`.  Subsequent calls
+/// within `[window_start, window_start + window)` increment the counter.  Once
+/// the ledger advances past `window_start + window` the counter resets and a
+/// new window begins.
+///
+/// ## Parameters
+///
+/// - `env`       — the contract [`Env`].
+/// - `namespace` — a `u32` discriminant acting as a namespace for the stored
+///                 key.  Use different values to enforce separate rate-limit
+///                 rules for the same address (e.g. `1` for deposits, `2` for
+///                 withdrawals).
+/// - `address`   — the address to throttle.
+/// - `window`    — size of the sliding window in ledgers.  Must be ≥ 1.
+/// - `max_calls` — maximum number of allowed calls within a single window.
+///
+/// ## Returns
+///
+/// `true`  — the call is **allowed** (counter has been incremented).  
+/// `false` — the call is **denied** (limit already reached in this window).
+///
+/// ## Example
+///
+/// ```ignore
+/// use soroban_common::check_and_record;
+/// use soroban_sdk::{Address, Env};
+///
+/// // Allow at most 3 calls per 100 ledgers for a given address.
+/// pub fn sensitive_action(env: Env, caller: Address) -> Result<(), MyError> {
+///     if !check_and_record(&env, 1u32, &caller, 100, 3) {
+///         return Err(MyError::RateLimitExceeded);
+///     }
+///     // ... action logic ...
+///     Ok(())
+/// }
+/// ```
+pub fn check_and_record(
+    env: &Env,
+    namespace: u32,
+    address: &Address,
+    window: u32,
+    max_calls: u32,
+) -> bool {
+    // Composite storage key: (namespace, address).
+    let key = (namespace, address.clone());
+
+    let current_ledger = env.ledger().sequence();
+
+    // Load existing entry (window_start, call_count) from persistent storage.
+    let entry: Option<(u32, u32)> = env.storage().persistent().get(&key);
+
+    let (window_start, call_count) = match entry {
+        Some((ws, cc)) => {
+            let window_end = ws.saturating_add(window);
+            if current_ledger >= window_end {
+                // Window has expired — start a fresh window.
+                (current_ledger, 0u32)
+            } else {
+                (ws, cc)
+            }
+        }
+        None => (current_ledger, 0u32),
+    };
+
+    if call_count >= max_calls {
+        return false;
+    }
+
+    let new_count = call_count.saturating_add(1);
+    env.storage()
+        .persistent()
+        .set(&key, &(window_start, new_count));
+    env.storage().persistent().extend_ttl(
+        &key,
+        LEDGER_LIFETIME_THRESHOLD,
+        LEDGER_BUMP_AMOUNT,
+    );
+
+    true
+}
+
 // ─── Cursor-based pagination ──────────────────────────────────────────────────
 
 /// A single page of results produced by [`paginate`].

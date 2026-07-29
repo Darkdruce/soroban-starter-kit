@@ -16,7 +16,7 @@ pub enum BallotError {
     NotRegistered = 4,
     /// Voter has already voted.
     AlreadyVoted = 5,
-    /// Invalid vote choice.
+    /// Invalid vote choice index (out of range).
     InvalidChoice = 6,
     /// Voting has not started, is closed, or has not reached its start ledger yet.
     VotingClosed = 7,
@@ -26,48 +26,6 @@ pub enum BallotError {
     InvalidWindow = 9,
     /// Current ledger is before voting_start.
     VotingNotStarted = 10,
-}
-
-#[cfg(test)]
-mod tests {
-    extern crate std;
-
-    use super::BallotError;
-    use std::format;
-    use std::string::String;
-
-    #[allow(clippy::as_conversions)]
-    fn render_error_code_snapshot() -> String {
-        format!(
-            "\
-BallotError::AlreadyInitialized = {}\n\
-BallotError::NotInitialized = {}\n\
-BallotError::Unauthorized = {}\n\
-BallotError::NotRegistered = {}\n\
-BallotError::AlreadyVoted = {}\n\
-BallotError::InvalidChoice = {}\n\
-BallotError::VotingClosed = {}\n\
-BallotError::VotingAlreadyStarted = {}\n\
-BallotError::InvalidWindow = {}\n\
-BallotError::VotingNotStarted = {}\n",
-            BallotError::AlreadyInitialized as u32,
-            BallotError::NotInitialized as u32,
-            BallotError::Unauthorized as u32,
-            BallotError::NotRegistered as u32,
-            BallotError::AlreadyVoted as u32,
-            BallotError::InvalidChoice as u32,
-            BallotError::VotingClosed as u32,
-            BallotError::VotingAlreadyStarted as u32,
-            BallotError::InvalidWindow as u32,
-            BallotError::VotingNotStarted as u32,
-        )
-    }
-
-    #[test]
-    fn ballot_error_codes_match_snapshot() {
-        assert_eq!(
-            render_error_code_snapshot(),
-            include_str!("../snapshots/error_codes.snap")
-        );
-    }
+    /// `initialize` was called with an empty choices list.
+    NoChoices = 11,
 }

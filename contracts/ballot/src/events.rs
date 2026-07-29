@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Env, Symbol};
+use soroban_sdk::{Address, Env, Symbol, Vec};
 
 pub fn initialized(env: &Env, admin: &Address) {
     let topics = (Symbol::new(env, "initialized"),);
@@ -20,7 +20,15 @@ pub fn voted(env: &Env, voter: &Address, choice: u32) {
     env.events().publish(topics, (voter.clone(), choice));
 }
 
+/// Emitted by `tally` (binary ballot, backward compat).
 pub fn tally_result(env: &Env, yes: i128, no: i128) {
     let topics = (Symbol::new(env, "tally_result"),);
     env.events().publish(topics, (yes, no));
+}
+
+/// Emitted by `tally_all` (multi-choice ballot, #788).
+/// `counts` contains per-choice vote tallies in declaration order.
+pub fn tally_all_result(env: &Env, counts: &Vec<i128>) {
+    let topics = (Symbol::new(env, "tally_all_result"),);
+    env.events().publish(topics, counts.clone());
 }
