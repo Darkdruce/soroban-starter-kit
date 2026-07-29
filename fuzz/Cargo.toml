@@ -35,6 +35,10 @@ doc = false
 [[bin]]
 name = "swap_state_machine"
 path = "fuzz_targets/swap_state_machine.rs"
+test = false
+doc = false
+
+[[bin]]
 name = "airdrop_merkle_proof"
 path = "fuzz_targets/airdrop_merkle_proof.rs"
 test = false
