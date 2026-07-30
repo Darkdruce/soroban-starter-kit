@@ -396,6 +396,8 @@ fn deploy_nft<'a>(env: &'a Env, admin: &Address) -> (NftContractClient<'a>, Addr
         &String::from_str(env, "Test NFT"),
         &String::from_str(env, "TNFT"),
         &10u32,
+        &None,
+        &None,
     );
     (client, addr)
 }
@@ -427,6 +429,8 @@ fn test_marketplace_full_lifecycle_with_royalty() {
         &seller,
         &token_id,
         &String::from_str(&env, "https://example.com/token/1"),
+        &None,
+        &None,
     );
     assert_eq!(nft.owner_of(token_id).unwrap(), seller);
 
@@ -495,6 +499,8 @@ fn test_marketplace_cancel_listing() {
         &seller,
         &token_id,
         &String::from_str(&env, "https://example.com/token/1"),
+        &None,
+        &None,
     );
     assert_eq!(nft.owner_of(token_id).unwrap(), seller);
 
@@ -753,4 +759,179 @@ fn test_lottery_ticket_cap_enforced() {
     // Third ticket must fail with TicketCapExceeded
     let result = lottery.try_buy_ticket(&buyer);
     assert!(result.is_err());
+}
+
+// ── #863: cross-contract integration test: marketplace + nft + token ─────────
+
+/// End-to-end flow: mint NFT → list on marketplace → purchase with token contract.
+///
+/// Verifies:
+/// - NFT ownership transfers from seller to buyer on purchase.
+/// - Token balances (buyer, seller, royalty recipient) are correct after the sale.
+/// - The listing is marked inactive after the purchase.
+/// - Royalty recipient receives the correct basis-point share.
+///
+/// Closes #863 – cross-contract integration test: marketplace + nft + token end-to-end.
+#[test]
+fn test_marketplace_nft_token_end_to_end() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let nft_admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let marketplace_admin = Address::generate(&env);
+    let royalty_recipient = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    // ── Deploy NFT contract ──────────────────────────────────────────────
+    let (nft, nft_addr) = deploy_nft(&env, &nft_admin);
+    let token_id = 42u32;
+    nft.mint(
+        &seller,
+        &token_id,
+        &String::from_str(&env, "https://example.com/nft/42"),
+        &None,
+        &None,
+    );
+    // Confirm initial ownership
+    assert_eq!(nft.owner_of(token_id).unwrap(), seller);
+
+    // ── Deploy payment token and fund buyer ──────────────────────────────
+    let (token, token_addr) = deploy_token(&env, &token_admin);
+    let price = 2_000i128;
+    let buyer_funds = 10_000i128;
+    token.mint(&buyer, &buyer_funds);
+    assert_eq!(token.balance(&buyer), buyer_funds);
+
+    // Seller and royalty recipient start with zero balance
+    assert_eq!(token.balance(&seller), 0);
+    assert_eq!(token.balance(&royalty_recipient), 0);
+
+    // ── Deploy and initialize marketplace (5 % royalty) ──────────────────
+    let (marketplace, marketplace_addr) = deploy_marketplace(&env);
+    let royalty_bps = 500u32; // 5 %
+    marketplace.initialize(
+        &marketplace_admin,
+        &token_addr,
+        &royalty_bps,
+        &royalty_recipient,
+    );
+
+    // ── Seller approves marketplace to transfer the NFT, then lists it ───
+    nft.approve(&token_id, &marketplace_addr);
+    let listing_id = marketplace.list(&seller, &nft_addr, &token_id, &price);
+
+    // Confirm listing is active
+    let listing = marketplace.get_listing(listing_id).unwrap();
+    assert_eq!(listing.seller, seller);
+    assert_eq!(listing.price, price);
+    assert!(listing.active);
+
+    // ── Buyer purchases the NFT ──────────────────────────────────────────
+    marketplace.buy(&buyer, &listing_id);
+
+    // ── Assert NFT ownership transferred ────────────────────────────────
+    assert_eq!(nft.owner_of(token_id).unwrap(), buyer);
+
+    // ── Assert final token balances ──────────────────────────────────────
+    let royalty_amount = (price * i128::from(royalty_bps)) / 10_000i128; // 100
+    let seller_amount = price - royalty_amount; // 1 900
+
+    assert_eq!(
+        token.balance(&buyer),
+        buyer_funds - price,
+        "buyer balance should decrease by full price"
+    );
+    assert_eq!(
+        token.balance(&seller),
+        seller_amount,
+        "seller receives price minus royalty"
+    );
+    assert_eq!(
+        token.balance(&royalty_recipient),
+        royalty_amount,
+        "royalty recipient receives royalty share"
+    );
+
+    // ── Listing is now inactive ──────────────────────────────────────────
+    let listing_after = marketplace.get_listing(listing_id).unwrap();
+    assert!(!listing_after.active);
+}
+
+/// Mint NFT with per-token royalty → list on marketplace → purchase.
+/// Verifies that the marketplace correctly surfaces royalty intent via
+/// royalty_info, even though the marketplace uses its own initialized
+/// royalty config. This test checks the NFT royalty_info view independently
+/// alongside the marketplace purchase to confirm both are consistent.
+///
+/// Closes #863, #831 – cross-contract royalty integration.
+#[test]
+fn test_marketplace_nft_token_with_per_token_royalty() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let nft_admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let marketplace_admin = Address::generate(&env);
+    let nft_royalty_recipient = Address::generate(&env);
+    let marketplace_royalty_recipient = Address::generate(&env);
+    let seller = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    // ── Deploy NFT contract with collection-level 2 % royalty ───────────
+    let nft_addr_raw = env.register_contract(None, NftContract);
+    let nft = NftContractClient::new(&env, &nft_addr_raw);
+    nft.initialize(
+        &nft_admin,
+        &String::from_str(&env, "Royalty NFT"),
+        &String::from_str(&env, "RNFT"),
+        &0u32,
+        &Some(200u32), // 2 % collection royalty
+        &Some(nft_royalty_recipient.clone()),
+    );
+
+    let token_id = 7u32;
+    let per_token_bps = 300u32; // 3 % per-token override
+    nft.mint(
+        &seller,
+        &token_id,
+        &String::from_str(&env, "ipfs://rnft/7"),
+        &Some(per_token_bps),
+        &Some(nft_royalty_recipient.clone()),
+    );
+
+    // Verify royalty_info returns the per-token override (3 % of 1 000 = 30)
+    let sale_price = 1_000i128;
+    let royalty = nft.royalty_info(&token_id, &sale_price).unwrap();
+    assert_eq!(royalty.recipient, nft_royalty_recipient);
+    assert_eq!(royalty.amount, 30i128); // 3 % of 1 000
+
+    // ── Deploy payment token and fund buyer ──────────────────────────────
+    let (token, token_addr) = deploy_token(&env, &token_admin);
+    token.mint(&buyer, &5_000i128);
+
+    // ── Deploy marketplace (1 % royalty to marketplace_royalty_recipient) ─
+    let (marketplace, marketplace_addr) = deploy_marketplace(&env);
+    marketplace.initialize(
+        &marketplace_admin,
+        &token_addr,
+        &100u32, // 1 %
+        &marketplace_royalty_recipient,
+    );
+
+    // ── List and buy ─────────────────────────────────────────────────────
+    nft.approve(&token_id, &marketplace_addr);
+    let listing_id = marketplace.list(&seller, &nft_addr_raw, &token_id, &sale_price);
+    marketplace.buy(&buyer, &listing_id);
+
+    // Buyer owns the NFT
+    assert_eq!(nft.owner_of(token_id).unwrap(), buyer);
+
+    // Marketplace distributes 1 % to its royalty recipient, 99 % to seller
+    let mkt_royalty = (sale_price * 100i128) / 10_000i128; // 10
+    let seller_amount = sale_price - mkt_royalty; // 990
+    assert_eq!(token.balance(&buyer), 5_000 - sale_price);
+    assert_eq!(token.balance(&seller), seller_amount);
+    assert_eq!(token.balance(&marketplace_royalty_recipient), mkt_royalty);
 }

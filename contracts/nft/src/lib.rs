@@ -12,7 +12,7 @@ mod events;
 mod storage;
 
 pub use errors::NftError;
-pub use storage::{DataKey, TokenKey, TokenMetadata};
+pub use storage::{DataKey, RoyaltyInfo, TokenKey, TokenMetadata};
 
 use soroban_common::{LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD};
 
@@ -50,18 +50,37 @@ mod contract {
         ///
         /// `max_supply` of `0` means no cap.
         ///
+        /// `royalty_bps` sets a collection-level default royalty in basis points
+        /// (0–10 000). `royalty_recipient` is required when `royalty_bps > 0`.
+        /// Both default to no royalty when omitted (`None`).
+        ///
         /// # Errors
         ///
         /// Returns [`NftError::AlreadyInitialized`] if called a second time.
+        /// Returns [`NftError::InvalidRoyalty`] if `royalty_bps > 10 000`.
+        /// Returns [`NftError::RoyaltyRecipientMissing`] if `royalty_bps > 0` but
+        /// `royalty_recipient` is `None`.
         pub fn initialize(
             env: Env,
             admin: Address,
             name: String,
             symbol: String,
             max_supply: u32,
+            royalty_bps: Option<u32>,
+            royalty_recipient: Option<Address>,
         ) -> Result<(), NftError> {
             if env.storage().instance().has(&DataKey::Initialized) {
                 return Err(NftError::AlreadyInitialized);
+            }
+
+            // Validate collection-level royalty parameters.
+            if let Some(bps) = royalty_bps {
+                if bps > 10_000 {
+                    return Err(NftError::InvalidRoyalty);
+                }
+                if bps > 0 && royalty_recipient.is_none() {
+                    return Err(NftError::RoyaltyRecipientMissing);
+                }
             }
 
             admin.require_auth();
@@ -75,6 +94,14 @@ mod contract {
                     .instance()
                     .set(&DataKey::MaxSupply, &max_supply);
             }
+            if let Some(bps) = royalty_bps {
+                env.storage().instance().set(&DataKey::RoyaltyBps, &bps);
+            }
+            if let Some(ref recipient) = royalty_recipient {
+                env.storage()
+                    .instance()
+                    .set(&DataKey::RoyaltyRecipient, recipient);
+            }
             env.storage().instance().set(&DataKey::Initialized, &true);
 
             bump_instance(&env);
@@ -85,17 +112,27 @@ mod contract {
 
         /// Mint a new token to `to` with the given `token_id` and `token_uri`. Admin only.
         ///
+        /// `token_royalty_bps` and `token_royalty_recipient` are optional per-token
+        /// royalty overrides (EIP-2981-style). When set they take precedence over the
+        /// collection-level defaults returned by [`royalty_info`]. Both must be `None`
+        /// or both must be `Some` (with `token_royalty_bps` in 0–10 000).
+        ///
         /// # Errors
         ///
         /// Returns [`NftError::NotInitialized`] if the contract has not been set up.
         /// Returns [`NftError::NotAuthorized`] if the caller is not the admin.
         /// Returns [`NftError::TokenAlreadyMinted`] if `token_id` is already taken.
         /// Returns [`NftError::SupplyCapReached`] if minting would exceed the max supply.
+        /// Returns [`NftError::InvalidRoyalty`] if `token_royalty_bps > 10 000`.
+        /// Returns [`NftError::RoyaltyRecipientMissing`] if `token_royalty_bps > 0` but
+        /// `token_royalty_recipient` is `None`.
         pub fn mint(
             env: Env,
             to: Address,
             token_id: u32,
             token_uri: String,
+            token_royalty_bps: Option<u32>,
+            token_royalty_recipient: Option<Address>,
         ) -> Result<(), NftError> {
             Self::require_initialized(&env)?;
 
@@ -108,6 +145,16 @@ mod contract {
 
             if env.storage().persistent().has(&TokenKey::Owner(token_id)) {
                 return Err(NftError::TokenAlreadyMinted);
+            }
+
+            // Validate per-token royalty parameters.
+            if let Some(bps) = token_royalty_bps {
+                if bps > 10_000 {
+                    return Err(NftError::InvalidRoyalty);
+                }
+                if bps > 0 && token_royalty_recipient.is_none() {
+                    return Err(NftError::RoyaltyRecipientMissing);
+                }
             }
 
             let total: u32 = env
@@ -135,12 +182,95 @@ mod contract {
                 .instance()
                 .set(&DataKey::TotalSupply, &(total + 1));
 
+            // Store per-token royalty overrides if provided.
+            if let Some(bps) = token_royalty_bps {
+                env.storage()
+                    .persistent()
+                    .set(&TokenKey::TokenRoyaltyBps(token_id), &bps);
+                bump_token(&env, &TokenKey::TokenRoyaltyBps(token_id));
+            }
+            if let Some(ref recipient) = token_royalty_recipient {
+                env.storage()
+                    .persistent()
+                    .set(&TokenKey::TokenRoyaltyRecipient(token_id), recipient);
+                bump_token(&env, &TokenKey::TokenRoyaltyRecipient(token_id));
+            }
+
             bump_instance(&env);
             bump_token(&env, &TokenKey::Owner(token_id));
             bump_token(&env, &TokenKey::Uri(token_id));
             events::minted(&env, &to, token_id);
 
             Ok(())
+        }
+
+        /// Return royalty information for a token sale (EIP-2981-style view).
+        ///
+        /// Resolution order:
+        /// 1. Per-token royalty BPS and recipient (set at mint time), if present.
+        /// 2. Collection-level royalty BPS and recipient (set at initialize time).
+        /// 3. If neither is configured, returns `None`.
+        ///
+        /// `sale_price` is the gross sale amount in base units. The returned
+        /// [`RoyaltyInfo::amount`] is pre-computed as `sale_price * bps / 10_000`.
+        ///
+        /// Integrating marketplaces (e.g. this repo's own marketplace) should call
+        /// this before executing a sale and route the indicated `amount` to the
+        /// `recipient`.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`NftError::NotInitialized`] if the contract has not been set up.
+        /// Returns [`NftError::TokenNotFound`] if `token_id` does not exist.
+        #[must_use]
+        pub fn royalty_info(
+            env: Env,
+            token_id: u32,
+            sale_price: i128,
+        ) -> Result<Option<RoyaltyInfo>, NftError> {
+            Self::require_initialized(&env)?;
+
+            // Confirm the token exists.
+            if !env.storage().persistent().has(&TokenKey::Owner(token_id)) {
+                return Err(NftError::TokenNotFound);
+            }
+
+            // 1. Per-token override.
+            let token_bps: Option<u32> = env
+                .storage()
+                .persistent()
+                .get(&TokenKey::TokenRoyaltyBps(token_id));
+            let token_recipient: Option<Address> = env
+                .storage()
+                .persistent()
+                .get(&TokenKey::TokenRoyaltyRecipient(token_id));
+
+            if let (Some(bps), Some(recipient)) = (token_bps, token_recipient) {
+                if bps == 0 {
+                    return Ok(None);
+                }
+                #[allow(clippy::arithmetic_side_effects, clippy::as_conversions, clippy::cast_possible_truncation, clippy::integer_division)]
+                let amount = (sale_price * bps as i128) / 10_000;
+                return Ok(Some(RoyaltyInfo { recipient, amount }));
+            }
+
+            // 2. Collection-level defaults.
+            let collection_bps: Option<u32> =
+                env.storage().instance().get(&DataKey::RoyaltyBps);
+            let collection_recipient: Option<Address> =
+                env.storage().instance().get(&DataKey::RoyaltyRecipient);
+
+            if let (Some(bps), Some(recipient)) = (collection_bps, collection_recipient) {
+                if bps == 0 {
+                    return Ok(None);
+                }
+                #[allow(clippy::arithmetic_side_effects, clippy::as_conversions, clippy::cast_possible_truncation, clippy::integer_division)]
+                let amount = (sale_price * bps as i128) / 10_000;
+                return Ok(Some(RoyaltyInfo { recipient, amount }));
+            }
+
+            // 3. No royalty configured.
+            Ok(None)
         }
 
         /// Transfer token `token_id` from `from` to `to`. Requires auth from `from` (the owner).
