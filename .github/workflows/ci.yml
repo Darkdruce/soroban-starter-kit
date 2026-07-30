@@ -136,6 +136,49 @@ jobs:
           echo "percent=${COVERAGE}" >> "$GITHUB_OUTPUT"
           echo "Code coverage: ${COVERAGE}%"
 
+          # Per-contract breakdown: re-run with --json and extract per-file data.
+          cargo llvm-cov --workspace --json > coverage_full.json
+
+          # Build a markdown table of coverage per contract package.
+          # Each contracts/* crate maps to a distinct set of source files.
+          echo "per_contract_table<<TABLEEOF" >> "$GITHUB_OUTPUT"
+          python3 - <<'PYEOF'
+          import json, os, sys, collections
+
+          with open("coverage_full.json") as f:
+              data = json.load(f)
+
+          # Group files by top-level contracts/<name> directory.
+          pkg_lines = collections.defaultdict(lambda: [0, 0])  # [covered, total]
+          for file_data in data["data"][0].get("files", []):
+              filename = file_data.get("filename", "")
+              summary = file_data.get("summary", {}).get("lines", {})
+              covered = summary.get("covered", 0)
+              total = summary.get("count", 0)
+              # Map path to package name
+              parts = filename.replace("\\", "/").split("/")
+              try:
+                  ci = parts.index("contracts")
+                  pkg = parts[ci + 1]
+              except (ValueError, IndexError):
+                  if "tests" in parts:
+                      pkg = "integration-tests"
+                  else:
+                      continue
+              pkg_lines[pkg][0] += covered
+              pkg_lines[pkg][1] += total
+
+          rows = []
+          for pkg in sorted(pkg_lines):
+              cov, tot = pkg_lines[pkg]
+              pct = (cov / tot * 100) if tot > 0 else 0.0
+              icon = "✅" if pct >= 80 else "⚠️"
+              rows.append(f"| `{pkg}` | {cov} / {tot} | **{pct:.1f}%** {icon} |")
+
+          print("\n".join(rows))
+          PYEOF
+          echo "TABLEEOF" >> "$GITHUB_OUTPUT"
+
       - name: Check coverage threshold
         run: |
           COVERAGE="${{ steps.coverage.outputs.percent }}"
@@ -171,6 +214,17 @@ jobs:
               : 'n/a';
             const threshold = 80;
             const status = current >= threshold ? '✅' : '❌';
+            const perContractTable = `${{ steps.coverage.outputs.per_contract_table }}`;
+            const perContractSection = perContractTable
+              ? [
+                  '',
+                  '### Per-contract coverage',
+                  '',
+                  '| Contract | Lines (covered / total) | Coverage |',
+                  '|----------|------------------------|----------|',
+                  perContractTable,
+                ].join('\n')
+              : '';
             const body = [
               '## Code Coverage Report',
               '',
@@ -181,6 +235,7 @@ jobs:
               `| Delta vs \`${{ github.base_ref }}\` | ${deltaStr}% |`,
               '',
               `Minimum line coverage of ${threshold}% is ${current >= threshold ? 'met' : '**not met**'}.`,
+              perContractSection,
             ].join('\n');
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
@@ -217,7 +272,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-report
-          path: lcov.info
+          path: |
+            lcov.info
+            coverage_full.json
           retention-days: 30
 
   fuzz:
