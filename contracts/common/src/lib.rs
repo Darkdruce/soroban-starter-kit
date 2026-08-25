@@ -466,3 +466,103 @@ where
 
     Page { items, next_cursor }
 }
+
+// ─── Shared instance bump helper ────────────────────────────────────────────
+
+/// Extend instance storage TTL using the default threshold and bump amount.
+///
+/// This is the standard bump that most contracts call after every state-changing
+/// entry point.  Delegates to [`extend_ttl_instance`] with
+/// [`LEDGER_LIFETIME_THRESHOLD`] and [`LEDGER_BUMP_AMOUNT`].
+///
+/// # Examples
+///
+/// ```ignore
+/// use soroban_common::bump_instance;
+/// use soroban_sdk::Env;
+///
+/// let env = Env::default();
+/// bump_instance(&env);
+/// ```
+pub fn bump_instance(env: &Env) {
+    extend_ttl_instance(env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+}
+
+// ─── Generic get_required helper ────────────────────────────────────────────
+
+/// Reads a value from instance storage, returning an error if the key is missing.
+///
+/// This is the generic version that callers can use with any error type that
+/// implements `From<()>`.  For contracts that define a `NotInitialized` variant,
+/// the pattern is:
+///
+/// ```ignore
+/// fn get_required<T>(env: &Env, key: &DataKey) -> Result<T, MyError> {
+///     soroban_common::get_required(env, key)
+/// }
+/// ```
+///
+/// # Panics
+///
+/// Panics if the key is not present in instance storage.
+///
+/// # Examples
+///
+/// ```ignore
+/// use soroban_sdk::{contracttype, Env};
+/// use soroban_common::get_required;
+///
+/// #[contracttype]
+/// #[derive(Clone)]
+/// enum DataKey {
+///     Admin,
+/// }
+///
+/// let env = Env::default();
+/// // Assuming admin has been set:
+/// // let admin: Address = get_required(&env, &DataKey::Admin)?;
+/// ```
+pub fn get_required<K, V, E>(env: &Env, key: &K) -> Result<V, E>
+where
+    K: soroban_sdk::TryIntoVal<Env, soroban_sdk::Val> + soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
+    V: soroban_sdk::TryFromVal<Env, soroban_sdk::Val>,
+    E: From<()>,
+{
+    env.storage()
+        .instance()
+        .get(key)
+        .ok_or(E::from(()))
+}
+
+// ─── Token storage key ──────────────────────────────────────────────────────
+
+/// Reusable storage key variants shared across contracts.
+///
+/// Many contracts store an `Admin` and/or a `Token` address in instance
+/// storage.  Rather than each crate re-declaring the same enum, they can
+/// import the variants from here.
+///
+/// # Usage
+///
+/// ```ignore
+/// use soroban_common::{CommonKey, get_admin};
+///
+/// let admin = get_admin(&env);
+/// env.storage().instance().set(&CommonKey::Token, &token_address);
+/// ```
+pub use common_key::CommonKey;
+
+mod common_key {
+    #![allow(missing_docs)]
+    use super::contracttype;
+
+    /// Shared storage key variants.
+    #[contracttype]
+    #[derive(Clone)]
+    pub enum CommonKey {
+        /// Instance-storage slot holding the administrator [`Address`].
+        Admin,
+        /// Instance-storage slot holding the payment token [`Address`].
+        Token,
+    }
+}
