@@ -405,53 +405,9 @@ mod contract {
             }
             env.storage().instance().set(&Participants, &remaining);
 
-            // Derive winner index from hash(secret ++ salt ++ participants_count).
-            let count = participants.len() as u64;
-            let count_bytes = count.to_be_bytes();
-            let mut entropy_input = Bytes::new(&env);
-            entropy_input.extend_from_array(&secret.to_array());
-            entropy_input.extend_from_array(&salt.to_array());
-            entropy_input.extend_from_array(&count_bytes);
-            let entropy: Hash<32> = env.crypto().sha256(&entropy_input);
-            let entropy_bytes = entropy.to_array();
-            // Use last 8 bytes as u64 for modulo.
-            let idx_raw = u64::from_be_bytes([
-                entropy_bytes[24],
-                entropy_bytes[25],
-                entropy_bytes[26],
-                entropy_bytes[27],
-                entropy_bytes[28],
-                entropy_bytes[29],
-                entropy_bytes[30],
-                entropy_bytes[31],
-            ]);
-
-            let participants: Vec<Address> = get_required(&env, &Participants)?;
-            #[allow(
-                clippy::cast_possible_truncation,
-                clippy::arithmetic_side_effects,
-                clippy::as_conversions
-            )]
-            let count = participants.len() as u64;
-            #[allow(
-                clippy::cast_possible_truncation,
-                clippy::arithmetic_side_effects,
-                clippy::as_conversions
-            )]
-            let winner_idx = (idx_raw % count) as u32;
-            #[allow(clippy::unwrap_used)]
-            // winner_idx is derived from modulo of len, always in bounds
-            let winner = participants.get(winner_idx).unwrap();
-
             let ticket_price: i128 = get_required(&env, &TicketPrice)?;
             #[allow(clippy::arithmetic_side_effects)]
             let refund_amount = ticket_price * ticket_count;
-            #[allow(
-                clippy::arithmetic_side_effects,
-                clippy::cast_possible_truncation,
-                clippy::as_conversions
-            )]
-            let prize = ticket_price * count as i128;
             let token_addr: Address = get_required(&env, &Token)?;
             token::Client::new(&env, &token_addr).transfer(
                 &env.current_contract_address(),
@@ -503,6 +459,8 @@ mod contract {
                 return Err(LotteryError::DrawNotDone);
             }
             get_required(&env, &Winners)
+        }
+
         /// Return how many tickets `buyer` has purchased so far.
         #[must_use]
         pub fn get_ticket_count(env: Env, buyer: Address) -> u32 {

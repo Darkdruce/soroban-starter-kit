@@ -1623,6 +1623,7 @@ version = "0.1.0"
 dependencies = [
  "soroban-common",
  "soroban-sdk",
+ "soroban-token-template",
 ]
 
 [[package]]
@@ -1715,7 +1716,9 @@ dependencies = [
 name = "soroban-integration-tests"
 version = "0.1.0"
 dependencies = [
+ "soroban-auction-template",
  "soroban-escrow-template",
+ "soroban-lottery-template",
  "soroban-marketplace-template",
  "soroban-nft-template",
  "soroban-sdk",

@@ -20,7 +20,7 @@
 //! proposal **before any vote has been cast**. This lets them correct mistakes
 //! without waiting for the voting period to lapse.
 
-use soroban_sdk::{Address, Env, String, contract, contractimpl, token};
+use soroban_sdk::{Address, Env, String, Symbol, Vec, contract, contractimpl, token};
 
 mod errors;
 mod events;
@@ -296,7 +296,15 @@ mod contract {
                     .instance()
                     .get(&DataKey::Token)
                     .ok_or(DaoError::NotInitialized)?;
-                let total_supply = token::Client::new(&env, &token).total_supply();
+                // `total_supply` is not part of the SEP-41 `TokenInterface`, so it is
+                // unreachable through `token::Client`. Invoke it by symbol instead; this
+                // requires the configured governance token to implement `total_supply`
+                // (as `soroban-token-template` does).
+                let total_supply: i128 = env.invoke_contract(
+                    &token,
+                    &Symbol::new(&env, "total_supply"),
+                    Vec::new(&env),
+                );
                 // total_votes / total_supply >= quorum_bps / 10_000
                 // ⟺ total_votes * 10_000 >= quorum_bps * total_supply
                 if total_votes * 10_000 < i128::from(quorum_bps) * total_supply {

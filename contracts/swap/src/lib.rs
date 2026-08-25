@@ -16,7 +16,13 @@ pub use storage::{DataKey, SwapInfo, SwapKey, SwapState};
 
 use soroban_common::{LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD};
 
-fn bump_persistent<K>(env: &Env, key: &K)
+fn extend_ttl_instance(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+}
+
+fn extend_ttl_persistent<K>(env: &Env, key: &K)
 where
     K: soroban_sdk::TryIntoVal<Env, soroban_sdk::Val> + soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
 {
@@ -69,7 +75,7 @@ mod contract {
             env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
             env.storage().instance().set(&DataKey::Initialized, &true);
 
-            bump_instance(&env);
+            extend_ttl_instance(&env);
             Ok(())
         }
 
@@ -80,15 +86,15 @@ mod contract {
         /// Returns [`SwapError::NotInitialized`] if the contract is not initialized.
         /// Returns [`SwapError::NotAuthorized`] if caller is not the admin.
         pub fn set_treasury(env: Env, new_treasury: Address) -> Result<(), SwapError> {
-            if !env.storage().instance().has(&DataKey::Initialized) {
-                return Err(SwapError::NotInitialized);
-            }
-
-            let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+            let admin: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Admin)
+                .ok_or(SwapError::NotInitialized)?;
             admin.require_auth();
 
             env.storage().instance().set(&DataKey::Treasury, &new_treasury);
-            bump_instance(&env);
+            extend_ttl_instance(&env);
 
             Ok(())
         }
@@ -101,18 +107,19 @@ mod contract {
         /// Returns [`SwapError::NotAuthorized`] if caller is not the admin.
         /// Returns [`SwapError::InvalidFee`] if `new_fee_bps` > 10000 (100%).
         pub fn set_fee_bps(env: Env, new_fee_bps: u32) -> Result<(), SwapError> {
-            if !env.storage().instance().has(&DataKey::Initialized) {
-                return Err(SwapError::NotInitialized);
-            }
             if new_fee_bps > 10_000 {
                 return Err(SwapError::InvalidFee);
             }
 
-            let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+            let admin: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Admin)
+                .ok_or(SwapError::NotInitialized)?;
             admin.require_auth();
 
             env.storage().instance().set(&DataKey::FeeBps, &new_fee_bps);
-            bump_instance(&env);
+            extend_ttl_instance(&env);
 
             Ok(())
         }
@@ -124,15 +131,15 @@ mod contract {
         /// Returns [`SwapError::NotInitialized`] if the contract is not initialized.
         /// Returns [`SwapError::NotAuthorized`] if caller is not the current admin.
         pub fn set_admin(env: Env, new_admin: Address) -> Result<(), SwapError> {
-            if !env.storage().instance().has(&DataKey::Initialized) {
-                return Err(SwapError::NotInitialized);
-            }
-
-            let current_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+            let current_admin: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Admin)
+                .ok_or(SwapError::NotInitialized)?;
             current_admin.require_auth();
 
             env.storage().instance().set(&DataKey::Admin, &new_admin);
-            bump_instance(&env);
+            extend_ttl_instance(&env);
 
             Ok(())
         }
@@ -143,11 +150,10 @@ mod contract {
         ///
         /// Returns [`SwapError::NotInitialized`] if the contract is not initialized.
         pub fn get_admin(env: Env) -> Result<Address, SwapError> {
-            if !env.storage().instance().has(&DataKey::Initialized) {
-                return Err(SwapError::NotInitialized);
-            }
-
-            Ok(env.storage().instance().get(&DataKey::Admin).unwrap())
+            env.storage()
+                .instance()
+                .get(&DataKey::Admin)
+                .ok_or(SwapError::NotInitialized)
         }
 
         /// Get the current treasury address.
@@ -156,11 +162,10 @@ mod contract {
         ///
         /// Returns [`SwapError::NotInitialized`] if the contract is not initialized.
         pub fn get_treasury(env: Env) -> Result<Address, SwapError> {
-            if !env.storage().instance().has(&DataKey::Initialized) {
-                return Err(SwapError::NotInitialized);
-            }
-
-            Ok(env.storage().instance().get(&DataKey::Treasury).unwrap())
+            env.storage()
+                .instance()
+                .get(&DataKey::Treasury)
+                .ok_or(SwapError::NotInitialized)
         }
 
         /// Get the current fee basis points.
@@ -169,11 +174,10 @@ mod contract {
         ///
         /// Returns [`SwapError::NotInitialized`] if the contract is not initialized.
         pub fn get_fee_bps(env: Env) -> Result<u32, SwapError> {
-            if !env.storage().instance().has(&DataKey::Initialized) {
-                return Err(SwapError::NotInitialized);
-            }
-
-            Ok(env.storage().instance().get(&DataKey::FeeBps).unwrap())
+            env.storage()
+                .instance()
+                .get(&DataKey::FeeBps)
+                .ok_or(SwapError::NotInitialized)
         }
 
         /// Propose a new swap. Party A deposits `amount_a` of `token_a` into the contract.
@@ -237,7 +241,7 @@ mod contract {
                 .instance()
                 .set(&DataKey::SwapCount, &(swap_id + 1));
 
-            bump_persistent(&env, &SwapKey::Swap(swap_id));
+            extend_ttl_persistent(&env, &SwapKey::Swap(swap_id));
             events::swap_proposed(
                 &env, &party_a, swap_id, &token_a, amount_a, &token_b, amount_b, expires_at,
             );
@@ -256,12 +260,16 @@ mod contract {
         pub fn accept_swap(env: Env, swap_id: u32, party_b: Address) -> Result<(), SwapError> {
             party_b.require_auth();
 
-            if !env.storage().instance().has(&DataKey::Initialized) {
-                return Err(SwapError::NotInitialized);
-            }
-
-            let treasury: Address = env.storage().instance().get(&DataKey::Treasury).unwrap();
-            let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap();
+            let treasury: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Treasury)
+                .ok_or(SwapError::NotInitialized)?;
+            let fee_bps: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::FeeBps)
+                .ok_or(SwapError::NotInitialized)?;
 
             let mut swap: SwapInfo = env
                 .storage()
@@ -283,7 +291,7 @@ mod contract {
             env.storage()
                 .persistent()
                 .set(&SwapKey::Swap(swap_id), &swap);
-            bump_persistent(&env, &SwapKey::Swap(swap_id));
+            extend_ttl_persistent(&env, &SwapKey::Swap(swap_id));
 
             // Calculate fee - deducted from party A's token_b amount
             #[allow(clippy::arithmetic_side_effects)]
@@ -362,7 +370,7 @@ mod contract {
             env.storage()
                 .persistent()
                 .set(&SwapKey::Swap(swap_id), &swap);
-            bump_persistent(&env, &SwapKey::Swap(swap_id));
+            extend_ttl_persistent(&env, &SwapKey::Swap(swap_id));
 
             // Return token_a to party_a.
             token::Client::new(&env, &swap.token_a).transfer(

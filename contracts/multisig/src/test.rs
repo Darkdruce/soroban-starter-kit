@@ -4,7 +4,7 @@
 use super::*;
 use soroban_sdk::{
     Address, Env, FromVal, IntoVal, Symbol, contract, contractimpl,
-    testutils::{Address as _, Events as _},
+    testutils::{Address as _, Events as _, Ledger as _},
     vec,
 };
 
@@ -523,7 +523,7 @@ fn initialize_rejects_zero_weight() {
 fn execute_batch_executes_all_ready_proposals() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, alice, bob, _) = create_multisig(&env);
+    let (client, alice, bob, _, _) = create_multisig(&env);
     let target = env.register_contract(None, CounterContract);
     let counter = CounterContractClient::new(&env, &target);
 
@@ -554,7 +554,7 @@ fn execute_batch_executes_all_ready_proposals() {
 fn execute_batch_skips_already_executed_proposal() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, alice, bob, _) = create_multisig(&env);
+    let (client, alice, bob, _, _) = create_multisig(&env);
     let target = env.register_contract(None, CounterContract);
 
     let tx_id = client.propose_transaction(
@@ -586,7 +586,7 @@ fn execute_batch_skips_already_executed_proposal() {
 fn execute_batch_skips_nonexistent_proposal() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, alice, bob, _) = create_multisig(&env);
+    let (client, alice, bob, _, _) = create_multisig(&env);
     let target = env.register_contract(None, CounterContract);
 
     let tx_id = client.propose_transaction(
@@ -608,7 +608,7 @@ fn execute_batch_skips_nonexistent_proposal() {
 fn execute_batch_skips_threshold_not_met_proposal() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, alice, bob, _) = create_multisig(&env);
+    let (client, alice, bob, _, _) = create_multisig(&env);
     let target = env.register_contract(None, CounterContract);
 
     // tx0: only alice signed (weight 1, threshold 2) — not ready.
@@ -637,7 +637,7 @@ fn execute_batch_skips_threshold_not_met_proposal() {
 fn execute_batch_emits_batch_executed_event() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, alice, bob, _) = create_multisig(&env);
+    let (client, alice, bob, _, _) = create_multisig(&env);
     let target = env.register_contract(None, CounterContract);
 
     let tx_id = client.propose_transaction(
@@ -650,9 +650,10 @@ fn execute_batch_emits_batch_executed_event() {
 
     client.execute_batch(&vec![&env, tx_id]);
 
-    let found = env.events().all().iter().any(|(_, topics, _)| {
-        let t: soroban_sdk::Val = (Symbol::new(&env, "batch_executed"),).into_val(&env);
-        topics == t
-    });
+    let found = env
+        .events()
+        .all()
+        .iter()
+        .any(|(_, topics, _)| topics == (Symbol::new(&env, "batch_executed"),).into_val(&env));
     assert!(found, "batch_executed event not emitted");
 }

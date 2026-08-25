@@ -19,7 +19,6 @@ members = [
   "contracts/airdrop",
   "contracts/oracle",
   "contracts/lottery",
-  "contracts/ballot",
   "contracts/bonding-curve",
   "contracts/wrapped-token",
   "tests",

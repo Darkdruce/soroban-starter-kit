@@ -572,6 +572,8 @@ mod contract {
             env.storage()
                 .persistent()
                 .get(&DataKey::Offer(listing_id, buyer))
+        }
+
         /// Enumerate active listings, paginated by listing ID.
         ///
         /// `cursor` is the listing ID to resume scanning from (pass `0` to start from the
