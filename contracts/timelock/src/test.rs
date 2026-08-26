@@ -230,3 +230,54 @@ fn test_is_releasable() {
         .with_mut(|l| l.sequence_number = release_ledger);
     assert!(client.is_releasable());
 }
+
+#[test]
+fn test_reassign_beneficiary() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, old_beneficiary, _, _, _) = setup(&env);
+    let new_beneficiary = Address::generate(&env);
+
+    let info = client.get_info();
+    assert_eq!(info.beneficiary, old_beneficiary);
+
+    // Reassign to a new beneficiary
+    client.reassign_beneficiary(&new_beneficiary);
+
+    let updated_info = client.get_info();
+    assert_eq!(updated_info.beneficiary, new_beneficiary);
+    assert_eq!(updated_info.state, TimelockState::Active);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #5)")]
+fn test_reassign_beneficiary_after_release_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, _, _, release_ledger, _) = setup(&env);
+    let new_beneficiary = Address::generate(&env);
+
+    env.ledger()
+        .with_mut(|l| l.sequence_number = release_ledger);
+    client.release();
+
+    // Should fail because already released
+    client.reassign_beneficiary(&new_beneficiary);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #6)")]
+fn test_reassign_beneficiary_after_cancel_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, _, _, _, _) = setup(&env);
+    let new_beneficiary = Address::generate(&env);
+
+    client.cancel();
+
+    // Should fail because already cancelled
+    client.reassign_beneficiary(&new_beneficiary);
+}

@@ -177,6 +177,36 @@ mod contract {
             Ok(())
         }
 
+        /// Admin-only: reassign the beneficiary while the timelock is active.
+        ///
+        /// # Errors
+        /// - [`TimelockError::NotInitialized`] if the contract has not been initialized.
+        /// - [`TimelockError::NotAuthorized`] if the caller is not the admin.
+        /// - [`TimelockError::AlreadyReleased`] if the timelock has been released.
+        /// - [`TimelockError::AlreadyCancelled`] if the timelock has been cancelled.
+        pub fn reassign_beneficiary(
+            env: Env,
+            new_beneficiary: Address,
+        ) -> Result<(), TimelockError> {
+            let admin: Address = get_required(&env, &Admin)?;
+            admin.require_auth();
+
+            let state: TimelockState = get_required(&env, &State)?;
+            match state {
+                TimelockState::Released => return Err(TimelockError::AlreadyReleased),
+                TimelockState::Cancelled => return Err(TimelockError::AlreadyCancelled),
+                TimelockState::Active => {}
+            }
+
+            let old_beneficiary: Address = get_required(&env, &Beneficiary)?;
+            env.storage().instance().set(&Beneficiary, &new_beneficiary);
+            bump_instance(&env);
+
+            events::beneficiary_reassigned(&env, &admin, &old_beneficiary, &new_beneficiary);
+
+            Ok(())
+        }
+
         /// Return full timelock details.
         #[must_use]
         pub fn get_info(env: Env) -> Result<TimelockInfo, TimelockError> {
