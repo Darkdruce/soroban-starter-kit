@@ -417,6 +417,21 @@ User calls transfer(to, amount)
 └─ Emit transferred event
 ```
 
+### Known Gap: Vesting Read-Side TTL ([#969](https://github.com/Fidelis900/soroban-starter-kit/issues/969))
+
+`vesting`'s per-beneficiary `Schedule(beneficiary)` persistent entry is bumped
+via `bump_schedule()` (`extend_ttl_persistent`) after every write —
+`create_schedule`, `claim`, `revoke`, and `admin_release` all call it, so the
+write-side gap this issue originally reported is fixed. What's still open:
+`get_info` only calls `bump()` (instance TTL, not the `Schedule` entry
+itself) and `claimable` doesn't extend any TTL at all. A beneficiary who is
+only ever read (via `get_info`/`claimable`) and never writes — no `claim`,
+no `revoke`, no `admin_release` — can still have their `Schedule` entry
+archived out from under them between long-cliff writes. The fix is to have
+both read paths call `bump_schedule()` too, matching the pattern
+`multisig::get_transaction` already uses to keep actively-read entries alive
+between writes.
+
 ---
 
 ## See Also
