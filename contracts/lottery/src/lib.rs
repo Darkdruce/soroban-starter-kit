@@ -503,6 +503,8 @@ mod contract {
                 return Err(LotteryError::DrawNotDone);
             }
             get_required(&env, &Winners)
+        }
+
         /// Return how many tickets `buyer` has purchased so far.
         #[must_use]
         pub fn get_ticket_count(env: Env, buyer: Address) -> u32 {
