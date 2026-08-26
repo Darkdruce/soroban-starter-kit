@@ -11,6 +11,7 @@ pub enum DaoError {
     NotInitialized = 3,
     ProposalNotFound = 4,
     InvalidState = 5,
+    /// Returned by `execute_proposal` when the voting deadline has not yet passed.
     DeadlineNotReached = 6,
     AlreadyVoted = 7,
     QuorumNotMet = 8,
@@ -20,6 +21,8 @@ pub enum DaoError {
     VotesAlreadyCast = 11,
     /// `quorum_bps` must be in the range [0, 10_000].
     InvalidQuorumBps = 12,
+    /// Returned by `vote` when the voting period has ended.
+    VotingClosed = 13,
 }
 
 impl_display_error!(
@@ -36,6 +39,7 @@ impl_display_error!(
     InsufficientVotingPower => "insufficient voting power",
     VotesAlreadyCast        => "votes have already been cast; proposer cannot cancel",
     InvalidQuorumBps        => "quorum_bps must be between 0 and 10_000",
+    VotingClosed            => "voting period has ended",
 );
 
 #[cfg(test)]
@@ -61,7 +65,8 @@ DaoError::QuorumNotMet = {}\n\
 DaoError::ProposalRejected = {}\n\
 DaoError::InsufficientVotingPower = {}\n\
 DaoError::VotesAlreadyCast = {}\n\
-DaoError::InvalidQuorumBps = {}\n",
+DaoError::InvalidQuorumBps = {}\n\
+DaoError::VotingClosed = {}\n",
             DaoError::NotAuthorized as u32,
             DaoError::AlreadyInitialized as u32,
             DaoError::NotInitialized as u32,
@@ -74,6 +79,7 @@ DaoError::InvalidQuorumBps = {}\n",
             DaoError::InsufficientVotingPower as u32,
             DaoError::VotesAlreadyCast as u32,
             DaoError::InvalidQuorumBps as u32,
+            DaoError::VotingClosed as u32,
         )
     }
 

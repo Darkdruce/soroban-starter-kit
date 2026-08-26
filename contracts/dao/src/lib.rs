@@ -183,7 +183,7 @@ mod contract {
         ///
         /// Returns [`DaoError::ProposalNotFound`] if the proposal does not exist.
         /// Returns [`DaoError::InvalidState`] if the proposal is not `Active`.
-        /// Returns [`DaoError::DeadlineNotReached`] if the voting period has expired (deadline passed).
+        /// Returns [`DaoError::VotingClosed`] if the voting period has ended.
         /// Returns [`DaoError::AlreadyVoted`] if the voter has already voted.
         /// Returns [`DaoError::InsufficientVotingPower`] if the voter has no tokens.
         pub fn vote(
@@ -205,7 +205,7 @@ mod contract {
                 return Err(DaoError::InvalidState);
             }
             if env.ledger().sequence() > proposal.deadline {
-                return Err(DaoError::DeadlineNotReached);
+                return Err(DaoError::VotingClosed);
             }
 
             let vote_key = VoteKey {
