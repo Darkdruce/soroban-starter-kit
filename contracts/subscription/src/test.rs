@@ -443,7 +443,7 @@ fn test_charge_during_trial_fails() {
     env.ledger().with_mut(|l| l.sequence_number += 50);
 
     let result = client.try_charge(&subscriber);
-    assert_eq!(result, Err(Ok(SubscriptionError::IntervalNotElapsed));
+    assert_eq!(result, Err(Ok(SubscriptionError::IntervalNotElapsed)));
     let _ = provider;
 }
 
