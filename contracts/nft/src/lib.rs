@@ -213,7 +213,12 @@ mod contract {
                 if bps == 0 {
                     return Ok(None);
                 }
-                #[allow(clippy::arithmetic_side_effects, clippy::as_conversions, clippy::cast_possible_truncation, clippy::integer_division)]
+                #[allow(
+                    clippy::arithmetic_side_effects,
+                    clippy::as_conversions,
+                    clippy::cast_possible_truncation,
+                    clippy::integer_division
+                )]
                 let amount = (sale_price * bps as i128) / 10_000;
                 let recipient = token_recipient.ok_or(NftError::RoyaltyRecipientMissing)?;
                 let amount = apply_bps_fee(sale_price, bps).unwrap_or(0);
@@ -221,8 +226,7 @@ mod contract {
             }
 
             // 2. Collection-level defaults.
-            let collection_bps: Option<u32> =
-                env.storage().instance().get(&DataKey::RoyaltyBps);
+            let collection_bps: Option<u32> = env.storage().instance().get(&DataKey::RoyaltyBps);
             let collection_recipient: Option<Address> =
                 env.storage().instance().get(&DataKey::RoyaltyRecipient);
 
@@ -230,6 +234,13 @@ mod contract {
                 if bps == 0 {
                     return Ok(None);
                 }
+                #[allow(
+                    clippy::arithmetic_side_effects,
+                    clippy::as_conversions,
+                    clippy::cast_possible_truncation,
+                    clippy::integer_division
+                )]
+                let amount = (sale_price * bps as i128) / 10_000;
                 let amount = apply_bps_fee(sale_price, bps).unwrap_or(0);
                 return Ok(Some(RoyaltyInfo { recipient, amount }));
             }

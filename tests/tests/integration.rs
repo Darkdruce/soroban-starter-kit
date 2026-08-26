@@ -670,7 +670,15 @@ fn test_auction_full_lifecycle_competing_bids_and_withdrawal() {
     let start_price = 1_000i128;
     let min_increment = 100i128;
     let deadline = env.ledger().sequence() + 200;
-    auction.start(&seller, &token_addr, &start_price, &min_increment, &deadline, &None, &0);
+    auction.start(
+        &seller,
+        &token_addr,
+        &start_price,
+        &min_increment,
+        &deadline,
+        &None,
+        &0,
+    );
 
     // bidder1 places the opening bid at start_price
     auction.bid(&bidder1, &start_price);
@@ -724,7 +732,15 @@ fn test_auction_reserve_not_met_refunds_bidder() {
     let start_price = 1_000i128;
     let reserve_price = 5_000i128;
     let deadline = env.ledger().sequence() + 100;
-    auction.start(&seller, &token_addr, &start_price, &100, &deadline, &Some(reserve_price), &0);
+    auction.start(
+        &seller,
+        &token_addr,
+        &start_price,
+        &100,
+        &deadline,
+        &Some(reserve_price),
+        &0,
+    );
 
     // bid below reserve
     auction.bid(&bidder, &start_price);
@@ -850,7 +866,14 @@ fn test_lottery_ticket_cap_enforced() {
     let (lottery, _) = deploy_lottery(&env);
     let mut prize_splits = SorobanVec::new(&env);
     prize_splits.push_back(10_000u32);
-    lottery.initialize(&admin, &token_addr, &ticket_price, &1, &prize_splits, &Some(2));
+    lottery.initialize(
+        &admin,
+        &token_addr,
+        &ticket_price,
+        &1,
+        &prize_splits,
+        &Some(2),
+    );
 
     // First two tickets succeed
     lottery.buy_ticket(&buyer);

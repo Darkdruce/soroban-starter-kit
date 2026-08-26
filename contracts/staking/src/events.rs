@@ -65,8 +65,6 @@ pub fn unbond_requested(env: &Env, staker: &Address, amount: i128, available_at:
 
 /// Emitted when a staker successfully withdraws their unbonded tokens.
 pub fn withdrawn(env: &Env, staker: &Address, amount: i128) {
-    env.events().publish(
-        (Symbol::new(env, "withdrawn"), staker.clone()),
-        amount,
-    );
+    env.events()
+        .publish((Symbol::new(env, "withdrawn"), staker.clone()), amount);
 }
