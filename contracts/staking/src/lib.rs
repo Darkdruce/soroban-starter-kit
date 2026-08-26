@@ -30,6 +30,9 @@ mod storage;
 #[cfg(test)]
 mod test;
 
+#[cfg(test)]
+mod prop_test;
+
 pub use errors::StakingError;
 pub use storage::{DataKey, REWARD_SCALE, UnbondRequest};
 

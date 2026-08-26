@@ -93,6 +93,10 @@ mod contract {
                 .ok_or(SwapError::NotInitialized)?;
             admin.require_auth();
 
+            env.storage()
+                .instance()
+                .set(&DataKey::Treasury, &new_treasury);
+            bump_instance(&env);
             env.storage().instance().set(&DataKey::Treasury, &new_treasury);
             extend_ttl_instance(&env);
 
@@ -384,3 +388,8 @@ mod contract {
         }
     }
 }
+
+mod test;
+
+#[cfg(test)]
+mod prop_test;

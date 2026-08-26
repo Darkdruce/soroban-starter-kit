@@ -468,3 +468,6 @@ mod contract {
 }
 
 mod test;
+
+#[cfg(test)]
+mod prop_test;
