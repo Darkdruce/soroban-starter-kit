@@ -1892,6 +1892,8 @@ dependencies = [
  "libfuzzer-sys",
  "soroban-airdrop-template",
  "soroban-escrow-template",
+ "soroban-lottery-template",
+ "soroban-oracle-template",
  "soroban-sdk",
  "soroban-swap-template",
  "soroban-token-template",

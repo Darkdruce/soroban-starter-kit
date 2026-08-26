@@ -37,6 +37,25 @@ fn bump_instance(env: &Env) {
         .extend_ttl(LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
 }
 
+fn bump_persistent<K>(env: &Env, key: &K)
+where
+    K: soroban_sdk::TryIntoVal<Env, soroban_sdk::Val> + soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
+{
+    env.storage()
+        .persistent()
+        .extend_ttl(key, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+}
+
+fn get_required<V: soroban_sdk::TryFromVal<Env, soroban_sdk::Val>>(
+    env: &Env,
+    key: &impl soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
+) -> Result<V, SwapError> {
+    env.storage()
+        .instance()
+        .get(key)
+        .ok_or(SwapError::NotInitialized)
+}
+
 /// Atomic two-party token swap contract.
 pub use contract::*;
 
@@ -111,28 +130,15 @@ mod contract {
         /// Returns [`SwapError::NotAuthorized`] if caller is not the admin.
         /// Returns [`SwapError::InvalidFee`] if `new_fee_bps` > 10000 (100%).
         pub fn set_fee_bps(env: Env, new_fee_bps: u32) -> Result<(), SwapError> {
-        /// - [`SwapError::NotInitialized`]
-        /// - [`SwapError::Unauthorized`]
-        /// - [`SwapError::InvalidFee`] if `new_fee_bps` > 10000 (100%).
-        pub fn set_fee_bps(env: Env, new_fee_bps: u32) -> Result<(), SwapError> {
-            let admin: Address = env.storage().instance().get(&Admin).unwrap();
+            let admin: Address = get_required(&env, &Admin)?;
             admin.require_auth();
 
             if new_fee_bps > 10_000 {
                 return Err(SwapError::InvalidFee);
             }
             env.storage().instance().set(&FeeBps, &new_fee_bps);
-
-            let admin: Address = env
-                .storage()
-                .instance()
-                .get(&DataKey::Admin)
-                .ok_or(SwapError::NotInitialized)?;
-            admin.require_auth();
-
-            env.storage().instance().set(&DataKey::FeeBps, &new_fee_bps);
-            extend_ttl_instance(&env);
-
+            bump_instance(&env);
+            events::fee_updated(&env, &admin, new_fee_bps);
             Ok(())
         }
 
@@ -190,12 +196,7 @@ mod contract {
         /// # Errors
         /// - [`SwapError::NotInitialized`]
         pub fn get_fee_bps(env: Env) -> Result<u32, SwapError> {
-            env.storage()
-                .instance()
-                .get(&DataKey::FeeBps)
-                .ok_or(SwapError::NotInitialized)
-            let fee_bps: u32 = env.storage().instance().get(&FeeBps).unwrap();
-            Ok(fee_bps)
+            get_required(&env, &FeeBps)
         }
 
         /// Propose a new swap. Party A proposes a swap of `amount_a` of `token_a`
@@ -275,11 +276,7 @@ mod contract {
                 .instance()
                 .get(&DataKey::Treasury)
                 .ok_or(SwapError::NotInitialized)?;
-            let fee_bps: u32 = env
-                .storage()
-                .instance()
-                .get(&DataKey::FeeBps)
-                .ok_or(SwapError::NotInitialized)?;
+            let fee_bps: u32 = get_required(&env, &DataKey::FeeBps)?;
 
             let mut swap: SwapInfo = env
                 .storage()
@@ -292,8 +289,6 @@ mod contract {
             if env.ledger().sequence() > swap.expires_at {
                 return Err(SwapError::SwapExpired);
             }
-
-            let fee_bps: u32 = env.storage().instance().get(&FeeBps).unwrap();
 
             swap.state = SwapState::Accepted;
             env.storage()
@@ -320,7 +315,7 @@ mod contract {
                 &party_a_amount,
             );
             if fee > 0 {
-                let admin: Address = env.storage().instance().get(&Admin).unwrap();
+                let admin: Address = get_required(&env, &Admin)?;
                 token::Client::new(&env, &swap.token_b).transfer(
                     &env.current_contract_address(),
                     &admin,

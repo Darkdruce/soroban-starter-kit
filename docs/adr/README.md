@@ -4,6 +4,8 @@ This directory contains Architecture Decision Records (ADRs) for the Soroban Sta
 
 Each ADR documents a significant design decision: the context that motivated it, the decision taken, and its consequences.
 
+For general reference documentation (development environment, deployment guides, error codes, etc.), see the parent [docs/](../) directory.
+
 ## Index
 
 | ADR | Title | Status |
