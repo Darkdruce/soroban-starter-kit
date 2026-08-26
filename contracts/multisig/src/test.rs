@@ -371,7 +371,7 @@ fn cleanup_expired_removes_proposal_and_emits_event() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #11)")]
+#[should_panic(expected = "Error(Contract, #13)")]
 fn cleanup_not_yet_expired_fails() {
     let env = Env::default();
     env.mock_all_auths();

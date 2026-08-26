@@ -32,6 +32,8 @@ pub enum MultisigError {
     ProposalExpired = 11,
     /// A signer weight of zero is not permitted.
     InvalidWeight = 12,
+    /// `cleanup_expired` was called before the proposal's expiry ledger was reached.
+    NotYetExpired = 13,
 }
 
 impl_display_error!(
@@ -48,4 +50,5 @@ impl_display_error!(
     InsufficientApprovals => "insufficient approvals",
     ProposalExpired     => "proposal expired",
     InvalidWeight       => "invalid weight",
+    NotYetExpired       => "not yet expired",
 );
