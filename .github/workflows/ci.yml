@@ -37,6 +37,10 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: cargo-${{ hashFiles('**/Cargo.lock') }}
+          workspaces: |
+            contracts/*
 
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -88,6 +92,8 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
+        with:
+          key: cargo-tests-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run tests
         run: cargo test -p ${{ matrix.contract }}
@@ -374,15 +380,6 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
-      - name: Run cargo audit
-        run: cargo audit --deny warnings
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install Rust
@@ -397,7 +394,6 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Run cargo audit
-        run: cargo audit
         run: cargo audit --deny warnings
 
   machete:
@@ -538,7 +534,7 @@ jobs:
       - name: Stop local Stellar node
         if: always()
         run: docker compose -f docker/docker-compose.yml down -v
-        run: cargo audit --deny warnings
+
   nightly:
     name: Nightly Build
     runs-on: ubuntu-latest
@@ -565,3 +561,36 @@ jobs:
           labels: "bug"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  soroban-sdk-next:
+    name: Soroban SDK Next Version Compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+          components: clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: cargo-next-sdk-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Update to next soroban-sdk version
+        run: |
+          cargo update -p soroban-sdk --aggressive
+
+      - name: Build with next SDK version
+        run: cargo build --workspace --all-targets
+
+      - name: Run tests with next SDK version
+        run: cargo test --workspace
+        continue-on-error: true
+
+      - name: Run clippy with next SDK version
+        run: cargo clippy --workspace --all-targets -- -D warnings
+        continue-on-error: true
