@@ -30,6 +30,9 @@ mod storage;
 #[cfg(test)]
 mod test;
 
+#[cfg(test)]
+mod prop_test;
+
 pub use errors::StakingError;
 pub use storage::{DataKey, REWARD_SCALE, UnbondRequest};
 
@@ -318,7 +321,10 @@ mod contract {
 
                 // Queue an unbond request.
                 let available_at = env.ledger().sequence() + unbonding_period;
-                let request = UnbondRequest { amount, available_at };
+                let request = UnbondRequest {
+                    amount,
+                    available_at,
+                };
                 env.storage()
                     .persistent()
                     .set(&DataKey::UnbondRequest(staker.clone()), &request);
@@ -477,11 +483,7 @@ mod contract {
         /// - [`StakingError::Unauthorized`] if the caller is not the admin.
         /// - [`StakingError::InvalidAmount`] if `amount` <= 0.
         /// - [`StakingError::NoStake`] if the staker has no balance to slash.
-        pub fn slash(
-            env: Env,
-            staker: Address,
-            amount: i128,
-        ) -> Result<i128, StakingError> {
+        pub fn slash(env: Env, staker: Address, amount: i128) -> Result<i128, StakingError> {
             if !env.storage().instance().has(&DataKey::Admin) {
                 return Err(StakingError::NotInitialized);
             }

@@ -30,7 +30,7 @@
 //! `deregister_voter` (admin-only) removes a registered voter, but only while
 //! no vote has yet been cast.
 
-use soroban_sdk::{String, contract, contractimpl, Address, Env, Vec};
+use soroban_sdk::{Address, Env, String, Vec, contract, contractimpl};
 
 mod errors;
 mod events;
@@ -39,7 +39,7 @@ mod storage;
 pub use errors::BallotError;
 pub use storage::DataKey;
 
-use soroban_common::{extend_ttl_instance, LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD};
+use soroban_common::{LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD, extend_ttl_instance};
 
 fn bump(env: &Env) {
     extend_ttl_instance(env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
@@ -314,9 +314,10 @@ mod contract {
                 .instance()
                 .get(&DataKey::ChoiceVotes(choice))
                 .unwrap_or(0i128);
-            env.storage()
-                .instance()
-                .set(&DataKey::ChoiceVotes(choice), &(current_count.saturating_add(1)));
+            env.storage().instance().set(
+                &DataKey::ChoiceVotes(choice),
+                &(current_count.saturating_add(1)),
+            );
 
             // Keep backward-compat yes/no counters in sync for two-choice ballots.
             if choice == 1 {
@@ -467,3 +468,6 @@ mod contract {
 }
 
 mod test;
+
+#[cfg(test)]
+mod prop_test;
