@@ -26,6 +26,12 @@ pub enum SubscriptionError {
     IntervalNotElapsed = 9,
     /// Subscriber has not granted sufficient token allowance to this contract.
     InsufficientAllowance = 10,
+    /// Plan with this ID already exists.
+    PlanAlreadyExists = 11,
+    /// Plan does not exist.
+    PlanNotFound = 12,
+    /// Plan is not active and cannot be subscribed to.
+    PlanInactive = 13,
 }
 
 #[cfg(test)]
@@ -49,7 +55,10 @@ SubscriptionError::AlreadySubscribed = {}\n\
 SubscriptionError::NotSubscribed = {}\n\
 SubscriptionError::SubscriptionInactive = {}\n\
 SubscriptionError::IntervalNotElapsed = {}\n\
-SubscriptionError::InsufficientAllowance = {}\n",
+SubscriptionError::InsufficientAllowance = {}\n\
+SubscriptionError::PlanAlreadyExists = {}\n\
+SubscriptionError::PlanNotFound = {}\n\
+SubscriptionError::PlanInactive = {}\n",
             SubscriptionError::AlreadyInitialized as u32,
             SubscriptionError::NotInitialized as u32,
             SubscriptionError::NotAuthorized as u32,
@@ -60,6 +69,9 @@ SubscriptionError::InsufficientAllowance = {}\n",
             SubscriptionError::SubscriptionInactive as u32,
             SubscriptionError::IntervalNotElapsed as u32,
             SubscriptionError::InsufficientAllowance as u32,
+            SubscriptionError::PlanAlreadyExists as u32,
+            SubscriptionError::PlanNotFound as u32,
+            SubscriptionError::PlanInactive as u32,
         )
     }
 
@@ -70,11 +82,4 @@ SubscriptionError::InsufficientAllowance = {}\n",
             include_str!("../snapshots/error_codes.snap")
         );
     }
-}
-    /// Plan with this ID already exists.
-    PlanAlreadyExists = 11,
-    /// Plan does not exist.
-    PlanNotFound = 12,
-    /// Plan is not active and cannot be subscribed to.
-    PlanInactive = 13,
 }

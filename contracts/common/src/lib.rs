@@ -329,11 +329,9 @@ pub fn check_and_record(
     env.storage()
         .persistent()
         .set(&key, &(window_start, new_count));
-    env.storage().persistent().extend_ttl(
-        &key,
-        LEDGER_LIFETIME_THRESHOLD,
-        LEDGER_BUMP_AMOUNT,
-    );
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
 
     true
 }

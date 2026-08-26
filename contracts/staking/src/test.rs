@@ -359,8 +359,7 @@ fn test_compound_no_rewards_fails() {
 #[test]
 fn test_unstake_queues_unbond_request() {
     let env = setup_env();
-    let (client, _admin, stake_token, _reward_token, _slash_dest) =
-        setup_with_unbonding(&env, 50);
+    let (client, _admin, stake_token, _reward_token, _slash_dest) = setup_with_unbonding(&env, 50);
 
     let staker = Address::generate(&env);
     StellarAssetClient::new(&env, &stake_token).mint(&staker, &1_000);
@@ -383,8 +382,7 @@ fn test_unstake_queues_unbond_request() {
 #[test]
 fn test_withdraw_before_period_fails() {
     let env = setup_env();
-    let (client, _admin, stake_token, _reward_token, _slash_dest) =
-        setup_with_unbonding(&env, 50);
+    let (client, _admin, stake_token, _reward_token, _slash_dest) = setup_with_unbonding(&env, 50);
 
     let staker = Address::generate(&env);
     StellarAssetClient::new(&env, &stake_token).mint(&staker, &1_000);
@@ -402,8 +400,7 @@ fn test_withdraw_before_period_fails() {
 #[test]
 fn test_withdraw_after_period_succeeds() {
     let env = setup_env();
-    let (client, _admin, stake_token, _reward_token, _slash_dest) =
-        setup_with_unbonding(&env, 50);
+    let (client, _admin, stake_token, _reward_token, _slash_dest) = setup_with_unbonding(&env, 50);
 
     let staker = Address::generate(&env);
     StellarAssetClient::new(&env, &stake_token).mint(&staker, &1_000);
@@ -427,8 +424,7 @@ fn test_withdraw_after_period_succeeds() {
 #[test]
 fn test_withdraw_no_request_fails() {
     let env = setup_env();
-    let (client, _admin, stake_token, _reward_token, _slash_dest) =
-        setup_with_unbonding(&env, 50);
+    let (client, _admin, stake_token, _reward_token, _slash_dest) = setup_with_unbonding(&env, 50);
 
     let staker = Address::generate(&env);
     StellarAssetClient::new(&env, &stake_token).mint(&staker, &500);
@@ -444,8 +440,7 @@ fn test_withdraw_no_request_fails() {
 #[test]
 fn test_slash_accounting_and_balance() {
     let env = setup_env();
-    let (client, _admin, stake_token, _reward_token, slash_dest) =
-        setup_with_unbonding(&env, 0);
+    let (client, _admin, stake_token, _reward_token, slash_dest) = setup_with_unbonding(&env, 0);
 
     let staker = Address::generate(&env);
     StellarAssetClient::new(&env, &stake_token).mint(&staker, &1_000);
@@ -467,8 +462,7 @@ fn test_slash_accounting_and_balance() {
 #[test]
 fn test_slash_capped_at_balance() {
     let env = setup_env();
-    let (client, _admin, stake_token, _reward_token, slash_dest) =
-        setup_with_unbonding(&env, 0);
+    let (client, _admin, stake_token, _reward_token, slash_dest) = setup_with_unbonding(&env, 0);
 
     let staker = Address::generate(&env);
     StellarAssetClient::new(&env, &stake_token).mint(&staker, &200);
@@ -487,8 +481,7 @@ fn test_slash_capped_at_balance() {
 #[test]
 fn test_slash_no_stake_fails() {
     let env = setup_env();
-    let (client, _admin, _stake_token, _reward_token, _slash_dest) =
-        setup_with_unbonding(&env, 0);
+    let (client, _admin, _stake_token, _reward_token, _slash_dest) = setup_with_unbonding(&env, 0);
 
     let staker = Address::generate(&env);
     let result = client.try_slash(&staker, &100);
@@ -499,8 +492,7 @@ fn test_slash_no_stake_fails() {
 #[test]
 fn test_slash_zero_amount_fails() {
     let env = setup_env();
-    let (client, _admin, stake_token, _reward_token, _slash_dest) =
-        setup_with_unbonding(&env, 0);
+    let (client, _admin, stake_token, _reward_token, _slash_dest) = setup_with_unbonding(&env, 0);
 
     let staker = Address::generate(&env);
     StellarAssetClient::new(&env, &stake_token).mint(&staker, &500);

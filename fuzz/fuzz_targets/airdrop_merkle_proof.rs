@@ -1,10 +1,16 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects, clippy::indexing_slicing)]
-#![no_main
-
-]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing
+)]
+#![no_main]
 use libfuzzer_sys::fuzz_target;
-use soroban_sdk::{Address, Bytes, BytesN, Env, String, Vec, testutils::Address as _, token::StellarAssetClient};
 use soroban_airdrop_template::AirdropContract;
+use soroban_sdk::{
+    Address, Bytes, BytesN, Env, String, Vec, testutils::Address as _, token::StellarAssetClient,
+};
 
 fn bytes_to_i128(data: &[u8], offset: usize) -> i128 {
     if offset + 16 > data.len() {
@@ -51,7 +57,7 @@ fuzz_target!(|data: &[u8]| {
     // Deploy airdrop contract
     let airdrop_addr = env.register_contract(None, AirdropContract);
     let client = soroban_airdrop_template::AirdropContractClient::new(&env, &airdrop_addr);
-    
+
     let claim_deadline = env.ledger().sequence() + 1000;
     let _ = client.try_initialize(&admin, &token_addr, &claim_deadline);
 
@@ -70,7 +76,7 @@ fuzz_target!(|data: &[u8]| {
     // Fuzz the proof length and contents (remaining bytes)
     let proof_data = &data[48..];
     let mut proof = Vec::new(&env);
-    
+
     // Parse proof as chunks of 32 bytes
     for chunk in proof_data.chunks(32) {
         if chunk.len() == 32 {
@@ -83,17 +89,17 @@ fuzz_target!(|data: &[u8]| {
     // Attempt claim with fuzzed inputs - should not panic
     // This tests the verification path with arbitrary proofs/leaves
     let claim_result = client.try_claim(&recipient, &amount, &proof);
-    
+
     // If claim succeeds (extremely rare with random data), verify no invariants broken
     if claim_result.is_ok() {
         // Verify recipient received tokens
         let balance = soroban_sdk::token::Client::new(&env, &token_addr).balance(&recipient);
         assert!(balance >= 0);
-        
+
         // Verify double-claim is prevented
         let double_claim = client.try_claim(&recipient, &amount, &proof);
         assert!(double_claim.is_err());
     }
-    
+
     // Most importantly: no panics should occur regardless of proof validity
 });
