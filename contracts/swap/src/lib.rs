@@ -87,7 +87,9 @@ mod contract {
             let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
             admin.require_auth();
 
-            env.storage().instance().set(&DataKey::Treasury, &new_treasury);
+            env.storage()
+                .instance()
+                .set(&DataKey::Treasury, &new_treasury);
             bump_instance(&env);
 
             Ok(())
@@ -397,3 +399,6 @@ mod contract {
 }
 
 mod test;
+
+#[cfg(test)]
+mod prop_test;

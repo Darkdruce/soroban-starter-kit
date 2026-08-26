@@ -100,7 +100,7 @@ mod contract {
                 .instance()
                 .get(&DataKey::Provider)
                 .ok_or(SubscriptionError::NotInitialized)?;
-            
+
             provider.require_auth();
 
             if amount <= 0 {
@@ -146,7 +146,7 @@ mod contract {
                 .instance()
                 .get(&DataKey::Provider)
                 .ok_or(SubscriptionError::NotInitialized)?;
-            
+
             provider.require_auth();
 
             let key = DataKey::Plan(plan_id.clone());
@@ -202,7 +202,11 @@ mod contract {
             subscriber.require_auth();
 
             let sub_key = DataKey::Subscription(subscriber.clone());
-            if let Some(existing) = env.storage().persistent().get::<_, SubscriptionInfo>(&sub_key) {
+            if let Some(existing) = env
+                .storage()
+                .persistent()
+                .get::<_, SubscriptionInfo>(&sub_key)
+            {
                 if existing.active {
                     return Err(SubscriptionError::AlreadySubscribed);
                 }
@@ -223,7 +227,13 @@ mod contract {
             bump_subscription(&env, &subscriber);
             bump_instance(&env);
 
-            events::subscribed(&env, &subscriber, &info.plan_id, plan.amount, plan.interval_ledgers);
+            events::subscribed(
+                &env,
+                &subscriber,
+                &info.plan_id,
+                plan.amount,
+                plan.interval_ledgers,
+            );
             Ok(())
         }
 
@@ -267,7 +277,7 @@ mod contract {
             }
 
             let current_ledger = env.ledger().sequence();
-            
+
             // Check if trial period is still active
             if !info.trial_completed {
                 if current_ledger < info.last_charged_ledger + info.trial_ledgers {
@@ -371,3 +381,6 @@ mod contract {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod prop_test;
