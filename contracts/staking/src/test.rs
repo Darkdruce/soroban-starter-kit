@@ -434,6 +434,45 @@ fn test_withdraw_no_request_fails() {
     assert_eq!(result, Err(Ok(StakingError::NoUnbondRequest)));
 }
 
+/// Regression test for #945: second `unstake` before `withdraw` should fail,
+/// preventing loss of the first request's tokens.
+#[test]
+fn test_second_unstake_before_withdraw_fails() {
+    let env = setup_env();
+    let (client, _admin, stake_token, _reward_token, _slash_dest) =
+        setup_with_unbonding(&env, 50);
+
+    let staker = Address::generate(&env);
+    StellarAssetClient::new(&env, &stake_token).mint(&staker, &2_000);
+    client.stake(&staker, &2_000);
+
+    // First unstake: queue 500 tokens.
+    client.unstake(&staker, &500);
+    assert_eq!(client.get_stake(&staker), 1_500);
+
+    // Verify first request exists.
+    let req = client.get_unbond_request(&staker).unwrap();
+    assert_eq!(req.amount, 500);
+
+    // Second unstake should fail with UnbondRequestPending error.
+    let result = client.try_unstake(&staker, &300);
+    assert_eq!(result, Err(Ok(StakingError::UnbondRequestPending)));
+
+    // First request should still exist unchanged.
+    let req = client.get_unbond_request(&staker).unwrap();
+    assert_eq!(req.amount, 500);
+
+    // Advance past the unbonding period.
+    env.ledger().with_mut(|l| l.sequence_number += 50);
+
+    // Withdraw should return only the first unstaked amount.
+    let withdrawn = client.withdraw(&staker);
+    assert_eq!(withdrawn, 500);
+
+    let token_client = soroban_sdk::token::Client::new(&env, &stake_token);
+    assert_eq!(token_client.balance(&staker), 500);
+}
+
 // ── #828 admin slashing tests ─────────────────────────────────────────────────
 
 /// Admin can slash a staker; slashed tokens go to the destination.

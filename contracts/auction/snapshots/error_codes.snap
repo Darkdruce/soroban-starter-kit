@@ -1,0 +1,13 @@
+AuctionError::AlreadyInitialized = 1
+AuctionError::NotInitialized = 2
+AuctionError::AuctionEnded = 3
+AuctionError::AuctionNotEnded = 4
+AuctionError::BidTooLow = 5
+AuctionError::AlreadyEnded = 6
+AuctionError::NoBids = 7
+AuctionError::NotAuthorized = 8
+AuctionError::InvalidAmount = 9
+AuctionError::InvalidDeadline = 10
+AuctionError::NothingToWithdraw = 11
+AuctionError::ReserveNotMet = 12
+AuctionError::BidAlreadyPlaced = 13

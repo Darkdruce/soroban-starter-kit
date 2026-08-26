@@ -7,6 +7,13 @@
 )]
 #![no_main]
 use libfuzzer_sys::fuzz_target;
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+#![no_main]
+use libfuzzer_sys::fuzz_target;
+use soroban_sdk::{
+    Address, Bytes, BytesN, Env, String, Vec, testutils::Address as _, token,
+    token::StellarAssetClient,
+};
 use soroban_airdrop_template::AirdropContract;
 use soroban_sdk::{
     Address, Bytes, BytesN, Env, String, Vec, testutils::Address as _, token::StellarAssetClient,
@@ -62,7 +69,7 @@ fuzz_target!(|data: &[u8]| {
     let _ = client.try_initialize(&admin, &token_addr, &claim_deadline);
 
     // Fund airdrop contract
-    StellarAssetClient::new(&env, &token_addr).transfer(&admin, &airdrop_addr, &initial_supply);
+    token::Client::new(&env, &token_addr).transfer(&admin, &airdrop_addr, &initial_supply);
 
     // Fuzz the merkle root (first 32 bytes)
     let mut root_bytes = [0u8; 32];

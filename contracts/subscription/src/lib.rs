@@ -12,7 +12,7 @@ mod events;
 mod storage;
 
 pub use errors::SubscriptionError;
-pub use storage::{DataKey, SubscriptionInfo};
+pub use storage::{DataKey, Plan, SubscriptionInfo};
 
 use soroban_common::{LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD};
 
