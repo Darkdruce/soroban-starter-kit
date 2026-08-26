@@ -56,6 +56,8 @@ fn test_full_escrow_lifecycle_happy_path() {
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
+    let escrow_admin = Address::generate(&env);
+    let dispute_timeout_ledgers: u32 = 100;
     let amount = 1_000i128;
     let deadline = env.ledger().sequence() + 200;
 
@@ -64,7 +66,17 @@ fn test_full_escrow_lifecycle_happy_path() {
     assert_eq!(token.balance(&buyer), amount);
 
     let (escrow, escrow_addr) = deploy_escrow(&env);
-    escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline);
+    escrow.initialize(
+        &escrow_admin,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_addr,
+        &amount,
+        &deadline,
+        &dispute_timeout_ledgers,
+        &None,
+    );
 
     // fund: buyer's tokens move into the escrow contract
     escrow.fund();
@@ -93,6 +105,8 @@ fn test_full_escrow_lifecycle_refund_after_deadline() {
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
+    let escrow_admin = Address::generate(&env);
+    let dispute_timeout_ledgers: u32 = 100;
     let amount = 500i128;
     let deadline = env.ledger().sequence() + 200;
 
@@ -100,7 +114,17 @@ fn test_full_escrow_lifecycle_refund_after_deadline() {
     token.mint(&buyer, &amount);
 
     let (escrow, escrow_addr) = deploy_escrow(&env);
-    escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline);
+    escrow.initialize(
+        &escrow_admin,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_addr,
+        &amount,
+        &deadline,
+        &dispute_timeout_ledgers,
+        &None,
+    );
     escrow.fund();
 
     assert_eq!(token.balance(&escrow_addr), amount);
@@ -126,6 +150,8 @@ fn test_escrow_dispute_and_arbiter_resolution() {
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
+    let escrow_admin = Address::generate(&env);
+    let dispute_timeout_ledgers: u32 = 100;
     let amount = 1_000i128;
     let deadline = env.ledger().sequence() + 200;
 
@@ -134,7 +160,17 @@ fn test_escrow_dispute_and_arbiter_resolution() {
     token.mint(&buyer, &amount);
 
     let (escrow, escrow_addr) = deploy_escrow(&env);
-    escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline);
+    escrow.initialize(
+        &escrow_admin,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_addr,
+        &amount,
+        &deadline,
+        &dispute_timeout_ledgers,
+        &None,
+    );
     escrow.fund();
 
     assert_eq!(token.balance(&escrow_addr), amount);
@@ -144,7 +180,7 @@ fn test_escrow_dispute_and_arbiter_resolution() {
     assert_eq!(escrow.get_state(), Some(EscrowState::Disputed));
     assert_eq!(token.balance(&escrow_addr), amount);
 
-    escrow.resolve_dispute(&true);
+    escrow.resolve_dispute(&arbiter, &true);
     assert_eq!(escrow.get_state(), Some(EscrowState::Completed));
     assert_eq!(token.balance(&seller), amount);
     assert_eq!(token.balance(&escrow_addr), 0);
@@ -154,17 +190,21 @@ fn test_escrow_dispute_and_arbiter_resolution() {
     let buyer2 = Address::generate(&env);
     let seller2 = Address::generate(&env);
     let arbiter2 = Address::generate(&env);
+    let escrow_admin2 = Address::generate(&env);
 
     token.mint(&buyer2, &amount);
 
     let (escrow2, escrow_addr2) = deploy_escrow(&env);
     escrow2.initialize(
+        &escrow_admin2,
         &buyer2,
         &seller2,
         &arbiter2,
         &token_addr,
         &amount,
         &deadline,
+        &dispute_timeout_ledgers,
+        &None,
     );
     escrow2.fund();
 
@@ -173,7 +213,7 @@ fn test_escrow_dispute_and_arbiter_resolution() {
     escrow2.raise_dispute(&seller2);
     assert_eq!(escrow2.get_state(), Some(EscrowState::Disputed));
 
-    escrow2.resolve_dispute(&false);
+    escrow2.resolve_dispute(&arbiter2, &false);
     assert_eq!(escrow2.get_state(), Some(EscrowState::Refunded));
     assert_eq!(token.balance(&buyer2), amount);
     assert_eq!(token.balance(&escrow_addr2), 0);
@@ -190,6 +230,8 @@ fn test_full_escrow_lifecycle_arbiter_resolves_to_seller() {
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
+    let escrow_admin = Address::generate(&env);
+    let dispute_timeout_ledgers: u32 = 100;
     let amount = 750i128;
     let deadline = env.ledger().sequence() + 200;
 
@@ -197,11 +239,21 @@ fn test_full_escrow_lifecycle_arbiter_resolves_to_seller() {
     token.mint(&buyer, &amount);
 
     let (escrow, escrow_addr) = deploy_escrow(&env);
-    escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline);
+    escrow.initialize(
+        &escrow_admin,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_addr,
+        &amount,
+        &deadline,
+        &dispute_timeout_ledgers,
+        &None,
+    );
     escrow.fund();
 
     escrow.raise_dispute(&buyer);
-    escrow.resolve_dispute(&true); // true → release to seller
+    escrow.resolve_dispute(&arbiter, &true); // true → release to seller
     assert_eq!(escrow.get_state(), Some(EscrowState::Completed));
     assert_eq!(token.balance(&seller), amount);
     assert_eq!(token.balance(&escrow_addr), 0);
@@ -217,6 +269,8 @@ fn test_full_escrow_lifecycle_arbiter_resolves_to_buyer() {
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
+    let escrow_admin = Address::generate(&env);
+    let dispute_timeout_ledgers: u32 = 100;
     let amount = 300i128;
     let deadline = env.ledger().sequence() + 200;
 
@@ -224,11 +278,21 @@ fn test_full_escrow_lifecycle_arbiter_resolves_to_buyer() {
     token.mint(&buyer, &amount);
 
     let (escrow, escrow_addr) = deploy_escrow(&env);
-    escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline);
+    escrow.initialize(
+        &escrow_admin,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_addr,
+        &amount,
+        &deadline,
+        &dispute_timeout_ledgers,
+        &None,
+    );
     escrow.fund();
 
     escrow.raise_dispute(&buyer);
-    escrow.resolve_dispute(&false); // false → refund to buyer
+    escrow.resolve_dispute(&arbiter, &false); // false → refund to buyer
     assert_eq!(escrow.get_state(), Some(EscrowState::Refunded));
     assert_eq!(token.balance(&buyer), amount);
     assert_eq!(token.balance(&escrow_addr), 0);
@@ -244,6 +308,8 @@ fn test_full_escrow_lifecycle_cancel_before_fund() {
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
+    let escrow_admin = Address::generate(&env);
+    let dispute_timeout_ledgers: u32 = 100;
     let amount = 200i128;
     let deadline = env.ledger().sequence() + 200;
 
@@ -251,7 +317,17 @@ fn test_full_escrow_lifecycle_cancel_before_fund() {
     token.mint(&buyer, &amount);
 
     let (escrow, _) = deploy_escrow(&env);
-    escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline);
+    escrow.initialize(
+        &escrow_admin,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_addr,
+        &amount,
+        &deadline,
+        &dispute_timeout_ledgers,
+        &None,
+    );
 
     escrow.cancel();
     assert_eq!(escrow.get_state(), Some(EscrowState::Cancelled));
@@ -270,6 +346,8 @@ fn test_escrow_with_capped_token() {
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
+    let escrow_admin = Address::generate(&env);
+    let dispute_timeout_ledgers: u32 = 100;
     let max_supply = 1_000i128;
     let amount = 1_000i128;
     let deadline = env.ledger().sequence() + 200;
@@ -291,7 +369,17 @@ fn test_escrow_with_capped_token() {
     assert_eq!(token.balance(&buyer), max_supply);
 
     let (escrow, escrow_addr) = deploy_escrow(&env);
-    escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline);
+    escrow.initialize(
+        &escrow_admin,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_addr,
+        &amount,
+        &deadline,
+        &dispute_timeout_ledgers,
+        &None,
+    );
 
     // fund: buyer's tokens move into the escrow contract
     escrow.fund();
@@ -322,6 +410,8 @@ fn test_full_escrow_lifecycle_with_sac_token() {
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
     let arbiter = Address::generate(&env);
+    let escrow_admin = Address::generate(&env);
+    let dispute_timeout_ledgers: u32 = 100;
     let amount = 1_000i128;
     let deadline = env.ledger().sequence() + 200;
 
@@ -330,7 +420,17 @@ fn test_full_escrow_lifecycle_with_sac_token() {
     StellarAssetClient::new(&env, &token_addr).mint(&buyer, &amount);
 
     let (escrow, escrow_addr) = deploy_escrow(&env);
-    escrow.initialize(&buyer, &seller, &arbiter, &token_addr, &amount, &deadline);
+    escrow.initialize(
+        &escrow_admin,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_addr,
+        &amount,
+        &deadline,
+        &dispute_timeout_ledgers,
+        &None,
+    );
     escrow.fund();
 
     assert_eq!(
@@ -432,7 +532,7 @@ fn test_marketplace_full_lifecycle_with_royalty() {
         &None,
         &None,
     );
-    assert_eq!(nft.owner_of(token_id).unwrap(), seller);
+    assert_eq!(nft.owner_of(&token_id), seller);
 
     // Deploy payment token and mint to buyer
     let (token, token_addr) = deploy_token(&env, &token_admin);
@@ -456,7 +556,7 @@ fn test_marketplace_full_lifecycle_with_royalty() {
 
     // Seller lists the NFT
     let listing_id = marketplace.list(&seller, &nft_addr, &token_id, &price);
-    let listing = marketplace.get_listing(listing_id).unwrap();
+    let listing = marketplace.get_listing(&listing_id).unwrap();
     assert_eq!(listing.seller, seller);
     assert_eq!(listing.price, price);
     assert_eq!(listing.active, true);
@@ -465,7 +565,7 @@ fn test_marketplace_full_lifecycle_with_royalty() {
     marketplace.buy(&buyer, &listing_id);
 
     // Verify NFT ownership transferred to buyer
-    assert_eq!(nft.owner_of(token_id).unwrap(), buyer);
+    assert_eq!(nft.owner_of(&token_id), buyer);
 
     // Verify payment distribution with royalty split
     let royalty_amount = (price * i128::from(royalty_bps)) / 10_000i128;
@@ -475,7 +575,7 @@ fn test_marketplace_full_lifecycle_with_royalty() {
     assert_eq!(token.balance(&buyer), buyer_initial_balance - price);
 
     // Verify listing is now inactive
-    let listing_after = marketplace.get_listing(listing_id).unwrap();
+    let listing_after = marketplace.get_listing(&listing_id).unwrap();
     assert_eq!(listing_after.active, false);
 }
 
@@ -502,7 +602,7 @@ fn test_marketplace_cancel_listing() {
         &None,
         &None,
     );
-    assert_eq!(nft.owner_of(token_id).unwrap(), seller);
+    assert_eq!(nft.owner_of(&token_id), seller);
 
     // Deploy payment token
     let (_, token_addr) = deploy_token(&env, &token_admin);
@@ -519,10 +619,10 @@ fn test_marketplace_cancel_listing() {
     marketplace.cancel(&seller, &listing_id);
 
     // Verify NFT still belongs to seller
-    assert_eq!(nft.owner_of(token_id).unwrap(), seller);
+    assert_eq!(nft.owner_of(&token_id), seller);
 
     // Verify listing is now inactive
-    let listing = marketplace.get_listing(listing_id).unwrap();
+    let listing = marketplace.get_listing(&listing_id).unwrap();
     assert_eq!(listing.active, false);
 }
 
@@ -795,7 +895,7 @@ fn test_marketplace_nft_token_end_to_end() {
         &None,
     );
     // Confirm initial ownership
-    assert_eq!(nft.owner_of(token_id).unwrap(), seller);
+    assert_eq!(nft.owner_of(&token_id), seller);
 
     // ── Deploy payment token and fund buyer ──────────────────────────────
     let (token, token_addr) = deploy_token(&env, &token_admin);
@@ -823,7 +923,7 @@ fn test_marketplace_nft_token_end_to_end() {
     let listing_id = marketplace.list(&seller, &nft_addr, &token_id, &price);
 
     // Confirm listing is active
-    let listing = marketplace.get_listing(listing_id).unwrap();
+    let listing = marketplace.get_listing(&listing_id).unwrap();
     assert_eq!(listing.seller, seller);
     assert_eq!(listing.price, price);
     assert!(listing.active);
@@ -832,7 +932,7 @@ fn test_marketplace_nft_token_end_to_end() {
     marketplace.buy(&buyer, &listing_id);
 
     // ── Assert NFT ownership transferred ────────────────────────────────
-    assert_eq!(nft.owner_of(token_id).unwrap(), buyer);
+    assert_eq!(nft.owner_of(&token_id), buyer);
 
     // ── Assert final token balances ──────────────────────────────────────
     let royalty_amount = (price * i128::from(royalty_bps)) / 10_000i128; // 100
@@ -855,7 +955,7 @@ fn test_marketplace_nft_token_end_to_end() {
     );
 
     // ── Listing is now inactive ──────────────────────────────────────────
-    let listing_after = marketplace.get_listing(listing_id).unwrap();
+    let listing_after = marketplace.get_listing(&listing_id).unwrap();
     assert!(!listing_after.active);
 }
 
@@ -926,7 +1026,7 @@ fn test_marketplace_nft_token_with_per_token_royalty() {
     marketplace.buy(&buyer, &listing_id);
 
     // Buyer owns the NFT
-    assert_eq!(nft.owner_of(token_id).unwrap(), buyer);
+    assert_eq!(nft.owner_of(&token_id), buyer);
 
     // Marketplace distributes 1 % to its royalty recipient, 99 % to seller
     let mkt_royalty = (sale_price * 100i128) / 10_000i128; // 10

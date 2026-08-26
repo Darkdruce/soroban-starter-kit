@@ -6,6 +6,9 @@
 //! `get_price`, which rejects prices older than a configurable staleness
 //! threshold.
 
+#[cfg(test)]
+extern crate std;
+
 use soroban_sdk::{Address, Env, Vec, contract, contractimpl};
 
 mod errors;
