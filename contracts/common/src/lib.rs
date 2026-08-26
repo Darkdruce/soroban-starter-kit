@@ -324,7 +324,7 @@ pub fn entropy_hash(env: &Env, secret: &BytesN<32>, salt: &BytesN<32>, extra: &[
     let mut input = Bytes::new(env);
     input.extend_from_array(&secret.to_array());
     input.extend_from_array(&salt.to_array());
-    input.extend_from_array(extra);
+    input.append(&Bytes::from_slice(env, extra));
     env.crypto().sha256(&input)
 }
 
@@ -639,6 +639,9 @@ mod tests {
     #[test]
     fn bps_fee_zero_amount() {
         assert_eq!(apply_bps_fee(0, 500), Some(0));
+    }
+}
+
 // ─── Shared instance bump helper ────────────────────────────────────────────
 
 /// Extend instance storage TTL using the default threshold and bump amount.

@@ -349,6 +349,9 @@ jobs:
           pip install jq
           python3 .github/scripts/check_wasm_sizes.py .github/wasm_sizes.json 1.05
 
+      - name: Check default-feature exports
+        run: python3 .github/scripts/check_feature_exports.py
+
       - name: Upload WASM artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

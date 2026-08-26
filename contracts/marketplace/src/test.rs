@@ -59,6 +59,10 @@ impl MockNft {
             .get(&NftKey::Owner(token_id))
             .expect("token not found")
     }
+
+    pub fn royalty_info(_env: Env, _token_id: u32, _sale_price: i128) -> Option<super::contract::RoyaltyInfo> {
+        None  // MockNft returns no royalty by default; tests can override via storage if needed
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -252,4 +256,34 @@ fn test_invalid_royalty_rejected() {
     let res = MarketplaceContractClient::new(&env, &marketplace)
         .try_initialize(&admin, &token, &10_001u32, &admin);
     assert!(res.is_err());
+}
+
+#[test]
+fn test_nft_royalty_override_honored_on_buy() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let t = setup(&env);
+
+    let price = 1_000i128;
+    let id = t.client.list(&t.seller, &t.nft, &1u32, &price);
+
+    let marketplace_royalty_bps: u32 = env.as_contract(&t.marketplace, || {
+        env.storage()
+            .instance()
+            .get(&DataKey::RoyaltyBps)
+            .unwrap_or(0)
+    });
+    let marketplace_royalty = (price * marketplace_royalty_bps as i128) / 10_000;
+
+    let before_marketplace_royalty = tok(&env, &t.token).balance(&t.royalty_recipient);
+    let before_seller = tok(&env, &t.token).balance(&t.seller);
+
+    t.client.buy(&t.buyer, &id);
+
+    let after_marketplace_royalty = tok(&env, &t.token).balance(&t.royalty_recipient);
+    assert_eq!(after_marketplace_royalty, before_marketplace_royalty + marketplace_royalty,
+               "marketplace royalty should be used when NFT contract returns no royalty");
+    assert_eq!(tok(&env, &t.token).balance(&t.seller),
+               before_seller + price - marketplace_royalty,
+               "seller should receive price minus marketplace royalty");
 }

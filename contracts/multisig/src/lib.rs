@@ -418,8 +418,7 @@ mod contract {
         /// Returns `Ok(())` when the proposal was found and expired.
         /// Returns `Err(TransactionNotFound)` if the proposal does not exist.
         /// Returns `Err(AlreadyExecuted)` if the proposal was already executed.
-        /// Returns `Err(ProposalExpired)` if the proposal has not yet expired
-        ///   (re-used as "not yet expired" signal to avoid griefing).
+        /// Returns `Err(NotYetExpired)` if the proposal has not yet expired.
         pub fn cleanup_expired(env: Env, tx_id: u64) -> Result<(), MultisigError> {
             let transaction = Self::get_required_transaction(&env, tx_id)?;
             if transaction.executed {
@@ -427,7 +426,7 @@ mod contract {
             }
             if env.ledger().sequence() <= transaction.expiry_ledger {
                 // Not yet expired — nothing to clean up.
-                return Err(MultisigError::ProposalExpired);
+                return Err(MultisigError::NotYetExpired);
             }
             env.storage()
                 .persistent()
