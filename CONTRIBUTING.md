@@ -502,6 +502,97 @@ Use one of these categories for each entry:
 
 ---
 
+## Release Automation & Versioning
+
+This project uses **changesets** to automate version bumping, changelog generation, and releases. Changesets provide a structured way to document and release changes across all contract crates.
+
+### What is a Changeset?
+
+A changeset is a markdown file in the `.changeset/` directory that describes what changed and how significantly. Each changeset specifies:
+- Which packages are affected
+- The semantic version bump (major, minor, or patch)
+- A description for the changelog
+
+### Adding a Changeset
+
+When your PR includes changes to one or more contracts or the workspace, create a changeset:
+
+```bash
+# Interactive wizard to create a changeset
+npm install -g @changesets/cli    # if not already installed
+changeset add
+
+# Or manually: copy and edit an existing changeset file
+cp .changeset/template.md .changeset/your-slug-12345.md
+```
+
+The wizard will:
+1. Ask which packages changed (select all affected contracts)
+2. Prompt for the version bump type:
+   - **patch**: Bug fixes with no API changes (e.g., 1.0.0 → 1.0.1)
+   - **minor**: New backwards-compatible features (e.g., 1.0.0 → 1.1.0)
+   - **major**: Breaking changes or API modifications (e.g., 1.0.0 → 2.0.0)
+3. Request a summary of changes (appears in CHANGELOG.md)
+
+### Changeset Format
+
+Changesets are markdown files with YAML frontmatter:
+
+```markdown
+---
+"soroban-token-template": patch
+"soroban-escrow-template": minor
+---
+
+Fixed critical token transfer bug that could lose user funds.
+
+Added new `emergency_pause()` entry point for security responses.
+```
+
+Each line in the frontmatter maps a package name to its version bump. The body is the changelog summary (keep it concise).
+
+### Commit Your Changeset
+
+Commit the changeset file(s) as part of your PR:
+
+```bash
+git add .changeset/your-slug-12345.md
+git commit -m "chore: document changes for release"
+```
+
+**One changeset per PR, even if multiple packages are affected.**
+
+### Release Workflow
+
+1. **PR merged to main**: GitHub Actions detects changesets and creates a release PR
+2. **Release PR**: Automatically bumps versions and generates CHANGELOG entries
+3. **Merge release PR**: CI tags the release and publishes to GitHub (and crates.io if configured)
+
+The release workflow is fully automated via `.github/workflows/release.yml`.
+
+### When NOT to Add a Changeset
+
+- Documentation-only changes (README, docs/, comments)
+- CI/CD improvements (not affecting shipped code)
+- Test-only changes
+- Internal refactoring with no behavior change
+
+For these, skip the changeset—just update the PR title and description.
+
+### Semver Policy
+
+Follow [Semantic Versioning](https://semver.org/):
+
+| Change Type | Bump | Examples |
+|-------------|------|----------|
+| Bug fixes, optimizations | **patch** | Fixed overflow in token math, optimized gas usage |
+| New features, entry points | **minor** | Added `freeze_account()`, new utility function |
+| Breaking changes, removed features | **major** | Renamed `burn()` to `burn_tokens()`, removed deprecated API |
+
+**On-chain contracts are especially sensitive to breaking changes** — a major version bump signals that existing deployments may not be compatible.
+
+---
+
 ## PR Checklist
 
 Before opening a pull request, confirm all of the following:
@@ -511,7 +602,7 @@ Before opening a pull request, confirm all of the following:
 - [ ] `cargo test --workspace` passes
 - [ ] New functionality is covered by tests (unit + property-based where applicable)
 - [ ] Public API changes are documented with doc comments
-- [ ] `CHANGELOG.md` has an entry under `[Unreleased]`
+- [ ] A changeset is created if the PR affects contract code or workspace dependencies (see [Release Automation](#release-automation--versioning))
 - [ ] `README.md` is updated if the change affects usage or the template list
 - [ ] The PR title is concise (≤ 70 characters) and follows the format `type: short description` (e.g. `feat: add vesting contract template`)
 - [ ] The PR description references the issue it closes (`Closes #NNN`)
@@ -559,7 +650,7 @@ The `main` branch is protected with the following rules:
 | Rule | Enforcement |
 |------|------------|
 | Require PR reviews | Minimum **1 approval** required before merge |
-| Require status checks | All GitHub Actions workflows must pass: `ci`, `lint-pr-title`, `bench`, `pr-labeler` |
+| Require status checks | All GitHub Actions workflows must pass: `ci`, `lint-pr-title`, `bench`, `pr-labeler`, `changesets` |
 | Require branches up to date | Branch must be up-to-date with `main` before merge |
 | Restrict who can push | Only authorized maintainers can merge PRs |
 | Allow force pushes | Disabled — prevents accidental history rewriting |
