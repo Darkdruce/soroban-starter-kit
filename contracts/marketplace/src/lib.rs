@@ -266,6 +266,155 @@ mod contract {
         /// - [`MarketplaceError::NotInitialized`]
         pub fn get_active_listings(
             env: Env,
+            seller: Address,
+            listing_id: u64,
+            buyer: Address,
+        ) -> Result<(), MarketplaceError> {
+            let royalty_bps: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::RoyaltyBps)
+                .unwrap_or(0);
+            let royalty_recipient: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::RoyaltyRecipient)
+                .ok_or(MarketplaceError::NotInitialized)?;
+            let payment_token: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::PaymentToken)
+                .ok_or(MarketplaceError::NotInitialized)?;
+
+            seller.require_auth();
+
+            let mut listing: Listing = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Listing(listing_id))
+                .ok_or(MarketplaceError::ListingNotFound)?;
+            if !listing.active {
+                return Err(MarketplaceError::ListingInactive);
+            }
+            if listing.seller != seller {
+                return Err(MarketplaceError::NotAuthorized);
+            }
+
+            // Re-check the escrowed offer at accept time.
+            let offer_key = DataKey::Offer(listing_id, buyer.clone());
+            let amount: i128 = env
+                .storage()
+                .persistent()
+                .get(&offer_key)
+                .ok_or(MarketplaceError::OfferNotFound)?;
+
+            // Checks-effects-interactions: mark inactive and clear the offer before external calls.
+            listing.active = false;
+            env.storage()
+                .persistent()
+                .set(&DataKey::Listing(listing_id), &listing);
+            env.storage().persistent().remove(&offer_key);
+            bump_instance(&env);
+
+            #[allow(clippy::arithmetic_side_effects, clippy::as_conversions, clippy::cast_possible_truncation, clippy::integer_division)] // royalty BPS validated <= 10_000 at init
+            let royalty = (amount * royalty_bps as i128) / 10_000;
+            #[allow(clippy::arithmetic_side_effects)]
+            let seller_amount = amount - royalty;
+
+            let tok = token::Client::new(&env, &payment_token);
+            tok.transfer(
+                &env.current_contract_address(),
+                &listing.seller,
+                &seller_amount,
+            );
+            if royalty > 0 {
+                tok.transfer(&env.current_contract_address(), &royalty_recipient, &royalty);
+            }
+
+            // Transfer the NFT from seller to buyer.
+            NftClient::new(&env, &listing.nft_contract).transfer_from(
+                &env.current_contract_address(),
+                &listing.seller,
+                &buyer,
+                &listing.token_id,
+            );
+
+            events::offer_accepted(&env, listing_id, &buyer, amount);
+            Ok(())
+        }
+
+        /// Cancel an unaccepted offer, refunding the escrowed amount to the buyer.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`MarketplaceError::NotInitialized`] if not initialized.
+        /// Returns [`MarketplaceError::OfferNotFound`] if `buyer` has no active offer on this listing.
+        pub fn cancel_offer(
+            env: Env,
+            buyer: Address,
+            listing_id: u64,
+        ) -> Result<(), MarketplaceError> {
+            let payment_token: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::PaymentToken)
+                .ok_or(MarketplaceError::NotInitialized)?;
+
+            buyer.require_auth();
+
+            let offer_key = DataKey::Offer(listing_id, buyer.clone());
+            let amount: i128 = env
+                .storage()
+                .persistent()
+                .get(&offer_key)
+                .ok_or(MarketplaceError::OfferNotFound)?;
+
+            env.storage().persistent().remove(&offer_key);
+            bump_instance(&env);
+
+            token::Client::new(&env, &payment_token).transfer(
+                &env.current_contract_address(),
+                &buyer,
+                &amount,
+            );
+
+            events::offer_cancelled(&env, listing_id, &buyer);
+            Ok(())
+        }
+
+        /// Return listing details, or `None` if not found.
+        pub fn get_listing(env: Env, listing_id: u64) -> Option<Listing> {
+            env.storage()
+                .persistent()
+                .get(&DataKey::Listing(listing_id))
+        }
+
+        /// Return the escrowed offer amount from `buyer` on `listing_id`, or `None` if none exists.
+        pub fn get_offer(env: Env, listing_id: u64, buyer: Address) -> Option<i128> {
+            env.storage()
+                .persistent()
+                .get(&DataKey::Offer(listing_id, buyer))
+        }
+
+        /// Enumerate active listings, paginated by listing ID.
+        ///
+        /// `cursor` is the listing ID to resume scanning from (pass `0` to start from the
+        /// beginning). `limit` is the maximum number of active listings to return and is
+        /// capped at [`MAX_LISTINGS_PAGE_SIZE`] (a `limit` of `0` is treated as `1`).
+        ///
+        /// Returns a page of matching listings together with a `next_cursor` to pass to
+        /// the following call, or `next_cursor: None` once the end of the listing range
+        /// has been reached.
+        pub fn get_active_listings(env: Env, cursor: u64, limit: u32) -> ListingPage {
+            let capped_limit = limit.clamp(1, MAX_LISTINGS_PAGE_SIZE);
+            let next_id: u64 = env
+                .storage()
+                .instance()
+                .get(&DataKey::NextListingId)
+                .unwrap_or(0);
+
+            let mut listings = Vec::new(&env);
+            let mut id = cursor;
             cursor: u64,
             limit: u32,
         ) -> Result<ListingPage, MarketplaceError> {

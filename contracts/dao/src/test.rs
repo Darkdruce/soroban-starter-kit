@@ -11,8 +11,8 @@ use super::*;
 use soroban_sdk::{
     Address, Env, String,
     testutils::{Address as _, Ledger as _},
-    token::StellarAssetClient,
 };
+use soroban_token_template::{TokenContract, TokenContractClient};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -24,25 +24,35 @@ fn setup(env: &Env) -> (DaoContractClient, Address, Address, Address) {
 }
 
 /// Setup with explicit quorum (absolute) and quorum_bps (percentage).
+///
+/// The governance token is `soroban-token-template`, not a bare Stellar
+/// Asset Contract: the quorum_bps check needs `total_supply`, which is not
+/// part of the SEP-41 `TokenInterface` a SAC exposes.
 fn setup_with_quorum_bps(
     env: &Env,
     quorum: i128,
     quorum_bps: u32,
 ) -> (DaoContractClient, Address, Address, Address) {
     let admin = Address::generate(env);
-    let sac = env.register_stellar_asset_contract_v2(admin.clone());
-    let token = sac.address();
+    let token_addr = env.register_contract(None, TokenContract);
+    TokenContractClient::new(env, &token_addr).initialize(
+        &admin,
+        &String::from_str(env, "Governance Token"),
+        &String::from_str(env, "GOV"),
+        &7u32,
+        &None,
+    );
 
     let addr = env.register_contract(None, DaoContract);
     let client = DaoContractClient::new(env, &addr);
-    client.initialize(&admin, &token, &100, &quorum, &quorum_bps);
+    client.initialize(&admin, &token_addr, &100, &quorum, &quorum_bps);
 
-    (client, admin, token, addr)
+    (client, admin, token_addr, addr)
 }
 
 fn mint_tokens(env: &Env, token: &Address, admin: &Address, to: &Address, amount: i128) {
-    StellarAssetClient::new(env, token).mint(to, &amount);
     let _ = admin;
+    TokenContractClient::new(env, token).mint(to, &amount);
 }
 
 // ---------------------------------------------------------------------------
@@ -381,18 +391,21 @@ fn test_execute_meets_quorum_bps() {
     // quorum=0 (disabled), quorum_bps=5_000 (50% of supply required).
     let (client, admin, token, _) = setup_with_quorum_bps(&env, 0, 5_000);
 
+    // `create_proposal` requires the proposer to hold a nonzero balance, so
+    // admin needs *some* tokens to propose — but those must not count toward
+    // total supply when quorum_bps is checked at execution time, so admin
+    // burns them again immediately after creating the proposal. Final total
+    // supply = 600 (all held by `voter`).
     mint_tokens(&env, &token, &admin, &admin, 1_000);
     let id = client.create_proposal(
         &admin,
         &String::from_str(&env, "P"),
         &String::from_str(&env, "D"),
     );
+    soroban_sdk::token::Client::new(&env, &token).burn(&admin, &1_000);
 
     let voter = Address::generate(&env);
-    // Voter gets 600 tokens; total supply = 1_600. 600/1_600 = 37.5% < 50%.
-    // So mint only to the voter so that total supply = 600 and 600/600 = 100%.
-    // We need to mint in a way that total supply ends up right.
-    // Strategy: admin mints 600 to voter only (no admin balance), supply = 600.
+    // Voter gets all 600 tokens of the remaining total supply: 600/600 = 100% ≥ 50%.
     mint_tokens(&env, &token, &admin, &voter, 600);
     client.vote(&voter, &id, &true);
 

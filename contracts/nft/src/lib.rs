@@ -205,10 +205,17 @@ mod contract {
                 .persistent()
                 .get(&TokenKey::TokenRoyaltyRecipient(token_id));
 
-            if let (Some(bps), Some(recipient)) = (token_bps, token_recipient) {
+            // A per-token override with `bps == 0` legitimately has no recipient
+            // (`mint` only requires a recipient when `bps > 0`), so the override
+            // applies whenever `token_bps` is present, not only when a recipient
+            // is present too.
+            if let Some(bps) = token_bps {
                 if bps == 0 {
                     return Ok(None);
                 }
+                #[allow(clippy::arithmetic_side_effects, clippy::as_conversions, clippy::cast_possible_truncation, clippy::integer_division)]
+                let amount = (sale_price * bps as i128) / 10_000;
+                let recipient = token_recipient.ok_or(NftError::RoyaltyRecipientMissing)?;
                 let amount = apply_bps_fee(sale_price, bps).unwrap_or(0);
                 return Ok(Some(RoyaltyInfo { recipient, amount }));
             }

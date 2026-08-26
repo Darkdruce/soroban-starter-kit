@@ -1,8 +1,9 @@
+// `#[contracterror]` generates undocumented public associated items.
+#![allow(missing_docs)]
+
 use soroban_common::impl_display_error;
 use soroban_sdk::contracterror;
 
-// `#[contracterror]` generates undocumented public associated items.
-#[allow(missing_docs)]
 #[contracterror]
 #[derive(Clone, Copy, Debug)]
 pub enum SwapError {
@@ -21,14 +22,17 @@ pub enum SwapError {
 
 impl_display_error!(
     SwapError,
-    NotAuthorized    => "not authorized",
-    SwapNotFound     => "swap not found",
-    InvalidState     => "invalid swap state",
-    DeadlineExpired  => "swap deadline has expired",
-    InvalidAmount    => "invalid amount",
-    InvalidDeadline  => "invalid deadline",
-    AlreadyCompleted => "swap already completed",
-    AlreadyCancelled => "swap already cancelled",
+    NotAuthorized      => "not authorized",
+    SwapNotFound       => "swap not found",
+    InvalidState       => "invalid swap state",
+    DeadlineExpired    => "swap deadline has expired",
+    InvalidAmount      => "invalid amount",
+    InvalidDeadline    => "invalid deadline",
+    AlreadyCompleted   => "swap already completed",
+    AlreadyCancelled   => "swap already cancelled",
+    AlreadyInitialized => "contract already initialized",
+    NotInitialized     => "contract not initialized",
+    InvalidFee         => "invalid fee basis points",
 );
 
 #[cfg(test)]
@@ -70,7 +74,3 @@ SwapError::AlreadyCancelled = {}\n",
         );
     }
 }
-    AlreadyInitialized => "contract already initialized",
-    NotInitialized    => "contract not initialized",
-    InvalidFee       => "invalid fee basis points",
-);

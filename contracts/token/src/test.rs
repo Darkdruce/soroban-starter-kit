@@ -823,8 +823,6 @@ fn test_burn_from_expired_allowance() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #3)")]
-#[should_panic(expected = "InvalidAction")]
 #[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_unauthorized_admin_burn_fails() {
     let env = Env::default();
@@ -970,7 +968,7 @@ fn test_accept_admin_without_proposal_fails() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #3)")]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_accept_admin_by_wrong_address_fails() {
     let env = Env::default();
     env.mock_all_auths();
@@ -1015,7 +1013,7 @@ fn test_cancel_admin_proposal() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #3)")]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn test_cancel_admin_proposal_by_non_admin_fails() {
     let env = Env::default();
     env.mock_all_auths();
