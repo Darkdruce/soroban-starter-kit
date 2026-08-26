@@ -172,6 +172,214 @@ behind the `pausable` feature) pending investigation.
 
 ---
 
+### Airdrop Contract Events
+
+Events emitted by `contracts/airdrop`:
+
+| Event | Topic[0] | Data |
+|-------|----------|------|
+| `root_set` | `Symbol("root_set")` | `Bytes` (new merkle root) |
+| `claimed` | `Symbol("claimed")` | `(Address recipient, i128 amount)` |
+
+`claim_batch` emits one `claimed` event per successful entry rather than a single batch event.
+
+### Auction Contract Events
+
+Events emitted by `contracts/auction`:
+
+| Event | Topic[0] | Topic[1] | Data |
+|-------|----------|----------|------|
+| `started` | `Symbol("started")` | `Address` (seller) | `(i128 start_price, u32 deadline)` |
+| `bid_placed` | `Symbol("bid_placed")` | `Address` (bidder) | `i128` (amount) |
+| `ended` | `Symbol("ended")` | `Address` (winner) | `i128` (amount) |
+| `ended_no_bids` | `Symbol("ended_no_bids")` | — | `()` |
+| `ended_reserve_not_met` | `Symbol("ended_reserve_not_met")` | `Address` (highest bidder) | `(i128 highest_bid, i128 reserve_price)` |
+| `withdrawn` | `Symbol("withdrawn")` | `Address` (bidder) | `i128` (amount) |
+| `deadline_extended` | `Symbol("deadline_extended")` | — | `u32` (new deadline) |
+| `cancelled` | `Symbol("cancelled")` | `Address` (seller) | `()` |
+
+`deadline_extended` fires whenever a bid lands inside the anti-sniping `extension_window`; a monitoring job tracking auction end times should re-read `get_info().deadline` after each `bid_placed` rather than caching the value from `started`.
+
+### Ballot Contract Events
+
+Events emitted by `contracts/ballot`:
+
+| Event | Topic[0] | Data |
+|-------|----------|------|
+| `initialized` | `Symbol("initialized")` | `Address` (admin) |
+| `voter_registered` | `Symbol("voter_registered")` | `Address` (voter) |
+| `voter_deregistered` | `Symbol("voter_deregistered")` | `Address` (voter) |
+| `voted` | `Symbol("voted")` | `(Address voter, u32 choice)` |
+| `tally_result` | `Symbol("tally_result")` | `(i128 yes, i128 no)` — legacy two-choice tally |
+| `tally_all_result` | `Symbol("tally_all_result")` | `Vec<i128>` (per-choice counts, in `choices` order) |
+
+### Bonding Curve Contract Events
+
+Events emitted by `contracts/bonding-curve`:
+
+| Event | Topic[0] | Data |
+|-------|----------|------|
+| `initialized` | `Symbol("initialized")` | `(Address admin, Address token)` |
+| `bought` | `Symbol("bought")` | `(Address buyer, i128 tokens, i128 cost)` |
+| `sold` | `Symbol("sold")` | `(Address seller, i128 tokens, i128 proceeds)` |
+
+### Crowdfund Contract Events
+
+Events emitted by `contracts/crowdfund`:
+
+| Event | Topic[0] | Topic[1] | Data |
+|-------|----------|----------|------|
+| `initialized` | `Symbol("initialized")` | `Address` (creator) | `(i128 goal, u32 deadline)` |
+| `pledged` | `Symbol("pledged")` | `Address` (pledger) | `(i128 amount, i128 new_total)` |
+| `withdrawn` | `Symbol("withdrawn")` | `Address` (pledger) | `i128` (amount) |
+| `claimed` | `Symbol("claimed")` | `Address` (creator) | `i128` (amount) |
+| `refunded` | `Symbol("refunded")` | `Address` (pledger) | `i128` (amount) |
+| `deadline_extended` | `Symbol("deadline_extended")` | `Address` (creator) | `u32` (new deadline) |
+
+### DAO Contract Events
+
+Events emitted by `contracts/dao`:
+
+| Event | Topic[0] | Topic[1] | Data |
+|-------|----------|----------|------|
+| `initialized` | `Symbol("initialized")` | `Address` (admin), `Address` (token) | `i128` (quorum) |
+| `created` | `Symbol("created")` | `Address` (proposer) | `u32` (proposal_id) |
+| `voted` | `Symbol("voted")` | `Address` (voter) | `(u32 proposal_id, bool support, i128 weight)` |
+| `executed` | `Symbol("executed")` | — | `u32` (proposal_id) |
+| `cancelled` | `Symbol("cancelled")` | `Address` (admin) | `u32` (proposal_id) |
+| `prop_cancelled` | `Symbol("prop_cancelled")` | `Address` (proposer) | `u32` (proposal_id) |
+
+`created` is emitted by `create_proposal`, `executed` by `execute_proposal`, `cancelled` by admin `cancel_proposal`, and `prop_cancelled` by the proposer's own `proposer_cancel_proposal` — distinguish the last two when alerting on cancellations, since they indicate different actors.
+
+### Lottery Contract Events
+
+Events emitted by `contracts/lottery`:
+
+| Event | Topic[0] | Topic[1] | Data |
+|-------|----------|----------|------|
+| `initialized` | `Symbol("initialized")` | `Address` (admin) | `i128` (ticket_price) |
+| `ticket_purchased` | `Symbol("ticket_purchased")` | `Address` (buyer) | `()` |
+| `committed` | `Symbol("committed")` | `Address` (admin) | `()` |
+| `winner_drawn` | `Symbol("winner_drawn")` | `Address` (winner) | `i128` (prize) |
+| `refund_claimed` | `Symbol("refund_claimed")` | `Address` (buyer) | `i128` (amount) |
+
+`winner_drawn` fires once per winner selected by `draw` (up to `winner_count` times in one transaction) — an indexer counting winners per drawing should aggregate by transaction/ledger, not assume exactly one event per draw.
+
+### Marketplace Contract Events
+
+Events emitted by `contracts/marketplace`:
+
+| Event | Topic[0] | Topic[1] | Data |
+|-------|----------|----------|------|
+| `listed` | `Symbol("listed")` | `u64` (listing_id) | `(Address seller, i128 price)` |
+| `sold` | `Symbol("sold")` | `u64` (listing_id) | `(Address buyer, i128 price)` |
+| `cancel` | `Symbol("cancel")` | `u64` (listing_id) | `Address` (seller) |
+| `swept` | `Symbol("swept")` | `u64` (listing_id) | `Address` (seller) |
+| `offered` | `Symbol("offered")` | `u64` (listing_id) | `(Address buyer, i128 amount)` |
+| `offracc` | `Symbol("offracc")` | `u64` (listing_id) | `(Address buyer, i128 amount)` |
+| `offrcncl` | `Symbol("offrcncl")` | `u64` (listing_id) | `Address` (buyer) |
+
+Topic symbols are truncated to fit `symbol_short!`'s 9-character limit: `cancel` = listing cancelled, `offered` = offer made, `offracc` = offer accepted, `offrcncl` = offer cancelled. As noted in `error-reference.md` and `contract-api.md`, `contracts/marketplace/src/lib.rs` currently has no working code path that emits `offered` or `offracc` (offer creation isn't implemented, and the offer-accept logic is bound to a broken duplicate function) — an indexer should not expect to see those two in practice until that's fixed.
+
+### Multisig Contract Events
+
+Events emitted by `contracts/multisig`:
+
+| Event | Topic[0] | Topic[1] | Topic[2] | Data |
+|-------|----------|----------|----------|------|
+| `initialized` | `Symbol("initialized")` | `u32` (threshold) | — | `u32` (signer_count) |
+| `added` | `Symbol("added")` | `Address` (signer) | — | `u32` (new threshold) |
+| `removed` | `Symbol("removed")` | `Address` (signer) | — | `u32` (new threshold) |
+| `proposed` | `Symbol("proposed")` | `Address` (proposer) | — | `u64` (tx_id) |
+| `signed` | `Symbol("signed")` | `Address` (signer) | `u64` (tx_id) | `u32` (signature_count) |
+| `executed` | `Symbol("executed")` | `u64` (tx_id) | — | `()` |
+| `expired` | `Symbol("expired")` | `u64` (tx_id) | — | `()` |
+| `batch_executed` | `Symbol("batch_executed")` | — | — | `(Vec<u64> executed_ids, u32 skipped_count)` |
+
+`batch_executed` summarizes an `execute_batch` call; cross-reference `executed_ids` against individual `executed` events if per-transaction detail is needed for skipped entries.
+
+### NFT Contract Events
+
+Events emitted by `contracts/nft`:
+
+| Event | Topic[0] | Topic[1] | Topic[2] | Data |
+|-------|----------|----------|----------|------|
+| `initialized` | `Symbol("initialized")` | `Address` (admin) | — | `(String name, String symbol)` |
+| `minted` | `Symbol("minted")` | `Address` (to) | — | `u32` (token_id) |
+| `transferred` | `Symbol("transferred")` | `Address` (from) | `Address` (to) | `u32` (token_id) |
+| `burned` | `Symbol("burned")` | `Address` (from) | — | `u32` (token_id) |
+| `approved` | `Symbol("approved")` | `Address` (owner) | `Address` (spender) | `u32` (token_id) |
+
+`burned` is defined in `events.rs` but there is currently no `burn` entry point in `lib.rs` that calls it — an indexer should not expect to observe this event until burning is implemented.
+
+### Oracle Contract Events
+
+Events emitted by `contracts/oracle`:
+
+| Event | Topic[0] | Topic[1] | Data |
+|-------|----------|----------|------|
+| `initialized` | `Symbol("initialized")` | `Address` (admin) | `u32` (staleness_threshold) |
+| `price_updated` | `Symbol("price_updated")` | `Address` (admin) | `(i128 price, u32 ledger)` |
+| `price_submitted` | `Symbol("price_submitted")` | `Address` (publisher) | `(i128 price, u64 timestamp)` |
+
+`price_updated` comes from the single-admin `update_price` path; `price_submitted` comes from the multi-publisher `submit_price` path used by `get_median_price`/`get_twap`. A monitoring job computing price-change alerts should watch both.
+
+### Staking Contract Events
+
+Events emitted by `contracts/staking`:
+
+| Event | Topic[0] | Topic[1] | Topic[2] | Data |
+|-------|----------|----------|----------|------|
+| `initialized` | `Symbol("initialized")` | `Address` (admin) | — | `(Address stake_token, Address reward_token)` |
+| `staked` | `Symbol("staked")` | `Address` (staker) | — | `(i128 amount, i128 new_total)` |
+| `unstaked` | `Symbol("unstaked")` | `Address` (staker) | — | `(i128 amount, i128 remaining)` |
+| `claimed_rewards` | `Symbol("claimed_rewards")` | `Address` (staker) | — | `i128` (amount) |
+| `added_rewards` | `Symbol("added_rewards")` | `Address` (admin) | — | `(i128 amount, i128 new_total)` |
+| `compounded` | `Symbol("compounded")` | `Address` (staker) | — | `(i128 reward, i128 new_stake)` |
+| `slashed` | `Symbol("slashed")` | `Address` (admin) | `Address` (staker) | `(i128 amount, Address destination)` |
+| `unbond_requested` | `Symbol("unbond_requested")` | `Address` (staker) | — | `(i128 amount, u32 available_at)` |
+| `withdrawn` | `Symbol("withdrawn")` | `Address` (staker) | — | `i128` (amount) |
+
+`slashed` is a high-severity signal worth alerting on every occurrence. `unbond_requested`'s `available_at` is the ledger sequence after which the corresponding `withdrawn` becomes callable — useful for building an unbonding-queue dashboard.
+
+### Swap Contract Events
+
+Events emitted by `contracts/swap`:
+
+| Event | Topic[0] | Topic[1] | Data |
+|-------|----------|----------|------|
+| `proposed` | `Symbol("proposed")` | `Address` (party_a) | `(u32 swap_id, Address token_a, i128 amount_a, Address token_b, i128 amount_b, u32 expires_at)` |
+| `accepted` | `Symbol("accepted")` | `Address` (party_b) | `u32` (swap_id) |
+| `cancelled` | `Symbol("cancelled")` | — | `u32` (swap_id) |
+
+As noted in `error-reference.md` and `contract-api.md`, `contracts/swap/src/lib.rs` currently calls `events::swap_cancelled` with a mismatched argument count relative to the `swap_cancelled(env, swap_id)` signature in `events.rs`; this table reflects the authoritative `events.rs` definition.
+
+### Timelock Contract Events
+
+Events emitted by `contracts/timelock`:
+
+| Event | Topic[0] | Topic[1] | Topic[2] | Data |
+|-------|----------|----------|----------|------|
+| `initialized` | `Symbol("initialized")` | `Address` (admin) | `Address` (beneficiary) | `(u32 release_ledger, i128 amount)` |
+| `released` | `Symbol("released")` | `Address` (beneficiary) | — | `i128` (amount) |
+| `cancelled` | `Symbol("cancelled")` | `Address` (admin) | — | `i128` (amount) |
+| `beneficiary_reassigned` | `Symbol("beneficiary_reassigned")` | `Address` (admin) | `Address` (old beneficiary), `Address` (new beneficiary) | `()` |
+
+For a multi-tranche timelock (`initialize_with_tranches`), `initialized` reports the first tranche's ledger/amount and `released` may fire multiple times (once per tranche release) before the timelock's state finally transitions to `Released`.
+
+### Vesting Contract Events
+
+Events emitted by `contracts/vesting`:
+
+| Event | Topic[0] | Topic[1] | Data |
+|-------|----------|----------|------|
+| `initialized` | `Symbol("initialized")` | `Address` (beneficiary) | `(i128 amount, u32 cliff_ledger, u32 end_ledger)` |
+| `claimed` | `Symbol("claimed")` | `Address` (beneficiary) | `i128` (amount) |
+| `revoked` | `Symbol("revoked")` | `Address` (beneficiary) | `(Address admin, i128 returned)` |
+| `admin_released` | `Symbol("admin_released")` | `Address` (admin) | `i128` (amount) |
+
+---
+
 ## 4. Decoding Events
 
 Events are XDR-encoded on-chain. Use the Stellar CLI or SDK to decode them.
