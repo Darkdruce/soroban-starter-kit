@@ -233,3 +233,44 @@ For detailed per-contract breakdown, see the individual contract documentation i
 ---
 
 For the front-running risk assessment, see [front-running-risk-assessment.md](front-running-risk-assessment.md).
+
+## Checks-Effects-Interactions Audit
+
+As part of issue #873, every state-changing entry point in the 20 workspace contracts was reviewed. The audit treated token transfers, token mint/burn calls, and arbitrary contract invocations as interactions; authorization, validation, and storage updates were reviewed as checks and effects. Soroban transactions are atomic, so moving local effects before an interaction does not persist a partial update when the interaction fails.
+
+| Contract | State-changing entry points reviewed | Interaction-before-effect finding | Resolution |
+|---|---:|---|---|
+| airdrop | 4 | None | No change required |
+| auction | 8 | None | No change required |
+| ballot | 5 | None | No change required |
+| bonding-curve | 5 | None | No change required |
+| crowdfund | 6 | `pledge` updated pledge totals after funding transfer | Fixed: pledge accounting now precedes the transfer |
+| dao | 6 | None | No change required |
+| escrow | 18 | None | Existing lifecycle ordering retained |
+| lottery | 7 | `buy_ticket` and `draw` interacted before recording local results | Fixed: ticket/draw state now precedes token transfers |
+| marketplace | 10 | None | Existing `buy` ordering retained |
+| multisig | 10 | None | No change required |
+| nft | 6 | None | No change required |
+| oracle | 4 | None | No change required |
+| staking | 8 | None | No change required |
+| subscription | 6 | None | No change required |
+| swap | 4 | None | No change required |
+| timelock | 5 | None | No change required |
+| token | 15 | No contract-to-contract state interaction requiring a reorder | No change required |
+| vesting | 4 | `initialize` funded the contract before recording the schedule | Fixed: schedule state now precedes the funding transfer |
+| wrapped-token | 4 | `wrap`/`unwrap` updated supply after token interactions | Fixed: supply accounting now precedes transfer/mint/burn calls |
+
+The audit covers the full workspace, including view methods separately from state-changing methods. Remaining external calls are either read-only queries, calls whose local effect already precedes the interaction, or contract-internal event publication after the state transition. No follow-up vulnerability issue was required for the reviewed code.
+
+The practical rule for future contributions is: **validate first, write the contract's local state second, interact with another contract third, and emit the success event last**. If a later interaction fails, Soroban reverts the transaction, preserving the invariant that local accounting and token balances move together.
+
+## Static Unsafe-Code Analysis
+
+CI now includes a `cargo-geiger` job that scans the entire workspace and flags unsafe usage for review in first-party crates. Run the same check locally with:
+
+```bash
+cargo install cargo-geiger --locked
+cargo geiger --workspace --all-features
+```
+
+Unsafe code in transitive dependencies is reported for visibility but is not treated as a contract source finding; the CI gate is scoped to the workspace's own crates.
