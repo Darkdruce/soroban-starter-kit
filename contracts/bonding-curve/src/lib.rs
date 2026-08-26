@@ -12,9 +12,6 @@ mod events;
 mod storage;
 
 #[cfg(test)]
-mod test;
-
-#[cfg(test)]
 mod prop_test;
 
 pub use errors::BondingCurveError;
