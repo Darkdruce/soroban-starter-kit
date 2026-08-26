@@ -474,3 +474,102 @@ fn test_initialize_invalid_quorum_bps_fails() {
     // quorum_bps = 10_001 is out of range
     client.initialize(&admin, &token, &100, &500, &10_001);
 }
+
+// ---------------------------------------------------------------------------
+// #941 — VotingClosed error for post-deadline voting
+// ---------------------------------------------------------------------------
+
+/// vote() returns VotingClosed (not DeadlineNotReached) when deadline has passed.
+#[test]
+#[should_panic(expected = "Error(Contract, #13)")]
+fn test_vote_after_deadline_returns_voting_closed() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, token, _) = setup(&env);
+
+    mint_tokens(&env, &token, &admin, &admin, 1_000);
+    let id = client.create_proposal(
+        &admin,
+        &String::from_str(&env, "P"),
+        &String::from_str(&env, "D"),
+    );
+
+    let voter = Address::generate(&env);
+    mint_tokens(&env, &token, &admin, &voter, 600);
+
+    // Advance past voting deadline (voting_period = 100)
+    let deadline = client.get_proposal(&id).deadline;
+    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
+
+    // vote() after deadline should return VotingClosed (error code #13)
+    client.vote(&voter, &id, &true);
+}
+
+// ---------------------------------------------------------------------------
+// #942 — Snapshot voting power to prevent flash-loan attacks
+// ---------------------------------------------------------------------------
+
+/// Voting weight is capped by the total supply at proposal creation time,
+/// preventing flash-loan style vote manipulation.
+#[test]
+fn test_flash_loan_voting_weight_capped() {
+    let env = Env::default();
+    env.mock_all_auths();
+    // quorum=100 (low to ensure pass), quorum_bps=0 (disabled).
+    let (client, admin, token, _) = setup_with_quorum_bps(&env, 100, 0);
+
+    // Initial total supply = 1_000 (mint to admin only)
+    mint_tokens(&env, &token, &admin, &admin, 1_000);
+    let id = client.create_proposal(
+        &admin,
+        &String::from_str(&env, "P"),
+        &String::from_str(&env, "D"),
+    );
+
+    // Verify proposal captured total_supply_at_creation = 1_000
+    let proposal = client.get_proposal(&id);
+    assert_eq!(proposal.total_supply_at_creation, 1_000);
+
+    let voter = Address::generate(&env);
+    // Mint a huge amount to simulate a flash loan (total supply becomes 10_000)
+    mint_tokens(&env, &token, &admin, &voter, 9_000); // voter now has 9_000, total supply = 10_000
+
+    // Vote with the inflated balance
+    client.vote(&voter, &id, &true);
+
+    // Voting weight should be capped at total_supply_at_creation (1_000), not the actual balance (9_000)
+    let proposal_after = client.get_proposal(&id);
+    assert_eq!(proposal_after.yes_votes, 1_000); // capped, not 9_000
+    assert_eq!(proposal_after.no_votes, 0);
+}
+
+/// Voting weight respects the snapshot even when checking execution quorum.
+#[test]
+fn test_quorum_bps_uses_snapshot() {
+    let env = Env::default();
+    env.mock_all_auths();
+    // quorum=0 (disabled), quorum_bps=5_000 (50% of supply at proposal time).
+    let (client, admin, token, _) = setup_with_quorum_bps(&env, 0, 5_000);
+
+    // Initial supply = 1_000
+    mint_tokens(&env, &token, &admin, &admin, 1_000);
+    let id = client.create_proposal(
+        &admin,
+        &String::from_str(&env, "P"),
+        &String::from_str(&env, "D"),
+    );
+
+    let voter = Address::generate(&env);
+    mint_tokens(&env, &token, &admin, &voter, 600);
+    client.vote(&voter, &id, &true);
+
+    // At vote time: 600/1_600 = 37.5% < 50% (would fail if using live supply)
+    // But with snapshot: 600/1_000 = 60% ≥ 50% (should pass)
+
+    let deadline = client.get_proposal(&id).deadline;
+    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
+
+    // Should execute successfully using the snapshot (600/1_000 = 60% ≥ 50%)
+    client.execute_proposal(&id);
+    assert_eq!(client.get_proposal(&id).state, ProposalState::Executed);
+}

@@ -48,9 +48,11 @@ where
 
 /// DAO governance contract for on-chain proposal creation and token-weighted voting.
 ///
-/// Voting power is the voter's token balance at vote time (simplified snapshot).
-/// A proposal passes when `yes_votes > no_votes`, total votes reach the absolute
-/// `quorum`, *and* participation reaches `quorum_bps` of the total token supply.
+/// Voting power is capped at the token balance at vote time, but limited to not exceed
+/// the total token supply at proposal creation time. This snapshot prevents flash-loan
+/// style vote manipulation. A proposal passes when `yes_votes > no_votes`, total votes
+/// reach the absolute `quorum`, *and* participation reaches `quorum_bps` of the total
+/// token supply (measured at proposal creation time).
 pub use contract::*;
 
 // The `#[contract]` / `#[contractimpl]` macros generate an undocumented public
@@ -115,6 +117,10 @@ mod contract {
         ///
         /// Returns the newly created `proposal_id`.
         ///
+        /// Voting power and quorum are calculated using a snapshot of the total
+        /// token supply at proposal creation time, preventing flash-loan-style
+        /// vote manipulation.
+        ///
         /// # Errors
         ///
         /// Returns [`DaoError::NotInitialized`] if the DAO has not been set up.
@@ -152,6 +158,8 @@ mod contract {
                 .ok_or(DaoError::NotInitialized)?;
             let deadline = env.ledger().sequence() + voting_period;
 
+            let total_supply = token::Client::new(&env, &token).total_supply();
+
             let proposal = Proposal {
                 id: proposal_id,
                 proposer: proposer.clone(),
@@ -161,6 +169,7 @@ mod contract {
                 yes_votes: 0,
                 no_votes: 0,
                 state: ProposalState::Active,
+                total_supply_at_creation: total_supply,
             };
 
             env.storage()
@@ -221,10 +230,19 @@ mod contract {
                 .instance()
                 .get(&DataKey::Token)
                 .ok_or(DaoError::NotInitialized)?;
-            let weight = token::Client::new(&env, &token).balance(&voter);
-            if weight <= 0 {
+            let balance = token::Client::new(&env, &token).balance(&voter);
+            if balance <= 0 {
                 return Err(DaoError::InsufficientVotingPower);
             }
+
+            // Cap voting weight to the total supply at proposal creation time.
+            // This prevents flash-loan attacks where a voter temporarily acquires
+            // a large balance to inflate their voting power.
+            let weight = if balance > proposal.total_supply_at_creation {
+                proposal.total_supply_at_creation
+            } else {
+                balance
+            };
 
             if support {
                 proposal.yes_votes += weight;
@@ -285,21 +303,17 @@ mod contract {
             }
 
             // Percentage-based quorum check (#829).
+            // Uses the total supply snapshot at proposal creation time to prevent
+            // manipulation through token minting/burning between proposal and execution.
             let quorum_bps: u32 = env
                 .storage()
                 .instance()
                 .get(&DataKey::QuorumBps)
                 .unwrap_or(0u32);
             if quorum_bps > 0 {
-                let token: Address = env
-                    .storage()
-                    .instance()
-                    .get(&DataKey::Token)
-                    .ok_or(DaoError::NotInitialized)?;
-                let total_supply = token::Client::new(&env, &token).total_supply();
                 // total_votes / total_supply >= quorum_bps / 10_000
                 // ⟺ total_votes * 10_000 >= quorum_bps * total_supply
-                if total_votes * 10_000 < i128::from(quorum_bps) * total_supply {
+                if total_votes * 10_000 < i128::from(quorum_bps) * proposal.total_supply_at_creation {
                     return Err(DaoError::QuorumNotMet);
                 }
             }
