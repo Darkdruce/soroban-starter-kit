@@ -26,6 +26,8 @@ pub enum StakingError {
     UnbondingNotComplete = 9,
     /// `withdraw` called with no pending unbond request.
     NoUnbondRequest = 10,
+    /// `unstake` called while a pending UnbondRequest already exists for this staker.
+    UnbondRequestPending = 11,
 }
 
 #[cfg(test)]
@@ -49,7 +51,8 @@ StakingError::InsufficientStake = {}\n\
 StakingError::NoRewards = {}\n\
 StakingError::CompoundTokenMismatch = {}\n\
 StakingError::UnbondingNotComplete = {}\n\
-StakingError::NoUnbondRequest = {}\n",
+StakingError::NoUnbondRequest = {}\n\
+StakingError::UnbondRequestPending = {}\n",
             StakingError::AlreadyInitialized as u32,
             StakingError::NotInitialized as u32,
             StakingError::Unauthorized as u32,
@@ -60,6 +63,7 @@ StakingError::NoUnbondRequest = {}\n",
             StakingError::CompoundTokenMismatch as u32,
             StakingError::UnbondingNotComplete as u32,
             StakingError::NoUnbondRequest as u32,
+            StakingError::UnbondRequestPending as u32,
         )
     }
 

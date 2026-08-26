@@ -181,7 +181,7 @@ mod contract {
         /// - [`VestingError::NotAuthorized`] if caller is not the beneficiary.
         /// - [`VestingError::NothingToClaim`] if no new tokens have vested since the last claim.
         pub fn claim(env: Env, beneficiary: Address) -> Result<i128, VestingError> {
-            let admin: Address = env
+            let _admin: Address = env
                 .storage()
                 .instance()
                 .get(&DataKey::Admin)

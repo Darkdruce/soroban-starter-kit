@@ -437,6 +437,7 @@ fn test_admin_release_before_cliff_sends_all_to_beneficiary() {
 #[test]
 fn test_admin_release_marks_revoked() {
     let env = setup_env();
+    let (client, _, beneficiary, ..) = setup(&env);
     let (client, _admin, beneficiary, ..) = setup(&env);
     client.admin_release(&beneficiary);
     let info = client.get_info(&beneficiary).unwrap();
@@ -456,6 +457,7 @@ fn test_admin_release_after_cliff_fails() {
 #[test]
 fn test_admin_release_twice_fails() {
     let env = setup_env();
+    let (client, _, beneficiary, ..) = setup(&env);
     let (client, _admin, beneficiary, ..) = setup(&env);
     client.admin_release(&beneficiary);
     let result = client.try_admin_release(&beneficiary);
@@ -467,6 +469,7 @@ fn test_admin_release_emits_event() {
     let env = setup_env();
     let (client, admin, beneficiary, _token, _cliff, _end, amount) = setup(&env);
     client.admin_release(&beneficiary);
+    use soroban_sdk::{IntoVal, Symbol, testutils::Events as _};
     use soroban_sdk::{FromVal, IntoVal, Symbol, testutils::Events as _};
     let all = env.events().all();
     let found = all.iter().any(|(_, topics, data)| {
