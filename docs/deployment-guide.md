@@ -725,3 +725,30 @@ Set `TOKEN_CONTRACT_ID` as an environment variable or export it in your shell pr
 export TOKEN_CONTRACT_ID=<CONTRACT_ID>
 ./scripts/monitor-token.sh mainnet
 ```
+
+---
+
+## 15. Cargo Feature Defaults
+
+`scripts/deploy.sh` and `scripts/deploy-all.sh` run a bare `stellar contract
+build` with no `--features` flag, so a contract's compiled-in capabilities are
+whatever its Cargo.toml `[features] default = [...]` declares. The table
+below is what each contract ships with when deployed the standard way:
+
+| Contract | Default features | What they enable |
+|----------|-------------------|-------------------|
+| `token` | `pausable`, `upgradeable`, `capped-supply`, `freeze`, `transfer-hook` | `pause()`/`unpause()`; two-step `propose_upgrade()`/`execute_upgrade()`; a `max_supply` cap enforced on mint; `freeze_account()`/`unfreeze_account()`; an optional `on_transfer` hook contract |
+| `escrow` | `pausable` | `pause()`/`unpause()` and the same `propose_upgrade()`/`execute_upgrade()` timelock pair — both currently live under the single `pausable` gate in `contracts/escrow/src/lib.rs`, not a separate `upgradeable` gate |
+| `wrapped-token` | `pausable` | `pause()`/`unpause()` (closes #817) |
+| `multisig` | `pausable`, `upgradeable` | Neither currently guards any code — no pause or upgrade entry points exist yet in `contracts/multisig`. Both are declared for parity with the other contracts and defaulted on so they take effect automatically once implemented |
+
+To opt out of a default for a given deployment, build with
+`--no-default-features --features <subset>` before running `deploy.sh`, or
+export a modified `Cargo.toml` for that build.
+
+`.github/workflows/ci.yml`'s `audit` job runs
+`.github/scripts/check_feature_exports.py` after building every contract's
+release WASM. It parses each WASM's export section directly (no `wasm-tools`
+dependency) and fails CI if an expected feature-gated function — e.g.
+`pause`, `execute_upgrade`, `max_supply` — is missing, so a default silently
+regressing to off is caught before it reaches a deploy.
