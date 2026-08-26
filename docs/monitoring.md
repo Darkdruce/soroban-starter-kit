@@ -80,14 +80,19 @@ All token events are emitted by `contracts/token` and follow this structure:
 | `mint` | `Symbol("mint")` | `Address` (recipient) | — | `i128` (amount) |
 | `burn` | `Symbol("burn")` | `Address` (account) | — | `i128` (amount) |
 | `transfer` | `Symbol("transfer")` | `Address` (from) | `Address` (to) | `i128` (amount) |
+| `account_frozen` | `Symbol("account_frozen")` | `Address` (account) | — | `()` |
+| `account_unfrozen` | `Symbol("account_unfrozen")` | `Address` (account) | — | `()` |
 | `approve` | `Symbol("approve")` | `Address` (owner) | `Address` (spender) | `i128` (amount) |
 | `revoke` | `Symbol("revoke")` | `Address` (owner) | `Address` (spender) | `()` |
 | `admin_changed` | `Symbol("admin_changed")` | `Address` (old admin) | — | `Address` (new admin) |
 | `admin_proposed` | `Symbol("admin_proposed")` | `Address` (current admin) | — | `Address` (pending admin) |
 | `admin_accepted` | `Symbol("admin_accepted")` | `Address` (new admin) | — | `()` |
+| `admin_proposal_cancelled` | `Symbol("admin_proposal_cancelled")` | `Address` (admin) | — | `()` |
 | `paused` | `Symbol("paused")` | `Address` (admin) | — | `()` |
 | `unpaused` | `Symbol("unpaused")` | `Address` (admin) | — | `()` |
 | `upgraded` | `Symbol("upgraded")` | `Address` (admin) | — | `BytesN<32>` (wasm hash) |
+| `hook_set` | `Symbol("hook_set")` | `Address` (admin) | — | `Option<Address>` (hook; `None` to clear) |
+| `snapshot` | `Symbol("snapshot")` | `Address` (account) | `u32` (ledger) | `i128` (balance) |
 | `permit_signer_set` | `Symbol("permit_signer_set")` | `Address` (owner) | — | `()` |
 | `permit_used` | `Symbol("permit_used")` | `Address` (owner) | `Address` (spender) | `(i128 amount, u32 nonce)` |
 
@@ -97,6 +102,14 @@ changes via `approve`/`revoke` needs no special-casing for signature-granted
 allowances. Watch `permit_signer_set` for unexpected signer rotations — a
 rotation invalidates all outstanding, unsubmitted permits signed with the
 previous key.
+
+`account_frozen` / `account_unfrozen` are the compliance freeze signals — index
+both if you need to know which accounts currently cannot transfer. `hook_set`
+fires from `set_transfer_hook` (data is `None` when the hook is cleared).
+`snapshot` is the governance balance snapshot from `snapshot()` (issue #717);
+topic[2] is the ledger the snapshot is recorded against. `admin_proposal_cancelled`
+fires when the current admin aborts a pending two-step admin transfer via
+`cancel_admin_proposal`.
 
 ### Escrow Contract Events
 
@@ -125,9 +138,17 @@ Events emitted by `contracts/subscription`:
 | Event | Topic[0] | Topic[1] | Topic[2] | Data |
 |-------|----------|----------|----------|------|
 | `initialized` | `Symbol("initialized")` | `Address` (provider) | — | `Address` (token) |
-| `subscribed` | `Symbol("subscribed")` | `Address` (subscriber) | — | `(i128 amount, u32 interval_ledgers)` |
+| `plan_registered` | `Symbol("plan_registered")` | `Symbol` (plan_id) | — | `(i128 amount, u32 interval_ledgers)` |
+| `plan_updated` | `Symbol("plan_updated")` | `Symbol` (plan_id) | — | `bool` (active) |
+| `subscribed` | `Symbol("subscribed")` | `Address` (subscriber) | — | `(Symbol plan_id, i128 amount, u32 interval_ledgers)` |
 | `charged` | `Symbol("charged")` | `Address` (subscriber) | `Address` (provider) | `i128` (amount) |
 | `cancelled` | `Symbol("cancelled")` | `Address` (subscriber) | — | `()` |
+| `trial_completed` | `Symbol("trial_completed")` | `Address` (subscriber) | — | `()` |
+
+`plan_registered` fires from `register_plan`; `plan_updated` from `set_plan_active`.
+`subscribed` data includes `plan_id` so an indexer can join a subscription to its plan
+without a separate lookup. `trial_completed` is emitted from `charge()` when a
+subscriber's trial period ends (no separate `complete_trial` entry point).
 
 ### Wrapped-Token Contract Events
 
