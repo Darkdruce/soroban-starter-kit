@@ -18,7 +18,7 @@ mod prop_test;
 mod test;
 
 pub use errors::VestingError;
-pub use storage::{DataKey, VestingInfo};
+pub use storage::{BeneficiarySchedule, DataKey, VestingInfo};
 
 use soroban_common::{LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD, extend_ttl_instance};
 
@@ -167,7 +167,7 @@ mod contract {
         /// - [`VestingError::NotAuthorized`] if caller is not the beneficiary.
         /// - [`VestingError::NothingToClaim`] if no new tokens have vested since the last claim.
         pub fn claim(env: Env, beneficiary: Address) -> Result<i128, VestingError> {
-            let admin: Address = env
+            let _admin: Address = env
                 .storage()
                 .instance()
                 .get(&DataKey::Admin)
@@ -338,21 +338,6 @@ mod contract {
                 return Err(VestingError::NothingToClaim);
             }
 
-            let beneficiary: Address = env
-                .storage()
-                .instance()
-                .get(&DataKey::Beneficiary)
-                .ok_or(VestingError::NotInitialized)?;
-            let token: Address = env
-                .storage()
-                .instance()
-                .get(&DataKey::Token)
-                .ok_or(VestingError::NotInitialized)?;
-
-            // Mark as revoked, cap amount to zero (nothing more to claim).
-            env.storage().instance().set(&DataKey::Revoked, &true);
-            env.storage().instance().set(&DataKey::Amount, &releasable);
-            env.storage().instance().set(&DataKey::Claimed, &releasable);
             // Mark as revoked, cap amount to what's being released (nothing more to claim).
             schedule.revoked = true;
             schedule.amount = releasable;
