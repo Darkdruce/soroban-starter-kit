@@ -22,6 +22,10 @@ pub enum VestingError {
     AlreadyRevoked = 7,
     /// admin_release was called after the cliff has already passed.
     CliffAlreadyPassed = 8,
+    /// A schedule already exists for the specified beneficiary.
+    ScheduleAlreadyExists = 9,
+    /// No schedule was found for the specified beneficiary.
+    ScheduleNotFound = 10,
 }
 
 #[cfg(test)]
@@ -38,20 +42,24 @@ mod tests {
             "\
 VestingError::AlreadyInitialized = {}\n\
 VestingError::NotInitialized = {}\n\
-VestingError::Unauthorized = {}\n\
+VestingError::NotAuthorized = {}\n\
 VestingError::InvalidAmount = {}\n\
 VestingError::InvalidSchedule = {}\n\
 VestingError::NothingToClaim = {}\n\
 VestingError::AlreadyRevoked = {}\n\
-VestingError::CliffAlreadyPassed = {}\n",
+VestingError::CliffAlreadyPassed = {}\n\
+VestingError::ScheduleAlreadyExists = {}\n\
+VestingError::ScheduleNotFound = {}\n",
             VestingError::AlreadyInitialized as u32,
             VestingError::NotInitialized as u32,
-            VestingError::Unauthorized as u32,
+            VestingError::NotAuthorized as u32,
             VestingError::InvalidAmount as u32,
             VestingError::InvalidSchedule as u32,
             VestingError::NothingToClaim as u32,
             VestingError::AlreadyRevoked as u32,
             VestingError::CliffAlreadyPassed as u32,
+            VestingError::ScheduleAlreadyExists as u32,
+            VestingError::ScheduleNotFound as u32,
         )
     }
 
@@ -62,9 +70,4 @@ VestingError::CliffAlreadyPassed = {}\n",
             include_str!("../snapshots/error_codes.snap")
         );
     }
-}
-    /// A schedule already exists for the specified beneficiary.
-    ScheduleAlreadyExists = 9,
-    /// No schedule was found for the specified beneficiary.
-    ScheduleNotFound = 10,
 }
