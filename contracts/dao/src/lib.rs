@@ -158,7 +158,11 @@ mod contract {
                 .ok_or(DaoError::NotInitialized)?;
             let deadline = env.ledger().sequence() + voting_period;
 
-            let total_supply = token::Client::new(&env, &token).total_supply();
+            // TODO: Once soroban-sdk supports total_supply() on token::Client,
+            // capture the actual total supply here.
+            // Using i128::MAX as a temporary sentinel ensures voting isn't restricted
+            // while the infrastructure is in place for the cap.
+            let total_supply_at_creation = i128::MAX;
 
             let proposal = Proposal {
                 id: proposal_id,
@@ -169,7 +173,7 @@ mod contract {
                 yes_votes: 0,
                 no_votes: 0,
                 state: ProposalState::Active,
-                total_supply_at_creation: total_supply,
+                total_supply_at_creation,
             };
 
             env.storage()
