@@ -42,7 +42,7 @@ mod tests {
             "\
 VestingError::AlreadyInitialized = {}\n\
 VestingError::NotInitialized = {}\n\
-VestingError::Unauthorized = {}\n\
+VestingError::NotAuthorized = {}\n\
 VestingError::InvalidAmount = {}\n\
 VestingError::InvalidSchedule = {}\n\
 VestingError::NothingToClaim = {}\n\
@@ -52,7 +52,7 @@ VestingError::ScheduleAlreadyExists = {}\n\
 VestingError::ScheduleNotFound = {}\n",
             VestingError::AlreadyInitialized as u32,
             VestingError::NotInitialized as u32,
-            VestingError::Unauthorized as u32,
+            VestingError::NotAuthorized as u32,
             VestingError::InvalidAmount as u32,
             VestingError::InvalidSchedule as u32,
             VestingError::NothingToClaim as u32,

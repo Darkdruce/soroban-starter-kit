@@ -62,4 +62,8 @@ pub struct Proposal {
     pub yes_votes: i128,
     pub no_votes: i128,
     pub state: ProposalState,
+    /// Total token supply at the time the proposal was created.
+    /// Used for quorum calculation and to cap voter voting power,
+    /// preventing flash-loan-style manipulation.
+    pub total_supply_at_creation: i128,
 }
