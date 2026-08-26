@@ -310,6 +310,15 @@ mod contract {
                 bump(&env);
                 events::unstaked(&env, &staker, amount, remaining);
             } else {
+                // Check if there's already a pending unbond request.
+                if env
+                    .storage()
+                    .persistent()
+                    .has(&DataKey::UnbondRequest(staker.clone()))
+                {
+                    return Err(StakingError::UnbondRequestPending);
+                }
+
                 // Queue an unbond request.
                 let available_at = env.ledger().sequence() + unbonding_period;
                 let request = UnbondRequest {
