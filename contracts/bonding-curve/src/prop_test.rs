@@ -13,6 +13,7 @@ use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
     token::StellarAssetClient,
 };
+use std::format;
 
 use crate::{BondingCurveContract, BondingCurveContractClient};
 
