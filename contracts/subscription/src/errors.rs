@@ -55,7 +55,10 @@ SubscriptionError::AlreadySubscribed = {}\n\
 SubscriptionError::NotSubscribed = {}\n\
 SubscriptionError::SubscriptionInactive = {}\n\
 SubscriptionError::IntervalNotElapsed = {}\n\
-SubscriptionError::InsufficientAllowance = {}\n",
+SubscriptionError::InsufficientAllowance = {}\n\
+SubscriptionError::PlanAlreadyExists = {}\n\
+SubscriptionError::PlanNotFound = {}\n\
+SubscriptionError::PlanInactive = {}\n",
             SubscriptionError::AlreadyInitialized as u32,
             SubscriptionError::NotInitialized as u32,
             SubscriptionError::NotAuthorized as u32,
@@ -66,6 +69,9 @@ SubscriptionError::InsufficientAllowance = {}\n",
             SubscriptionError::SubscriptionInactive as u32,
             SubscriptionError::IntervalNotElapsed as u32,
             SubscriptionError::InsufficientAllowance as u32,
+            SubscriptionError::PlanAlreadyExists as u32,
+            SubscriptionError::PlanNotFound as u32,
+            SubscriptionError::PlanInactive as u32,
         )
     }
 

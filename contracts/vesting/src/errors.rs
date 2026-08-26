@@ -47,7 +47,9 @@ VestingError::InvalidAmount = {}\n\
 VestingError::InvalidSchedule = {}\n\
 VestingError::NothingToClaim = {}\n\
 VestingError::AlreadyRevoked = {}\n\
-VestingError::CliffAlreadyPassed = {}\n",
+VestingError::CliffAlreadyPassed = {}\n\
+VestingError::ScheduleAlreadyExists = {}\n\
+VestingError::ScheduleNotFound = {}\n",
             VestingError::AlreadyInitialized as u32,
             VestingError::NotInitialized as u32,
             VestingError::NotAuthorized as u32,
@@ -56,6 +58,8 @@ VestingError::CliffAlreadyPassed = {}\n",
             VestingError::NothingToClaim as u32,
             VestingError::AlreadyRevoked as u32,
             VestingError::CliffAlreadyPassed as u32,
+            VestingError::ScheduleAlreadyExists as u32,
+            VestingError::ScheduleNotFound as u32,
         )
     }
 
