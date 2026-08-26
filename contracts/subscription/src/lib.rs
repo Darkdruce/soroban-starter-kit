@@ -131,6 +131,11 @@ mod contract {
 
         /// Update an existing plan's status. Only the provider (admin) can call this.
         ///
+        /// Deactivating a plan (`active = false`) only prevents **new subscriptions** from
+        /// being created for this plan. Existing subscribers who are already subscribed to
+        /// the plan will continue to be charged on their normal billing cycle. To stop
+        /// billing for existing subscribers, they must call `cancel` individually.
+        ///
         /// # Errors
         ///
         /// Returns [`SubscriptionError::NotInitialized`] if the contract is not initialized.

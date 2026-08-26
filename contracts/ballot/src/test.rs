@@ -9,9 +9,9 @@
 
 use super::*;
 use soroban_sdk::{
-    String,
+    Address, Env, String,
     testutils::{Address as _, Ledger as _},
-    vec, Address, Env,
+    vec,
 };
 
 // Helper: ledger sequence when tests start.
@@ -58,7 +58,8 @@ fn test_ballot_lifecycle() {
     client.register_voter(&voter2);
 
     // Advance into the voting window
-    env.ledger().with_mut(|le| le.sequence_number = VOTING_START);
+    env.ledger()
+        .with_mut(|le| le.sequence_number = VOTING_START);
 
     client.vote(&voter1, &1u32); // yes
     client.vote(&voter2, &0u32); // no
@@ -83,7 +84,8 @@ fn test_double_vote_prevention() {
 
     let voter = Address::generate(&env);
     client.register_voter(&voter);
-    env.ledger().with_mut(|le| le.sequence_number = VOTING_START);
+    env.ledger()
+        .with_mut(|le| le.sequence_number = VOTING_START);
 
     client.vote(&voter, &1u32);
     client.vote(&voter, &1u32); // should panic AlreadyVoted (#5)
@@ -100,7 +102,8 @@ fn test_unregistered_voter_rejected() {
     let (client, _admin) = setup(&env);
 
     let unregistered = Address::generate(&env);
-    env.ledger().with_mut(|le| le.sequence_number = VOTING_START);
+    env.ledger()
+        .with_mut(|le| le.sequence_number = VOTING_START);
     client.vote(&unregistered, &1u32); // should panic NotRegistered (#4)
 }
 
@@ -115,7 +118,8 @@ fn test_invalid_choice_rejected() {
 
     let voter = Address::generate(&env);
     client.register_voter(&voter);
-    env.ledger().with_mut(|le| le.sequence_number = VOTING_START);
+    env.ledger()
+        .with_mut(|le| le.sequence_number = VOTING_START);
 
     // Two choices (0,1): index 2 is invalid.
     let result = client.try_vote(&voter, &2u32);
@@ -160,7 +164,8 @@ fn test_register_voter_extends_persistent_ttl() {
     let voter = Address::generate(&env);
     client.register_voter(&voter);
 
-    env.ledger().with_mut(|l| l.sequence_number = VOTING_START + 10_000);
+    env.ledger()
+        .with_mut(|l| l.sequence_number = VOTING_START + 10_000);
 
     let result = client.try_vote(&voter, &1u32);
     assert!(result.is_ok());
@@ -176,7 +181,8 @@ fn test_vote_extends_persistent_ttl() {
     env.ledger().with_mut(|l| l.sequence_number = VOTING_START);
     client.vote(&voter, &1u32);
 
-    env.ledger().with_mut(|l| l.sequence_number = VOTING_START + 10_000);
+    env.ledger()
+        .with_mut(|l| l.sequence_number = VOTING_START + 10_000);
 
     let result = client.try_vote(&voter, &1u32);
     assert!(
@@ -204,7 +210,8 @@ fn test_tally_closes_voting() {
     // After tally, voting is closed — new votes should fail
     let voter2 = Address::generate(&env);
     client.register_voter(&voter2);
-    env.ledger().with_mut(|l| l.sequence_number = VOTING_START + 1);
+    env.ledger()
+        .with_mut(|l| l.sequence_number = VOTING_START + 1);
     let result = client.try_vote(&voter2, &0u32);
     assert!(result.is_err());
 }
@@ -235,7 +242,8 @@ fn test_vote_after_window_rejected() {
     let voter = Address::generate(&env);
 
     client.register_voter(&voter);
-    env.ledger().with_mut(|le| le.sequence_number = VOTING_END + 1);
+    env.ledger()
+        .with_mut(|le| le.sequence_number = VOTING_END + 1);
     client.vote(&voter, &1u32);
 }
 
@@ -247,7 +255,8 @@ fn test_vote_at_window_start_accepted() {
     let voter = Address::generate(&env);
 
     client.register_voter(&voter);
-    env.ledger().with_mut(|le| le.sequence_number = VOTING_START);
+    env.ledger()
+        .with_mut(|le| le.sequence_number = VOTING_START);
     client.vote(&voter, &1u32);
     assert_eq!(client.get_yes_votes(), 1);
 }
@@ -296,7 +305,8 @@ fn test_deregister_voter_before_vote() {
     client.register_voter(&voter);
     client.deregister_voter(&voter);
 
-    env.ledger().with_mut(|le| le.sequence_number = VOTING_START);
+    env.ledger()
+        .with_mut(|le| le.sequence_number = VOTING_START);
     let result = client.try_vote(&voter, &1u32);
     assert!(result.is_err());
 }
@@ -313,7 +323,8 @@ fn test_deregister_voter_after_vote_rejected() {
     client.register_voter(&voter1);
     client.register_voter(&voter2);
 
-    env.ledger().with_mut(|le| le.sequence_number = VOTING_START);
+    env.ledger()
+        .with_mut(|le| le.sequence_number = VOTING_START);
     client.vote(&voter1, &1u32);
 
     // Should fail with VotingAlreadyStarted (#8)
