@@ -778,3 +778,71 @@ This export is an operator starting point rather than a complete alert policy. P
 - [Stellar Expert Explorer](https://stellar.expert)
 - [soroban-sdk event docs](https://docs.rs/soroban-sdk/latest/soroban_sdk/struct.Events.html)
 - [XDR types reference](https://developers.stellar.org/docs/learn/fundamentals/transactions/list-of-operations)
+
+
+## 8. Failed-Transaction Alert Rules
+
+The examples below assume an indexer exports monotonically increasing counters named `soroban_transactions_total` and `soroban_transaction_failures_total`, each labeled with `contract_id` and `contract_name`. Adjust the window and thresholds to the normal traffic profile of each deployment; use `for` to avoid paging on a single transient failure.
+
+```yaml
+groups:
+  - name: soroban-transaction-health
+    rules:
+      - alert: SorobanContractFailureRateHigh
+        expr: |
+          (
+            sum by (contract_id, contract_name) (
+              increase(soroban_transaction_failures_total[10m])
+            )
+            /
+            clamp_min(
+              sum by (contract_id, contract_name) (
+                increase(soroban_transactions_total[10m])
+              ), 1
+            )
+          ) > 0.10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated failed-transaction rate for {{ $labels.contract_name }}"
+          description: "More than 10% of transactions failed for 15 minutes. Check recent deployments, authorization errors, and dependency health."
+
+      - alert: SorobanContractFailureRateCritical
+        expr: |
+          (
+            sum by (contract_id, contract_name) (
+              increase(soroban_transaction_failures_total[5m])
+            )
+            /
+            clamp_min(
+              sum by (contract_id, contract_name) (
+                increase(soroban_transactions_total[5m])
+              ), 1
+            )
+          ) > 0.25
+          and
+          sum by (contract_id, contract_name) (
+            increase(soroban_transactions_total[5m])
+          ) >= 20
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical failed-transaction rate for {{ $labels.contract_name }}"
+          description: "At least 20 transactions were observed and more than 25% failed in each five-minute window. Investigate immediately and consider pausing the affected contract."
+
+      - alert: SorobanContractFailureBurst
+        expr: |
+          sum by (contract_id, contract_name) (
+            increase(soroban_transaction_failures_total[5m])
+          ) >= 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Failed-transaction burst for {{ $labels.contract_name }}"
+          description: "At least 10 failed transactions occurred in five minutes. This catches incidents even when total traffic is too low for a percentage threshold."
+```
+
+The 10% warning threshold is intended to identify degradation before it becomes a widespread outage. The 25% critical threshold requires at least 20 attempts so that a low-volume contract does not page on a single failure. The burst rule is complementary: it detects a sustained absolute spike and is useful for contracts with uneven traffic. Route alerts by `contract_id`, include the deployment environment in the metric labels, and link each alert to the relevant runbook and transaction/event dashboard.
