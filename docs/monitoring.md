@@ -756,6 +756,20 @@ Prometheus datasource and the metrics described in §10. Replace the
 > config so it is recreated on every environment.
 
 ---
+## 11. Example Grafana Dashboard
+
+An importable starter dashboard is checked in at [`examples/grafana/contract-events.json`](../examples/grafana/contract-events.json). It visualizes event volume, event-processing error rate, and errors observed in the last hour, with a contract selector for operators.
+
+The dashboard expects a Prometheus adapter to expose these counters with a `contract` label:
+
+| Metric | Required label | Meaning |
+|---|---|---|
+| `soroban_contract_events_total` | `contract` | Counter of decoded events by contract |
+| `soroban_contract_events_errors_total` | `contract` | Counter of event decoding or processing errors by contract |
+
+To import it, open **Dashboards → Import** in Grafana, upload the JSON file, select the Prometheus data source, and click **Import**. If the adapter uses different metric names, update the panel PromQL expressions after import. The `clamp_min` expression in the error-rate panel avoids division by zero for contracts with no recent events.
+
+This export is an operator starting point rather than a complete alert policy. Pair it with alerts for sustained ingestion errors, missing event traffic, RPC failures, and contract-specific invariants such as the wrapped-token reserve check documented above.
 
 ## 12. Resources
 

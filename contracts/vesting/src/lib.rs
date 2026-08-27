@@ -147,14 +147,8 @@ mod contract {
                 return Err(VestingError::ScheduleAlreadyExists);
             }
 
-            // Pull tokens from admin into the contract.
-            token::Client::new(&env, &token).transfer(
-                &admin,
-                &env.current_contract_address(),
-                &amount,
-            );
-
-            // Store the new schedule
+            // Store the new schedule before pulling funds from the admin. A failed transfer
+            // reverts this effect atomically with the rest of the transaction.
             let schedule = BeneficiarySchedule {
                 amount,
                 cliff_ledger,
@@ -165,6 +159,13 @@ mod contract {
             env.storage().persistent().set(&schedule_key, &schedule);
             bump(&env);
             bump_schedule(&env, &schedule_key);
+
+            // Pull tokens from admin into the contract.
+            token::Client::new(&env, &token).transfer(
+                &admin,
+                &env.current_contract_address(),
+                &amount,
+            );
 
             events::initialized(&env, &beneficiary, amount, cliff_ledger, end_ledger);
             Ok(())

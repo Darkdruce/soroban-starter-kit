@@ -44,6 +44,19 @@ commit.
 
 ## CI checks
 
+### cargo-geiger (unsafe-code audit)
+
+The `unsafe-audit` CI job scans every crate in the workspace with `cargo-geiger`. First-party contract code is expected to contain no unsafe blocks; dependency findings are retained in the CI artifact for visibility.
+
+Install and run the same check locally:
+
+```bash
+cargo install cargo-geiger --locked
+cargo geiger --workspace --all-features --output-format GitHubMarkdown
+```
+
+Review the report before introducing unsafe code. If an unsafe dependency is unavoidable, document why it is required and keep the usage isolated and reviewed.
+
 ### cargo-machete (unused dependencies)
 
 The `machete` CI job runs `cargo machete --workspace` to detect unused entries in `Cargo.toml`.
