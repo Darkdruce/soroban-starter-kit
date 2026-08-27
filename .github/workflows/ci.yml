@@ -492,11 +492,18 @@ jobs:
       - name: Check Cargo.lock is up to date
         run: cargo update --locked --workspace
 
-  semver:
-    name: Semver Checks
+  semver-check:
+    name: Semver Checks (${{ matrix.contract }})
+    needs: [list-contracts]
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        contract: ${{ fromJson(needs.list-contracts.outputs.contracts) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
@@ -505,15 +512,39 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: cargo-semver-${{ matrix.contract }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install cargo-semver-checks
         run: cargo install cargo-semver-checks --locked
 
-      - name: Check soroban-token-template for breaking changes
-        run: cargo semver-checks -p soroban-token-template
+      # cargo-semver-checks needs something to diff against. We use the
+      # default branch (`origin/main`) as the baseline rather than the
+      # last crates.io release, since these contract crates aren't
+      # published there. If a contract doesn't exist yet on `origin/main`
+      # (e.g. it was just added in this PR), there is nothing to compare
+      # against — treat that as a first-time check and skip cleanly
+      # instead of failing CI setup.
+      - name: Check for baseline on default branch
+        id: baseline
+        run: |
+          git fetch origin main --depth=1
+          if git show "origin/main:contracts/${{ matrix.contract }}/Cargo.toml" > /dev/null 2>&1; then
+            echo "has_baseline=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_baseline=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Check soroban-escrow-template for breaking changes
-        run: cargo semver-checks -p soroban-escrow-template
+      - name: Check ${{ matrix.contract }} for breaking changes
+        if: steps.baseline.outputs.has_baseline == 'true'
+        run: |
+          cargo semver-checks --manifest-path "contracts/${{ matrix.contract }}/Cargo.toml" \
+            --baseline-rev origin/main
+
+      - name: Skip semver check (no baseline yet)
+        if: steps.baseline.outputs.has_baseline == 'false'
+        run: |
+          echo "No 'origin/main' baseline found for contracts/${{ matrix.contract }} — this is its first semver check, so there is nothing to diff against yet. Skipping; future changes will be checked against this commit."
 
   smoke-test:
     name: Smoke Test (local node)
