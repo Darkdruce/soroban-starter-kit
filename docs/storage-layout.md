@@ -63,15 +63,14 @@ This document details the storage keys, types, and TTL management policy for eac
 | Key | Tier | Type | TTL Policy | Description |
 |-----|------|------|------------|-------------|
 | `Admin` | Instance | `Address` | Extended on init | Contract administrator |
-| `Beneficiary` | Instance | `Address` | Extended on init | Token recipient |
 | `Token` | Instance | `Address` | Extended on init | Token contract address |
-| `Amount` | Instance | `i128` | Extended on init | Total vesting amount |
-| `CliffLedger` | Instance | `u32` | Extended on init | Ledger at which cliff vesting begins |
-| `EndLedger` | Instance | `u32` | Extended on init | Ledger at which all tokens are fully vested |
-| `Claimed` | Persistent | `i128` | Extended on claim | Tokens already withdrawn by beneficiary |
-| `Revoked` | Persistent | `bool` | Extended on revoke | Whether vesting schedule has been revoked |
+| `Version` | Instance | `u32` | Extended on init | Contract version number |
+| `AdminReleased` | Instance | `i128` | Extended on `admin_release` | Running total of tokens released early by admin (audit log) |
+| `Schedule(Address)` | Persistent | `BeneficiarySchedule` | Extended per schedule change | Per-beneficiary vesting schedule |
 
-**Vesting Release:** Tokens accrue linearly from `CliffLedger` to `EndLedger`. Admin can revoke unvested tokens at any time; vested tokens remain claimable.
+**`BeneficiarySchedule` fields:** `amount`, `cliff_ledger`, `end_ledger`, `claimed`, `revoked`
+
+**Vesting Release:** Tokens accrue linearly from `cliff_ledger` to `end_ledger` within each `Schedule(Address)`. Admin can revoke unvested tokens at any time; vested tokens remain claimable.
 
 ---
 
@@ -84,12 +83,17 @@ This document details the storage keys, types, and TTL management policy for eac
 | `Admin` | Instance | `Address` | Extended on init | Contract administrator |
 | `StakeToken` | Instance | `Address` | Extended on init | Token that users stake |
 | `RewardToken` | Instance | `Address` | Extended on init | Token distributed as rewards (may equal StakeToken) |
-| `TotalStaked` | Persistent | `i128` | Extended on every stake/unstake | Total staked across all stakers |
-| `TotalRewards` | Persistent | `i128` | Extended on reward deposit/claim | Unclaimed reward pool |
-| `RewardPerTokenStored` | Persistent | `i128` | Extended on reward snapshot | Global reward accumulator (scaled by 1e12) |
+| `TotalStaked` | Instance | `i128` | Extended on every stake/unstake | Total staked across all stakers |
+| `TotalRewards` | Instance | `i128` | Extended on reward deposit/claim | Unclaimed reward pool |
+| `RewardPerTokenStored` | Instance | `i128` | Extended on reward snapshot | Global reward accumulator (scaled by 1e12) |
+| `UnbondingPeriod` | Instance | `u32` | Extended on init | Ledgers between `unstake` and `withdraw` (0 = immediate) |
+| `SlashDestination` | Instance | `Address` | Extended on init | Address that receives slashed tokens |
+| `Version` | Instance | `u32` | Extended on init | Contract version number |
 | `Stake(Address)` | Persistent | `i128` | Extended on stake/unstake | Per-staker staked amount |
 | `RewardPerTokenPaid(Address)` | Persistent | `i128` | Extended on reward claim | Per-staker reward accumulator snapshot |
 | `Rewards(Address)` | Persistent | `i128` | Extended on reward accrual/claim | Per-staker accrued rewards |
+| `UnbondRequest(Address)` | Persistent | `UnbondRequest` | Extended on unbond/withdraw | Pending unbond request (`amount`, `available_at`) |
+| `Compounding(Address)` | Persistent | `bool` | Extended on `set_compounding` | Whether auto-compounding is enabled for a staker |
 
 ---
 
@@ -120,12 +124,13 @@ This document details the storage keys, types, and TTL management policy for eac
 | `Token` | Instance | `Address` | Extended on init | Token used for voting power |
 | `VotingPeriod` | Instance | `u32` | Extended on init | Proposal duration in ledgers |
 | `Quorum` | Instance | `i128` | Extended on init | Minimum votes required for quorum |
+| `QuorumBps` | Instance | `u32` | Extended on init | Minimum participation as basis points of total supply (0–10 000; 0 = disabled) |
 | `ProposalCount` | Instance | `u32` | Extended on proposal creation | Total proposals created |
 | `Initialized` | Instance | `bool` | Extended on init | Whether contract has been initialized |
 | `Proposal(u32)` | Persistent | `Proposal` | Extended on proposal change | Proposal state, vote counts, deadline |
 | `VoteKey { proposal_id, voter }` | Persistent | `i128` | Extended on vote | Per-voter vote amount (prevents double-voting) |
 
-**Proposal States:** `Active → Executed` (if quorum + majority reached) or `Active → Cancelled` (admin action)
+**Proposal States:** `Active → Executed` (if quorum + majority reached) or `Active → Cancelled` via `cancel_proposal` (admin, any active proposal) or `proposer_cancel_proposal` (original proposer, only before any vote is cast)
 
 ---
 
