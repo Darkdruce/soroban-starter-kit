@@ -104,6 +104,7 @@ This document details the storage keys, types, and TTL management policy for eac
 | Key | Tier | Type | TTL Policy | Description |
 |-----|------|------|------------|-------------|
 | `Signers` | Instance | `Vec<Address>` | Extended on signer change | List of authorized signers |
+| `Weights` | Instance | `Map<Address, u32>` | Extended on init / signer change | Per-signer vote weight for weighted voting; signers not listed default to 1 |
 | `Threshold` | Instance | `u32` | Extended on threshold change | Required number of signatures (N-of-M) |
 | `NextTransactionId` | Instance | `u64` | Extended on proposal | Auto-incrementing transaction ID counter |
 | `Transaction(u64)` | Persistent | `Transaction` | Extended on propose/sign/execute | Proposed transaction details and signatures |
