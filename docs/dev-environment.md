@@ -76,17 +76,14 @@ npm run dev                  # http://localhost:3000
 
 ## Docker Compose
 
-All services (frontend, contract builder, local Stellar node) are defined in `docker/docker-compose.yml`.
+All services (contract builder, local Stellar node) are defined in `docker/docker-compose.yml`.
 
 ```bash
 # Start everything
 docker compose -f docker/docker-compose.yml up
 
-# Frontend only
-docker compose -f docker/docker-compose.yml up frontend
-
-# Production build
-docker build -f docker/Dockerfile --target prod -t fidelis:prod .
+# Contract builder only
+docker compose -f docker/docker-compose.yml up contracts
 ```
 
 ---
@@ -134,7 +131,7 @@ The script exits 0 when the node is healthy and 1 if it times out, making it saf
 
 ### Health check
 
-The `stellar-node` service in `docker/docker-compose.yml` includes a built-in health check that queries `POST /soroban/rpc` with `getHealth`. Docker marks the container healthy only after the RPC responds with `"healthy"`, so dependent services (`frontend`, `contracts`) will not start until the node is ready.
+The `stellar-node` service in `docker/docker-compose.yml` includes a built-in health check that queries `POST /soroban/rpc` with `getHealth`. Docker marks the container healthy only after the RPC responds with `"healthy"`, so the dependent `contracts` service will not start until the node is ready.
 
 Endpoints when running locally:
 
