@@ -40,17 +40,30 @@ Complete public API documentation for all Soroban starter kit contracts.
 
 | Function | Parameters | Returns | Errors |
 |----------|-----------|---------|--------|
-| `initialize` | `env: Env, buyer: Address, seller: Address, arbiter: Address, token_contract: Address, amount: i128, deadline_ledger: u32` | `Result<(), EscrowError>` | `AlreadyInitialized`, `InvalidAmount`, `InvalidParties` |
-| `initialize_with_arbiters` | `env: Env, buyer: Address, seller: Address, arbiters: Vec<Address>, token_contract: Address, amount: i128, deadline_ledger: u32, required_signatures: u32` | `Result<(), EscrowError>` | Same + validation |
+| `initialize` | `env: Env, admin: Address, buyer: Address, seller: Address, arbiter: Address, token_contract: Address, amount: i128, deadline_ledger: u32, dispute_timeout_ledgers: u32, metadata_hash: Option<BytesN<32>>` | `Result<(), EscrowError>` | `AlreadyInitialized`, `InvalidAmount`, `InvalidParties` |
+| `initialize_with_arbiters` | `env: Env, admin: Address, buyer: Address, seller: Address, arbiters: Vec<Address>, token_contract: Address, amount: i128, deadline_ledger: u32, required_signatures: u32, dispute_timeout_ledgers: u32, metadata_hash: Option<BytesN<32>>` | `Result<(), EscrowError>` | Same + validation |
+| `initialize_with_milestones` | `env: Env, admin: Address, buyer: Address, seller: Address, arbiter: Address, token_contract: Address, milestones: Vec<Milestone>, deadline_ledger: u32, dispute_timeout_ledgers: u32, metadata_hash: Option<BytesN<32>>` | `Result<(), EscrowError>` | Same + validation |
+| `update_amount` | `env: Env, new_amount: i128` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidState`, `InvalidAmount` |
 | `fund` | `env: Env` | `Result<(), EscrowError>` | `InvalidState`, `InsufficientFunds` |
 | `mark_delivered` | `env: Env` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidState` |
 | `approve_delivery` | `env: Env` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidState` |
 | `release_partial` | `env: Env, amount: i128` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidState`, `InvalidAmount` |
+| `release_milestone` | `env: Env, caller: Address, milestone_index: u32` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidState` — `caller` must be the buyer or arbiter |
 | `request_refund` | `env: Env` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidState` |
+| `request_partial_refund` | `env: Env` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidState` |
 | `raise_dispute` | `env: Env, caller: Address` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidState` |
-| `resolve_dispute` | `env: Env, release_to_seller: bool` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidState` |
+| `resolve_dispute` | `env: Env, caller: Address, release_to_seller: bool` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidState` |
+| `claim_dispute_timeout` | `env: Env` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidState` |
 | `cancel` | `env: Env` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidState` |
 | `extend_deadline` | `env: Env, new_deadline: u32` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidState` |
+| `bump` | `env: Env` | `Result<(), EscrowError>` | `NotInitialized` — refreshes storage TTL |
+| `set_fee_config` | `env: Env, fee_bps: u32, treasury: Address` | `Result<(), EscrowError>` | `NotAuthorized`, `InvalidAmount` — must be called by the buyer |
+| `pause` †| `env: Env` | `Result<(), EscrowError>` | `NotAuthorized` |
+| `unpause` †| `env: Env` | `Result<(), EscrowError>` | `NotAuthorized` |
+| `propose_upgrade` †| `env: Env, wasm_hash: BytesN<32>` | `Result<(), EscrowError>` | `NotAuthorized` |
+| `execute_upgrade` †| `env: Env` | `Result<(), EscrowError>` | `NotAuthorized` |
+
+† Only compiled when the contract's `pausable` Cargo feature is enabled.
 
 ### Query Functions
 
@@ -60,6 +73,10 @@ Complete public API documentation for all Soroban starter kit contracts.
 | `get_state` | `env: Env` | `Option<EscrowState>` | None |
 | `is_deadline_passed` | `env: Env` | `bool` | None |
 | `get_remaining_ledgers` | `env: Env` | `i64` | None |
+| `get_fee_config` | `env: Env` | `(u32, Option<Address>)` | None — `(fee_bps, treasury)`, or `(0, None)` if unconfigured |
+| `get_milestones` | `env: Env` | `Vec<Milestone>` | None — empty for a non-milestone escrow |
+| `contract_version` | `env: Env` | `u32` | None |
+| `version` †| `env: Env` | `String` | None — build/git-hash version string |
 
 **Errors:**
 - `NotAuthorized` (1) — Caller not permitted
@@ -80,24 +97,34 @@ Complete public API documentation for all Soroban starter kit contracts.
 
 | Function | Parameters | Returns | Errors |
 |----------|-----------|---------|--------|
-| `initialize` | `env: Env, admin: Address, stake_token: Address, reward_token: Address` | `Result<(), StakingError>` | `AlreadyInitialized` |
+| `initialize` | `env: Env, admin: Address, stake_token: Address, reward_token: Address, unbonding_period: u32, slash_destination: Address` | `Result<(), StakingError>` | `AlreadyInitialized` |
 | `stake` | `env: Env, staker: Address, amount: i128` | `Result<(), StakingError>` | `NotInitialized`, `InvalidAmount` |
-| `unstake` | `env: Env, staker: Address, amount: i128` | `Result<(), StakingError>` | `NotInitialized`, `InvalidAmount`, `InsufficientStake`, `NoStake` |
+| `unstake` | `env: Env, staker: Address, amount: i128` | `Result<(), StakingError>` | `NotInitialized`, `InvalidAmount`, `InsufficientStake`, `NoStake`, `UnbondRequestPending` |
+| `withdraw` | `env: Env, staker: Address` | `Result<i128, StakingError>` | `NotInitialized`, `NoUnbondRequest`, `UnbondingNotComplete` |
+| `claim_rewards` | `env: Env, staker: Address` | `Result<i128, StakingError>` | `NotInitialized`, `NoRewards` |
 | `add_rewards` | `env: Env, amount: i128` | `Result<(), StakingError>` | `Unauthorized`, `NotInitialized`, `InvalidAmount` |
-| `claim_rewards` | `env: Env, staker: Address` | `Result<(), StakingError>` | `NotInitialized`, `NoRewards` |
-| `total_staked` | `env: Env` | `i128` | None |
-| `total_rewards` | `env: Env` | `i128` | None |
-| `user_stake` | `env: Env, staker: Address` | `i128` | None |
-| `user_rewards` | `env: Env, staker: Address` | `i128` | None |
+| `slash` | `env: Env, staker: Address, amount: i128` | `Result<i128, StakingError>` | `Unauthorized`, `NotInitialized`, `InvalidAmount`, `NoStake` |
+| `set_compounding` | `env: Env, staker: Address, enabled: bool` | `Result<(), StakingError>` | `NotInitialized` |
+| `compound` | `env: Env, staker: Address` | `Result<i128, StakingError>` | `NotInitialized`, `NoRewards`, `CompoundTokenMismatch` |
+| `get_stake` | `env: Env, staker: Address` | `i128` | None |
+| `get_rewards` | `env: Env, staker: Address` | `i128` | None |
+| `get_total_staked` | `env: Env` | `i128` | None |
+| `get_total_rewards` | `env: Env` | `i128` | None |
+| `get_unbond_request` | `env: Env, staker: Address` | `Option<UnbondRequest>` | None |
+| `contract_version` | `env: Env` | `u32` | None |
 
 **Errors:**
 - `AlreadyInitialized` (1) — initialize called twice
 - `NotInitialized` (2) — Operation before initialize
 - `Unauthorized` (3) — Caller not admin
 - `InvalidAmount` (4) — Amount zero or negative
-- `NoStake` (5) — No stake to unstake/claim
+- `NoStake` (5) — No stake to unstake/claim/slash
 - `InsufficientStake` (6) — Unstake amount exceeds stake
 - `NoRewards` (7) — No rewards available
+- `CompoundTokenMismatch` (8) — Stake token and reward token differ
+- `UnbondingNotComplete` (9) — `withdraw` called before the unbonding period elapsed
+- `NoUnbondRequest` (10) — `withdraw` called with no pending unbond request
+- `UnbondRequestPending` (11) — `unstake` called while an unbond request is already pending
 
 ---
 
