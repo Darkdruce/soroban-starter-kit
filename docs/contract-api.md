@@ -6,6 +6,8 @@ Complete public API documentation for all Soroban starter kit contracts.
 
 **Location:** `contracts/token/src/lib.rs`
 
+### Core Operations
+
 | Function | Parameters | Returns | Errors |
 |----------|-----------|---------|--------|
 | `initialize` | `env: Env, admin: Address, name: String, symbol: String, decimals: u32, max_supply: Option<i128>` | `Result<(), TokenError>` | `AlreadyInitialized`, `InvalidAmount` |
@@ -21,14 +23,82 @@ Complete public API documentation for all Soroban starter kit contracts.
 | `symbol` | `env: Env` | `String` | None |
 | `decimals` | `env: Env` | `u32` | None |
 
+### Admin Transfer
+
+Two-step admin handoff — the incoming admin must accept before control transfers, avoiding accidental lockout to an unreachable address.
+
+| Function | Parameters | Returns | Errors |
+|----------|-----------|---------|--------|
+| `propose_admin` | `env: Env, new_admin: Address` | `Result<(), TokenError>` | `NotInitialized` |
+| `accept_admin` | `env: Env` | `Result<(), TokenError>` | `Unauthorized` |
+| `cancel_admin_proposal` | `env: Env` | `Result<(), TokenError>` | `NotInitialized` |
+| `set_admin` | `env: Env, new_admin: Address` | `Result<(), TokenError>` | `NotInitialized` |
+| `admin` | `env: Env` | `Result<Address, TokenError>` | `NotInitialized` |
+
+`set_admin` transfers admin immediately in a single call and exists for backward compatibility; `propose_admin` + `accept_admin` is the recommended two-step flow. `accept_admin` must be called by the pending admin and fails with `Unauthorized` if no proposal is pending or the caller isn't it.
+
+### Batch, Burn & Versioning
+
+| Function | Parameters | Returns | Errors |
+|----------|-----------|---------|--------|
+| `batch_mint` | `env: Env, recipients: Vec<(Address, i128)>` | `Result<(), TokenError>` | `Unauthorized`, `InvalidAmount`, `Overflow` |
+| `admin_burn` | `env: Env, from: Address, amount: i128` | `Result<(), TokenError>` | `Unauthorized`, `InvalidAmount`, `Overflow` |
+| `balance_of` | `env: Env, id: Address` | `Option<i128>` | None |
+| `version` | `env: Env` | `String` | None |
+| `contract_version` | `env: Env` | `u32` | None |
+
+`batch_mint` mints to multiple recipients atomically in one call. `admin_burn` is the admin-initiated counterpart to `burn` (which burns from the caller's own balance). `balance_of` returns `None` for an account with no storage entry, unlike `balance` which returns `0`. `version` returns the git commit hash baked in at compile time; `contract_version` returns the on-chain schema version, bumped by `execute_upgrade` *(feature `upgradeable`)*.
+
+### Permit (Gasless Approvals)
+
+ERC-2612-style signed approvals — a spender can submit `owner`'s pre-signed approval without `owner` submitting a transaction themselves.
+
+| Function | Parameters | Returns | Errors |
+|----------|-----------|---------|--------|
+| `set_permit_signer` | `env: Env, owner: Address, public_key: BytesN<32>` | `()` | None |
+| `permit_signer` | `env: Env, owner: Address` | `Option<BytesN<32>>` | None |
+| `permit_nonce` | `env: Env, owner: Address` | `u32` | None |
+| `approve_with_signature` | `env: Env, owner: Address, spender: Address, amount: i128, nonce: u32, expiry_ledger: u32, signature: BytesN<64>` | `Result<(), TokenError>` | `PermitExpired`, `InvalidNonce`, `PermitSignerNotSet` |
+| `allowance_expiry` | `env: Env, from: Address, spender: Address` | `Option<u32>` | None |
+
+`owner` registers an ed25519 public key via `set_permit_signer`; `approve_with_signature` verifies a signature over `(owner, spender, amount, nonce, expiry_ledger)` and grants the allowance without `owner` signing the transaction itself. Replay is prevented by `permit_nonce`, which must match exactly and advances on each successful call.
+
+### Governance Snapshots
+
+| Function | Parameters | Returns | Errors |
+|----------|-----------|---------|--------|
+| `snapshot` | `env: Env, caller: Address, ledger: u32` | `Result<(), TokenError>` | None |
+| `balance_at` | `env: Env, account: Address, ledger: u32` | `Option<i128>` | None |
+
+`snapshot` records the caller's own balance at a given ledger for later voting-power lookups (see the DAO contract); `balance_at` returns `None` if no snapshot was recorded for that `(account, ledger)` pair.
+
+### Feature-Gated Operations
+
+| Function | Feature | Parameters | Returns | Errors |
+|----------|---------|-----------|---------|--------|
+| `pause` | `pausable` | `env: Env` | `Result<(), TokenError>` | `Unauthorized`, `NotInitialized` |
+| `unpause` | `pausable` | `env: Env` | `Result<(), TokenError>` | `Unauthorized`, `NotInitialized` |
+| `freeze_account` | `freeze` | `env: Env, account: Address` | `Result<(), TokenError>` | `Unauthorized`, `NotInitialized` |
+| `unfreeze_account` | `freeze` | `env: Env, account: Address` | `Result<(), TokenError>` | `Unauthorized`, `NotInitialized` |
+| `max_supply` | `capped-supply` | `env: Env` | `Option<i128>` | None |
+| `propose_upgrade` | `upgradeable` | `env: Env, wasm_hash: BytesN<32>` | `Result<(), TokenError>` | `Unauthorized`, `NotInitialized` |
+| `execute_upgrade` | `upgradeable` | `env: Env` | `Result<(), TokenError>` | `Unauthorized`, `NotInitialized` |
+| `set_transfer_hook` | `transfer-hook` | `env: Env, hook: Option<Address>` | `Result<(), TokenError>` | `Unauthorized`, `NotInitialized` |
+| `get_transfer_hook` | `transfer-hook` | `env: Env` | `Option<Address>` | None |
+
+While `pausable`/`freeze` are enabled, `mint`/`admin_burn`/transfer-family calls that would otherwise succeed instead return `Unauthorized` if the contract is paused or the `from` account is frozen. `propose_upgrade` starts a 17,280-ledger (~24h) timelock before `execute_upgrade` can install the new Wasm and bump `contract_version`. `set_transfer_hook` registers a contract to receive an `on_transfer(from, to, amount)` callback on every transfer; a hook failure does not revert the transfer.
+
 **Errors:**
 - `InsufficientBalance` (1) — Caller's balance too low
 - `InsufficientAllowance` (2) — Allowance too low for transfer_from
-- `Unauthorized` (3) — Caller not admin
+- `Unauthorized` (3) — Caller not admin, or a `pausable`/`freeze`-gated check failed
 - `AlreadyInitialized` (4) — initialize called twice
 - `NotInitialized` (5) — Operation before initialize
 - `InvalidAmount` (6) — Amount zero, negative, or exceeds cap
 - `Overflow` (7) — Arithmetic overflow
+- `InvalidNonce` (8) — `approve_with_signature` nonce doesn't match `permit_nonce(owner)`
+- `PermitExpired` (9) — `approve_with_signature` called past `expiry_ledger`
+- `PermitSignerNotSet` (10) — `owner` never called `set_permit_signer`
 
 ---
 
@@ -132,24 +202,32 @@ Complete public API documentation for all Soroban starter kit contracts.
 
 **Location:** `contracts/vesting/src/lib.rs`
 
+The contract supports **multiple beneficiaries per deployed instance**: `initialize` sets up only the admin and token once, then the admin calls `create_schedule` independently for each beneficiary.
+
 | Function | Parameters | Returns | Errors |
 |----------|-----------|---------|--------|
-| `initialize` | `env: Env, admin: Address, beneficiary: Address, token: Address, amount: i128, cliff_ledger: u32, end_ledger: u32` | `Result<(), VestingError>` | `AlreadyInitialized`, `InvalidAmount`, `InvalidSchedule` |
-| `claim` | `env: Env` | `Result<(), VestingError>` | `NotInitialized`, `NothingToClaim` |
-| `revoke` | `env: Env` | `Result<(), VestingError>` | `NotInitialized`, `Unauthorized`, `AlreadyRevoked` |
-| `get_vested_amount` | `env: Env` | `i128` | None |
-| `get_claimed_amount` | `env: Env` | `i128` | None |
-| `get_unvested_amount` | `env: Env` | `i128` | None |
-| `is_revoked` | `env: Env` | `bool` | None |
+| `initialize` | `env: Env, admin: Address, token: Address` | `Result<(), VestingError>` | `AlreadyInitialized` |
+| `create_schedule` | `env: Env, beneficiary: Address, cliff_ledger: u32, end_ledger: u32, amount: i128` | `Result<(), VestingError>` | `NotInitialized`, `InvalidAmount`, `InvalidSchedule`, `ScheduleAlreadyExists` |
+| `claim` | `env: Env, beneficiary: Address` | `Result<i128, VestingError>` | `NotInitialized`, `ScheduleNotFound`, `NothingToClaim` |
+| `revoke` | `env: Env, beneficiary: Address` | `Result<i128, VestingError>` | `NotInitialized`, `ScheduleNotFound`, `AlreadyRevoked` |
+| `admin_release` | `env: Env, beneficiary: Address` | `Result<i128, VestingError>` | `NotInitialized`, `ScheduleNotFound`, `AlreadyRevoked`, `CliffAlreadyPassed`, `NothingToClaim` |
+| `get_info` | `env: Env, beneficiary: Address` | `Option<BeneficiarySchedule>` | None |
+| `claimable` | `env: Env, beneficiary: Address` | `i128` | None |
+| `contract_version` | `env: Env` | `u32` | None |
+
+`create_schedule` transfers `amount` tokens from the admin into the contract when the schedule is created, and returns `ScheduleAlreadyExists` if the beneficiary already has one. `claim` releases all currently vested, unclaimed tokens and returns the amount transferred. `revoke` cancels future vesting for a beneficiary: already-vested tokens remain claimable, and unvested tokens are returned to the admin immediately. `admin_release` is an emergency unlock — before a beneficiary's cliff is reached, the admin can release their entire remaining allocation early (marking the schedule revoked in the process).
 
 **Errors:**
-- `AlreadyInitialized` (1) — initialize called twice
-- `NotInitialized` (2) — Operation before initialize
-- `Unauthorized` (3) — Caller not admin
-- `InvalidAmount` (4) — Amount zero or negative
-- `InvalidSchedule` (5) — cliff_ledger >= end_ledger or end_ledger in past
-- `NothingToClaim` (6) — No tokens vested since last claim
-- `AlreadyRevoked` (7) — revoke called on revoked schedule
+- `AlreadyInitialized` (1) — `initialize` called twice
+- `NotInitialized` (2) — Operation before `initialize`
+- `NotAuthorized` (3) — Reserved; caller identity is enforced via `require_auth`, not this error
+- `InvalidAmount` (4) — `amount` <= 0
+- `InvalidSchedule` (5) — `cliff_ledger >= end_ledger`, or `end_ledger` not in the future
+- `NothingToClaim` (6) — No tokens vested/releasable since the last claim
+- `AlreadyRevoked` (7) — `revoke`/`admin_release` called on an already-revoked schedule
+- `CliffAlreadyPassed` (8) — `admin_release` called after the beneficiary's cliff ledger has been reached
+- `ScheduleAlreadyExists` (9) — `create_schedule` called twice for the same beneficiary
+- `ScheduleNotFound` (10) — No schedule exists for the given beneficiary
 
 ---
 
@@ -161,26 +239,38 @@ Complete public API documentation for all Soroban starter kit contracts.
 
 | Function | Parameters | Returns | Errors |
 |----------|-----------|---------|--------|
-| `initialize` | `env: Env, signers: Vec<Address>, threshold: u32` | `Result<(), MultisigError>` | `AlreadyInitialized`, `InvalidThreshold`, `InvalidSigners` |
-| `add_signer` | `env: Env, approvals: Vec<Address>, signer: Address, new_threshold: u32` | `Result<(), MultisigError>` | `NotInitialized`, `NotSigner`, `InsufficientApprovals`, `InvalidThreshold` |
-| `remove_signer` | `env: Env, approvals: Vec<Address>, signer: Address, new_threshold: u32` | `Result<(), MultisigError>` | `NotInitialized`, `NotSigner`, `InsufficientApprovals`, `InvalidThreshold` |
-| `propose` | `env: Env, target: Address, func: Symbol, args: Vec<Val>` | `Result<u64, MultisigError>` | `NotInitialized` |
-| `approve` | `env: Env, tx_id: u64` | `Result<(), MultisigError>` | `TransactionNotFound`, `AlreadyExecuted`, `AlreadySigned`, `NotSigner` |
-| `execute` | `env: Env, tx_id: u64` | `Result<Val, MultisigError>` | `TransactionNotFound`, `AlreadyExecuted`, `ThresholdNotMet` |
+| `initialize` | `env: Env, signers: Vec<Address>, threshold: u32, weights: Option<Vec<SignerWeight>>` | `Result<(), MultisigError>` | `AlreadyInitialized`, `InvalidThreshold`, `InvalidSigners`, `InvalidWeight` |
+| `add_signer` | `env: Env, approvals: Vec<Address>, signer: Address, new_threshold: u32` | `Result<(), MultisigError>` | `NotInitialized`, `NotSigner`, `InsufficientApprovals`, `InvalidThreshold`, `InvalidSigners` |
+| `remove_signer` | `env: Env, approvals: Vec<Address>, signer: Address, new_threshold: u32` | `Result<(), MultisigError>` | `NotInitialized`, `NotSigner`, `InsufficientApprovals`, `InvalidThreshold`, `InvalidSigners` |
+| `propose_transaction` | `env: Env, proposer: Address, target: Address, function: Symbol, args: Vec<Val>, expiry_ledgers: u32` | `Result<u64, MultisigError>` | `NotSigner`, `NotInitialized` |
+| `sign_transaction` | `env: Env, signer: Address, tx_id: u64` | `Result<(), MultisigError>` | `NotSigner`, `TransactionNotFound`, `AlreadyExecuted`, `ProposalExpired`, `AlreadySigned` |
+| `execute_transaction` | `env: Env, tx_id: u64` | `Result<Val, MultisigError>` | `TransactionNotFound`, `AlreadyExecuted`, `ProposalExpired`, `NotInitialized`, `ThresholdNotMet` |
+| `execute_batch` | `env: Env, proposal_ids: Vec<u64>` | `Vec<u64>` | None |
 | `get_signers` | `env: Env` | `Vec<Address>` | None |
-| `get_threshold` | `env: Env` | `u32` | None |
+| `get_threshold` | `env: Env` | `Option<u32>` | None |
+| `get_signer_weight` | `env: Env, signer: Address` | `u32` | None |
+| `is_signer` | `env: Env, address: Address` | `bool` | None |
+| `get_transaction` | `env: Env, tx_id: u64` | `Option<Transaction>` | None |
+| `signature_count` | `env: Env, tx_id: u64` | `Option<u32>` | None |
+| `cleanup_expired` | `env: Env, tx_id: u64` | `Result<(), MultisigError>` | `TransactionNotFound`, `AlreadyExecuted`, `NotYetExpired` |
+| `contract_version` | `env: Env` | `u32` | None |
+
+`initialize`'s optional `weights` parameter assigns each signer a custom vote weight (any signer omitted from `weights` defaults to weight 1); `threshold` is then measured in accumulated weight rather than raw signer count, so unweighted wallets behave exactly like the original flat-count design. `execute_batch` attempts each proposal ID independently — a failure for one (not found, already executed, expired, or under threshold) is silently skipped rather than aborting the batch; diff the returned `Vec<u64>` against the input to see what ran, or inspect individual proposals via `get_transaction`. Every proposal expires `expiry_ledgers` after `propose_transaction`; `cleanup_expired` lets anyone reclaim storage for an expired, unexecuted proposal.
 
 **Errors:**
-- `AlreadyInitialized` (1) — initialize called twice
+- `AlreadyInitialized` (1) — `initialize` called twice
 - `NotInitialized` (2) — Operation before initialize
-- `InvalidThreshold` (3) — Threshold zero or > signer count
+- `InvalidThreshold` (3) — Threshold zero or greater than total signer weight
 - `InvalidSigners` (4) — Signers empty, duplicate, or invalid
 - `NotSigner` (5) — Caller/approver not in signer set
 - `TransactionNotFound` (6) — TX ID does not exist
 - `AlreadyExecuted` (7) — Transaction already executed
-- `AlreadySigned` (8) — Signer already approved
-- `ThresholdNotMet` (9) — Not enough signatures
-- `InsufficientApprovals` (10) — Signer change lacks threshold approvals
+- `AlreadySigned` (8) — Signer already signed this transaction
+- `ThresholdNotMet` (9) — Accumulated weight below threshold
+- `InsufficientApprovals` (10) — Signer-management approval list lacks threshold weight
+- `ProposalExpired` (11) — Proposal is past its `expiry_ledger`
+- `InvalidWeight` (12) — A `SignerWeight.weight` of zero was supplied
+- `NotYetExpired` (13) — `cleanup_expired` called before the proposal's expiry ledger was reached
 
 ---
 
