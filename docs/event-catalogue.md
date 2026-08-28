@@ -65,16 +65,6 @@ env.events().publish((topic_1, topic_2, ...), data);
 
 ---
 
-## Vesting Contract
-
-| Event | Symbol | Topics | Data Type | When Fired |
-|-------|--------|--------|-----------|-----------|
-| Initialized | `initialized` | `(Symbol, Address)` → event name, beneficiary | `(i128, u32, u32)` → amount, cliff ledger, end ledger | `initialize()` called |
-| Claimed | `claimed` | `(Symbol, Address)` → event name, beneficiary | `i128` → amount claimed | `claim()` called |
-| Revoked | `revoked` | `(Symbol, Address)` → event name, admin | `i128` → amount returned to admin | `revoke()` called |
-
----
-
 ## Staking Contract
 
 | Event | Symbol | Topics | Data Type | When Fired |
@@ -267,7 +257,7 @@ env.events().publish((topic_1, topic_2, ...), data);
 
 | Event | Symbol | Topics | Data Type | When Fired |
 |-------|--------|--------|-----------|-----------|
-| Initialized | `initialized` | `(Symbol, Address)` → event name, beneficiary | `(i128, u32, u32)` → amount, cliff ledger, end ledger | `initialize()` called |
+| Initialized | `initialized` | `(Symbol, Address)` → event name, beneficiary | `(i128, u32, u32)` → amount, cliff ledger, end ledger | `create_schedule()` called (`initialize()` only configures admin and token) |
 | Claimed | `claimed` | `(Symbol, Address)` → event name, beneficiary | `i128` → amount claimed | `claim()` called |
 | Revoked | `revoked` | `(Symbol, Address)` → event name, beneficiary | `(Address, i128)` → admin, amount returned to admin | `revoke()` called by admin |
 | Admin Released | `admin_released` | `(Symbol, Address)` → event name, admin | `i128` → amount released to admin | `admin_release()` called after vesting end |
