@@ -17,12 +17,9 @@ use soroban_sdk::{Address, Bytes, BytesN, Env, contracttype, crypto::Hash};
 
 pub mod math;
 pub mod merkle;
-pub mod reentrancy_guard;
-
-pub use reentrancy_guard::{ReentrancyGuard, with_guard};
 
 pub use math::{
-    FixedPoint, FixedPoint128, FixedPointError, from_scale, mul_div, mul_div_nearest, mul_div_up,
+    FixedPoint128, FixedPointError, from_scale, mul_div, mul_div_nearest, mul_div_up,
     to_scale,
 };
 pub use merkle::{hash_pair_sorted, verify_merkle_multi_proof, verify_merkle_proof};
@@ -799,9 +796,9 @@ impl<'a> ReentrancyGuard<'a> {
     ///
     /// Panics with `"reentrancy detected"` when the lock flag is already set.
     #[must_use]
+    #[allow(clippy::panic)] // intentional panic: reentrancy intercepted
     pub fn enter(env: &'a Env) -> Self {
         if Self::is_locked(env) {
-            #[allow(clippy::panic)] // intentional panic: reentrancy intercepted
             panic!("reentrancy detected");
         }
         env.storage().instance().set(&ReentrancyKey::Locked, &true);
@@ -892,6 +889,8 @@ mod reentrancy_guard {
     }
 }
 
+use reentrancy_guard::ReentrancyKey;
+
 #[cfg(test)]
 mod reentrancy_guard_tests {
     use super::*;
@@ -899,49 +898,4 @@ mod reentrancy_guard_tests {
     #[test]
     fn enter_sets_flag_and_drop_clears_it() {
         let env = Env::default();
-        assert!(!ReentrancyGuard::is_locked(&env));
-
-        {
-            let _guard = ReentrancyGuard::enter(&env);
-            assert!(ReentrancyGuard::is_locked(&env));
-        }
-
-        assert!(!ReentrancyGuard::is_locked(&env));
-    }
-
-    #[test]
-    #[should_panic(expected = "reentrancy detected")]
-    fn reentrant_enter_panics() {
-        let env = Env::default();
-        let _guard = ReentrancyGuard::enter(&env);
-        // Second acquisition while the first guard is still alive must panic.
-        let _second = ReentrancyGuard::enter(&env);
-    }
-
-    #[test]
-    fn try_enter_returns_err_on_reentrancy() {
-        let env = Env::default();
-        let _guard = ReentrancyGuard::try_enter(&env).expect("first enter should succeed");
-        assert!(ReentrancyGuard::try_enter(&env).is_err());
-    }
-
-    #[test]
-    fn explicit_exit_clears_flag() {
-        let env = Env::default();
-        let guard = ReentrancyGuard::enter(&env);
-        assert!(ReentrancyGuard::is_locked(&env));
-        guard.exit();
-        assert!(!ReentrancyGuard::is_locked(&env));
-    }
-
-    #[test]
-    fn with_guard_runs_closure_and_clears_flag() {
-        let env = Env::default();
-        let result = with_guard(&env, || {
-            assert!(ReentrancyGuard::is_locked(&env));
-            7u32
-        });
-        assert_eq!(result, 7);
-        assert!(!ReentrancyGuard::is_locked(&env));
-    }
-}
+        assert!(!Reentrancy

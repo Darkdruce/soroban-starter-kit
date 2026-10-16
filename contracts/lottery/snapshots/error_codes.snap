@@ -16,5 +16,3 @@ LotteryError::InsufficientParticipants = 15
 LotteryError::InvalidTicketCap = 16
 LotteryError::TicketCapExceeded = 17
 LotteryError::InvalidFeeConfig = 18
-LotteryError::InvalidBatchCount = 19
-LotteryError::RolloverNotAvailable = 20

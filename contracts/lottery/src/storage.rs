@@ -22,14 +22,7 @@ pub enum DataKey {
     MaxTicketsPerAddress,
     /// Per-address ticket counter (persistent storage).
     TicketCount(Address),
-    /// Indexed participant entry in persistent storage.
-    /// `DataKey::Participant(idx)` where `idx` is 0-based.
-    Participant(u32),
-    /// Total number of tickets sold across all buyers (instance storage).
-    TotalTickets,
-    /// Optional minimum participants required before `draw` may succeed.
-    MinParticipants,
-    /// Fee in basis points (1–9 999) deducted from the prize pool before winner payouts.
+    /// Fee in basis points (0–9999) deducted from the prize pool before winner payouts.
     FeeBps,
     /// Recipient address for the fee amount.
     FeeRecipient,

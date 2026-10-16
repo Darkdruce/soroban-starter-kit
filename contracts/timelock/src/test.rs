@@ -53,7 +53,7 @@ fn setup(env: &Env) -> (TimelockContractClient, Address, Address, Address, u32, 
     let admin = Address::generate(env);
     let beneficiary = Address::generate(env);
     let token = env.register_contract(None, MockToken);
-    let release_ledger = env.ledger().sequence() + 100;
+    let release_ledger = env.ledger().sequence() + soroban_common::MIN_DEADLINE_BUFFER + 100;
     let amount = 1_000i128;
 
     let contract_addr = env.register_contract(None, TimelockContract);
@@ -130,6 +130,45 @@ fn test_initialize_past_release_ledger_fails() {
     let addr = env.register_contract(None, TimelockContract);
     let client = TimelockContractClient::new(&env, &addr);
     client.initialize(&admin, &token, &beneficiary, &50, &1_000);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #8)")]
+fn test_initialize_within_min_deadline_buffer_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let token = env.register_contract(None, MockToken);
+
+    let addr = env.register_contract(None, TimelockContract);
+    let client = TimelockContractClient::new(&env, &addr);
+
+    // One ledger short of the minimum buffer must be rejected.
+    let release_ledger = env.ledger().sequence() + soroban_common::MIN_DEADLINE_BUFFER - 1;
+    client.initialize(&admin, &token, &beneficiary, &release_ledger, &1_000);
+}
+
+#[test]
+fn test_initialize_at_min_deadline_buffer_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let token = env.register_contract(None, MockToken);
+
+    let addr = env.register_contract(None, TimelockContract);
+    let client = TimelockContractClient::new(&env, &addr);
+
+    // Exactly the minimum buffer must be accepted.
+    let release_ledger = env.ledger().sequence() + soroban_common::MIN_DEADLINE_BUFFER;
+    client.initialize(&admin, &token, &beneficiary, &release_ledger, &1_000);
+
+    let info = client.get_info();
+    assert_eq!(info.release_ledger, release_ledger);
+    assert_eq!(info.state, TimelockState::Active);
 }
 
 #[test]
@@ -280,6 +319,161 @@ fn test_reassign_beneficiary_after_cancel_fails() {
 
     // Should fail because already cancelled
     client.reassign_beneficiary(&new_beneficiary);
+}
+
+// ── Two-step beneficiary reassignment tests ──────────────────────────────
+
+#[test]
+fn test_propose_and_accept_beneficiary() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, old_beneficiary, _, _, _) = setup(&env);
+    let new_beneficiary = Address::generate(&env);
+
+    // Proposing must not change the stored beneficiary yet.
+    client.propose_beneficiary(&new_beneficiary);
+    assert_eq!(client.get_info().beneficiary, old_beneficiary);
+
+    // Acceptance updates the stored beneficiary.
+    client.accept_beneficiary();
+    assert_eq!(client.get_info().beneficiary, new_beneficiary);
+    assert_eq!(client.get_info().state, TimelockState::Active);
+}
+
+#[test]
+#[should_panic]
+fn test_propose_beneficiary_requires_current_beneficiary_auth() {
+    let env = Env::default();
+
+    let (client, _, old_beneficiary, _, _, _) = setup(&env);
+    let new_beneficiary = Address::generate(&env);
+
+    // Only the new beneficiary authorizes; the current beneficiary does not.
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &new_beneficiary,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "propose_beneficiary",
+            args: (new_beneficiary.clone(),).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    client.propose_beneficiary(&new_beneficiary);
+    let _ = old_beneficiary;
+}
+
+#[test]
+#[should_panic]
+fn test_accept_beneficiary_requires_new_beneficiary_auth() {
+    let env = Env::default();
+
+    let (client, _, old_beneficiary, _, _, _) = setup(&env);
+    let new_beneficiary = Address::generate(&env);
+
+    client.propose_beneficiary(&new_beneficiary);
+
+    // Only the current beneficiary authorizes; the proposed beneficiary does not.
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &old_beneficiary,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "accept_beneficiary",
+            args: ().into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    client.accept_beneficiary();
+}
+
+#[test]
+fn test_release_pays_new_beneficiary_after_transfer() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let new_beneficiary = Address::generate(&env);
+    let amount = 1_000i128;
+    let release_ledger = env.ledger().sequence() + soroban_common::MIN_DEADLINE_BUFFER + 100;
+
+    let timelock_addr = env.register_contract(None, TimelockContract);
+    let token = deploy_token(&env, &admin, &timelock_addr, amount);
+
+    let client = TimelockContractClient::new(&env, &timelock_addr);
+    client.initialize(&admin, &token, &beneficiary, &release_ledger, &amount);
+
+    client.propose_beneficiary(&new_beneficiary);
+    client.accept_beneficiary();
+    assert_eq!(client.get_info().beneficiary, new_beneficiary);
+
+    env.ledger()
+        .with_mut(|l| l.sequence_number = release_ledger);
+    client.release();
+
+    let token_client = TokenClient::new(&env, &token);
+    assert_eq!(token_client.balance(&new_beneficiary), amount);
+    assert_eq!(token_client.balance(&beneficiary), 0);
+}
+
+// ── Early emergency release with penalty tests ───────────────────────────
+
+#[test]
+fn test_early_release_with_penalty_distribution() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let penalty_recipient = Address::generate(&env);
+    let amount = 10_000i128;
+    let bps = 500u32; // 5%
+    let release_ledger = env.ledger().sequence() + soroban_common::MIN_DEADLINE_BUFFER + 100;
+
+    let timelock_addr = env.register_contract(None, TimelockContract);
+    let token = deploy_token(&env, &admin, &timelock_addr, amount);
+
+    let client = TimelockContractClient::new(&env, &timelock_addr);
+    client.initialize(&admin, &token, &beneficiary, &release_ledger, &amount);
+    client.set_early_release_config(&Some(bps), &Some(penalty_recipient.clone()));
+
+    // Still before the release ledger.
+    client.early_release_with_penalty(&beneficiary);
+
+    let expected_penalty = amount * bps as i128 / 10_000;
+    let expected_remainder = amount - expected_penalty;
+
+    let token_client = TokenClient::new(&env, &token);
+    assert_eq!(token_client.balance(&penalty_recipient), expected_penalty);
+    assert_eq!(token_client.balance(&beneficiary), expected_remainder);
+    assert_eq!(client.get_info().state, TimelockState::Released);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #11)")]
+fn test_early_release_without_config_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, beneficiary, _, _, _) = setup(&env);
+
+    // No early release config set — must fail.
+    client.early_release_with_penalty(&beneficiary);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #12)")]
+fn test_set_early_release_config_invalid_bps_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, _, _, _, _) = setup(&env);
+    let penalty_recipient = Address::generate(&env);
+
+    // bps greater than 10_000 must be rejected.
+    client.set_early_release_config(&Some(10_001u32), &Some(penalty_recipient));
 }
 
 // ── Multi-tranche release tests ──────────────────────────────────────────
@@ -789,4 +983,210 @@ fn test_reschedule_tranche_invalid_ledger_fails() {
 
     // new_release_ledger must be strictly greater than the current ledger.
     client.reschedule_tranche(&0, &ledger1);
+}
+
+// ── Multi-token locking tests ────────────────────────────────────────────
+
+/// Deploy a fresh MockToken and return its address.
+fn mock_token(env: &Env) -> Address {
+    env.register_contract(None, MockToken)
+}
+
+#[test]
+fn test_multi_token_deposit_tracks_balances_separately() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+
+    let addr = env.register_contract(None, TimelockContract);
+    let client = TimelockContractClient::new(&env, &addr);
+
+    let token_a = mock_token(&env);
+    let token_b = mock_token(&env);
+    let token_c = mock_token(&env);
+
+    let ledger_a = env.ledger().sequence() + 50;
+    let ledger_b = env.ledger().sequence() + 100;
+    let ledger_c = env.ledger().sequence() + 150;
+
+    client.initialize(&admin, &token_a, &beneficiary, &ledger_a, &1_000);
+    client.deposit(&token_b, &2_000, &ledger_b);
+    client.deposit(&token_c, &3_000, &ledger_c);
+
+    // Each token's balance and schedule must be tracked independently.
+    assert_eq!(client.get_locked_balance(&token_a), 1_000);
+    assert_eq!(client.get_locked_balance(&token_b), 2_000);
+    assert_eq!(client.get_locked_balance(&token_c), 3_000);
+
+    assert_eq!(client.get_release_ledger(&token_a), ledger_a);
+    assert_eq!(client.get_release_ledger(&token_b), ledger_b);
+    assert_eq!(client.get_release_ledger(&token_c), ledger_c);
+}
+
+#[test]
+fn test_multi_token_independent_release_schedules() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+
+    let addr = env.register_contract(None, TimelockContract);
+    let client = TimelockContractClient::new(&env, &addr);
+
+    let token_a = mock_token(&env);
+    let token_b = mock_token(&env);
+
+    let ledger_a = env.ledger().sequence() + 50;
+    let ledger_b = env.ledger().sequence() + 100;
+
+    client.initialize(&admin, &token_a, &beneficiary, &ledger_a, &1_000);
+    client.deposit(&token_b, &2_000, &ledger_b);
+
+    // Before either schedule matures, nothing is claimable.
+    assert_eq!(client.claimable_amount(&token_a), 0);
+    assert_eq!(client.claimable_amount(&token_b), 0);
+
+    // Advance to token A's ledger: only A matures.
+    env.ledger().with_mut(|l| l.sequence_number = ledger_a);
+    assert_eq!(client.claimable_amount(&token_a), 1_000);
+    assert_eq!(client.claimable_amount(&token_b), 0);
+
+    client.release(&token_a);
+    assert_eq!(client.get_locked_balance(&token_a), 0);
+    // Token B remains untouched by A's release.
+    assert_eq!(client.get_locked_balance(&token_b), 2_000);
+
+    // Advance to token B's ledger: B matures independently.
+    env.ledger().with_mut(|l| l.sequence_number = ledger_b);
+    assert_eq!(client.claimable_amount(&token_b), 2_000);
+    client.release(&token_b);
+    assert_eq!(client.get_locked_balance(&token_b), 0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #4)")]
+fn test_multi_token_release_too_early_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+
+    let addr = env.register_contract(None, TimelockContract);
+    let client = TimelockContractClient::new(&env, &addr);
+
+    let token_a = mock_token(&env);
+    let token_b = mock_token(&env);
+
+    let ledger_a = env.ledger().sequence() + 50;
+    let ledger_b = env.ledger().sequence() + 100;
+
+    client.initialize(&admin, &token_a, &beneficiary, &ledger_a, &1_000);
+    client.deposit(&token_b, &2_000, &ledger_b);
+
+    // Token A is mature but token B is not; releasing B must fail.
+    env.ledger().with_mut(|l| l.sequence_number = ledger_a);
+    client.release(&token_b);
+}
+
+// ── Partial release tests ────────────────────────────────────────────────
+
+#[test]
+fn test_release_partial_multiple_claims_from_single_tranche() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let token = mock_token(&env);
+
+    let addr = env.register_contract(None, TimelockContract);
+    let client = TimelockContractClient::new(&env, &addr);
+
+    let release_ledger = env.ledger().sequence() + 100;
+    client.initialize(&admin, &token, &beneficiary, &release_ledger, &1_000);
+
+    // Mature the single tranche.
+    env.ledger()
+        .with_mut(|l| l.sequence_number = release_ledger);
+    assert_eq!(client.claimable_amount(&token), 1_000);
+
+    // First partial claim.
+    client.release_partial(&token, &300);
+    assert_eq!(client.claimable_amount(&token), 700);
+    assert_eq!(client.get_locked_balance(&token), 700);
+
+    // Second partial claim from the same matured tranche.
+    client.release_partial(&token, &200);
+    assert_eq!(client.claimable_amount(&token), 500);
+    assert_eq!(client.get_locked_balance(&token), 500);
+
+    // Final partial claim drains the tranche.
+    client.release_partial(&token, &500);
+    assert_eq!(client.claimable_amount(&token), 0);
+    assert_eq!(client.get_locked_balance(&token), 0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #11)")]
+fn test_release_partial_exceeds_claimable_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let token = mock_token(&env);
+
+    let addr = env.register_contract(None, TimelockContract);
+    let client = TimelockContractClient::new(&env, &addr);
+
+    let release_ledger = env.ledger().sequence() + 100;
+    client.initialize(&admin, &token, &beneficiary, &release_ledger, &1_000);
+
+    env.ledger()
+        .with_mut(|l| l.sequence_number = release_ledger);
+
+    // Requesting more than the matured claimable balance must fail.
+    client.release_partial(&token, &1_001);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #11)")]
+fn test_release_partial_before_maturity_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, _, token, _, _) = setup(&env);
+
+    // Nothing has matured yet, so any partial release must fail.
+    client.release_partial(&token, &1);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #7)")]
+fn test_release_partial_zero_amount_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, _, token, release_ledger, _) = setup(&env);
+
+    env.ledger()
+        .with_mut(|l| l.sequence_number = release_ledger);
+    client.release_partial(&token, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #7)")]
+fn test_release_partial_negative_amount_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, _, token, release_ledger, _) = setup(&env);
+
+    env.ledger()
+        .with_mut(|l| l.sequence_number = release_ledger);
+    client.release_partial(&token, &-100);
 }

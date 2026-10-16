@@ -19,7 +19,12 @@ pub enum TimelockError {
     AlreadyDeposited = 10,
     NotDeposited = 11,
     StakingCallFailed = 12,
-    TrancheAlreadyReleased = 9,
+    TrancheAlreadyReleased = 13,
+    BeneficiaryProposalNotFound = 14,
+    NoPendingBeneficiary = 15,
+    EarlyReleaseNotConfigured = 16,
+    InvalidPenaltyBps = 17,
+    AmountExceedsClaimable = 14,
 }
 
 impl_display_error!(
@@ -37,6 +42,11 @@ impl_display_error!(
     NotDeposited        => "not deposited",
     StakingCallFailed   => "staking call failed",
     TrancheAlreadyReleased => "tranche already released",
+    BeneficiaryProposalNotFound => "beneficiary proposal not found",
+    NoPendingBeneficiary => "no pending beneficiary",
+    EarlyReleaseNotConfigured => "early release not configured",
+    InvalidPenaltyBps   => "invalid penalty bps",
+    AmountExceedsClaimable => "amount exceeds claimable",
 );
 
 #[cfg(test)]
@@ -62,8 +72,13 @@ TimelockError::InvalidReleaseLedger = {}\n\
 TimelockError::StakingNotConfigured = {}\n\
 TimelockError::AlreadyDeposited = {}\n\
 TimelockError::NotDeposited = {}\n\
-TimelockError::StakingCallFailed = {}\n",
-TimelockError::TrancheAlreadyReleased = {}\n",
+TimelockError::StakingCallFailed = {}\n\
+TimelockError::TrancheAlreadyReleased = {}\n\
+TimelockError::BeneficiaryProposalNotFound = {}\n\
+TimelockError::NoPendingBeneficiary = {}\n\
+TimelockError::EarlyReleaseNotConfigured = {}\n\
+TimelockError::InvalidPenaltyBps = {}\n",
+TimelockError::AmountExceedsClaimable = {}\n",
             TimelockError::NotAuthorized as u32,
             TimelockError::AlreadyInitialized as u32,
             TimelockError::NotInitialized as u32,
@@ -77,6 +92,11 @@ TimelockError::TrancheAlreadyReleased = {}\n",
             TimelockError::NotDeposited as u32,
             TimelockError::StakingCallFailed as u32,
             TimelockError::TrancheAlreadyReleased as u32,
+            TimelockError::BeneficiaryProposalNotFound as u32,
+            TimelockError::NoPendingBeneficiary as u32,
+            TimelockError::EarlyReleaseNotConfigured as u32,
+            TimelockError::InvalidPenaltyBps as u32,
+            TimelockError::AmountExceedsClaimable as u32,
         )
     }
 

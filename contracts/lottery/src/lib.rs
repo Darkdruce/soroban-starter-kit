@@ -5,8 +5,8 @@
 //! Players buy tickets while the lottery is open; the admin commits to a hashed
 //! secret then reveals it to draw verifiable random winners.
 
-// proptest and test helpers need std; enable it only during testing.
 #[cfg(test)]
+#[macro_use]
 extern crate std;
 
 use soroban_sdk::{Address, BytesN, Env, Vec, contract, contractimpl, token};
@@ -81,6 +81,10 @@ mod contract {
         /// `fee_recipient` must also be provided; the fee is transferred to that address
         /// at `draw` time before the winner prize pool is calculated.
         ///
+        /// `fee_bps` is an optional operator rake in basis points (1–9 999). When set,
+        /// `fee_recipient` must also be provided; the fee is transferred to that address
+        /// at `draw` time before the winner prize pool is calculated.
+        ///
         /// # Errors
         /// - [`LotteryError::AlreadyInitialized`]
         /// - [`LotteryError::InvalidTicketPrice`] if ticket_price <= 0
@@ -97,7 +101,6 @@ mod contract {
             winner_count: u32,
             prize_splits: Vec<u32>,
             max_tickets_per_address: Option<u32>,
-            min_participants: Option<u32>,
             fee_bps: Option<u32>,
             fee_recipient: Option<Address>,
         ) -> Result<(), LotteryError> {
@@ -146,9 +149,6 @@ mod contract {
             env.storage().instance().set(&PrizeSplits, &prize_splits);
             if let Some(cap) = max_tickets_per_address {
                 env.storage().instance().set(&MaxTicketsPerAddress, &cap);
-            }
-            if let Some(min) = min_participants {
-                env.storage().instance().set(&MinParticipants, &min);
             }
             if let (Some(bps), Some(recipient)) = (fee_bps, fee_recipient) {
                 env.storage().instance().set(&FeeBps, &bps);
@@ -222,36 +222,16 @@ mod contract {
             let ticket_price: i128 = get_required(&env, &TicketPrice)?;
             let token_addr: Address = get_required(&env, &Token)?;
 
-            // Retrieve and update the global ticket counter.
-            let total_tickets: u32 = get_required(&env, &TotalTickets)?;
-            let new_total_tickets = total_tickets
-                .checked_add(count)
-                .ok_or(LotteryError::TicketCapExceeded)?;
-
-            // Write each new ticket as a persistent indexed entry.
-            for i in 0..count {
-                #[allow(clippy::arithmetic_side_effects)] // i < count, total_tickets + i fits u32 validated above
-                let idx = total_tickets + i;
-                env.storage()
-                    .persistent()
-                    .set(&Participant(idx), &buyer);
-                env.storage().persistent().extend_ttl(
-                    &Participant(idx),
-                    LEDGER_LIFETIME_THRESHOLD,
-                    LEDGER_BUMP_AMOUNT,
-                );
-            }
-
-            env.storage()
-                .instance()
-                .set(&TotalTickets, &new_total_tickets);
+            let mut participants: Vec<Address> = get_required(&env, &Participants)?;
+            participants.push_back(buyer.clone());
+            env.storage().instance().set(&Participants, &participants);
 
             // Update per-address ticket counter.
             #[allow(clippy::arithmetic_side_effects)]
             let new_count = ticket_count + count;
             env.storage()
                 .persistent()
-                .set(&TicketCount(buyer.clone()), &new_count);
+                .set(&TicketCount(buyer.clone()), &(ticket_count + 1));
             env.storage().persistent().extend_ttl(
                 &TicketCount(buyer.clone()),
                 LEDGER_LIFETIME_THRESHOLD,
@@ -586,14 +566,17 @@ mod contract {
                     {
                         ticket_count += 1;
                     }
-                    // Overwrite with contract address so this slot is no longer owned by buyer.
-                    env.storage().persistent().set(&key, &contract_addr);
+                } else {
+                    remaining.push_back(p);
                 }
             }
 
             if ticket_count == 0 {
                 return Err(LotteryError::NothingToRefund);
             }
+            env.storage().instance().set(&Participants, &remaining);
+            // Clear the persistent TicketCount so this address can participate in future rounds.
+            env.storage().persistent().remove(&TicketCount(buyer.clone()));
 
             let ticket_price: i128 = get_required(&env, &TicketPrice)?;
             #[allow(clippy::arithmetic_side_effects)]

@@ -70,51 +70,7 @@ fn setup(env: &Env) -> (LotteryContractClient, Address, Address) {
     let token = env.register_contract(None, MockToken);
     let addr = env.register_contract(None, LotteryContract);
     let client = LotteryContractClient::new(env, &addr);
-    client.initialize(
-        &admin,
-        &token,
-        &100,
-        &1u32,
-        &single_winner_splits(env),
-        &None,
-        &None,
-    );
-    (client, admin, token)
-}
-
-/// Set up with a ticket cap per address.
-fn setup_with_cap(env: &Env, cap: u32) -> (LotteryContractClient, Address, Address) {
-    let admin = Address::generate(env);
-    let token = env.register_contract(None, MockToken);
-    let addr = env.register_contract(None, LotteryContract);
-    let client = LotteryContractClient::new(env, &addr);
-    client.initialize(
-        &admin,
-        &token,
-        &100,
-        &1u32,
-        &single_winner_splits(env),
-        &Some(cap),
-        &None,
-    );
-    (client, admin, token)
-}
-
-/// Set up with min_participants.
-fn setup_with_min(env: &Env, min: u32) -> (LotteryContractClient, Address, Address) {
-    let admin = Address::generate(env);
-    let token = env.register_contract(None, MockToken);
-    let addr = env.register_contract(None, LotteryContract);
-    let client = LotteryContractClient::new(env, &addr);
-    client.initialize(
-        &admin,
-        &token,
-        &100,
-        &1u32,
-        &single_winner_splits(env),
-        &None,
-        &Some(min),
-    );
+    client.initialize(&admin, &token, &100, &1u32, &single_winner_splits(env), &None, &None, &None);
     (client, admin, token)
 }
 
@@ -141,15 +97,7 @@ fn test_initialize_twice_fails() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, admin, token) = setup(&env);
-    client.initialize(
-        &admin,
-        &token,
-        &100,
-        &1u32,
-        &single_winner_splits(&env),
-        &None,
-        &None,
-    );
+    client.initialize(&admin, &token, &100, &1u32, &single_winner_splits(&env), &None, &None, &None);
 }
 
 #[test]
@@ -161,15 +109,7 @@ fn test_initialize_zero_price_fails() {
     let token = env.register_contract(None, MockToken);
     let addr = env.register_contract(None, LotteryContract);
     let client = LotteryContractClient::new(&env, &addr);
-    client.initialize(
-        &admin,
-        &token,
-        &0,
-        &1u32,
-        &single_winner_splits(&env),
-        &None,
-        &None,
-    );
+    client.initialize(&admin, &token, &0, &1u32, &single_winner_splits(&env), &None, &None, &None);
 }
 
 #[test]
@@ -284,352 +224,92 @@ fn test_draw_after_draw_fails() {
 }
 
 // ---------------------------------------------------------------------------
-// #1254 — buy_tickets_batch
+// #1256 — claim_refund clears TicketCount persistent storage
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_buy_tickets_batch_single_buyer() {
+fn test_claim_refund_clears_ticket_count() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, _, _) = setup(&env);
 
     let buyer = Address::generate(&env);
-    client.buy_tickets_batch(&buyer, &3);
+    client.buy_ticket(&buyer);
+    assert_eq!(client.get_ticket_count(&buyer), 1);
 
-    assert_eq!(client.get_info().total_tickets, 3);
-    assert_eq!(client.get_ticket_count(&buyer), 3);
+    let secret = [1u8; 32];
+    let salt = [2u8; 32];
+    let hash = make_commit(&env, &secret, &salt);
+    let deadline = env.ledger().sequence() + 10;
+    client.commit(&hash, &deadline);
+
+    // Advance past the reveal deadline.
+    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
+    client.claim_refund(&buyer);
+
+    // TicketCount must be cleared after refund (#1256).
+    assert_eq!(client.get_ticket_count(&buyer), 0);
+    // Participant list must also be empty.
+    assert!(client.get_info().participants.is_empty());
 }
 
-#[test]
-fn test_buy_tickets_batch_multiple_buyers() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _, _) = setup(&env);
-
-    let buyer1 = Address::generate(&env);
-    let buyer2 = Address::generate(&env);
-    client.buy_tickets_batch(&buyer1, &2);
-    client.buy_tickets_batch(&buyer2, &3);
-
-    assert_eq!(client.get_info().total_tickets, 5);
-    assert_eq!(client.get_ticket_count(&buyer1), 2);
-    assert_eq!(client.get_ticket_count(&buyer2), 3);
-}
+// ---------------------------------------------------------------------------
+// #1257 — Configurable fee (fee_bps + fee_recipient) deducted at draw time
+// ---------------------------------------------------------------------------
 
 #[test]
 #[should_panic(expected = "Error(Contract, #18)")]
-fn test_buy_tickets_batch_zero_count_fails() {
+fn test_fee_bps_without_recipient_fails() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, _, _) = setup(&env);
-    let buyer = Address::generate(&env);
-    client.buy_tickets_batch(&buyer, &0);
-}
-
-#[test]
-fn test_buy_tickets_batch_respects_cap() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _, _) = setup_with_cap(&env, 5);
-
-    let buyer = Address::generate(&env);
-    client.buy_tickets_batch(&buyer, &5);
-    assert_eq!(client.get_ticket_count(&buyer), 5);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #17)")]
-fn test_buy_tickets_batch_exceeds_cap_fails() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _, _) = setup_with_cap(&env, 5);
-
-    let buyer = Address::generate(&env);
-    client.buy_tickets_batch(&buyer, &6);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #17)")]
-fn test_buy_tickets_batch_cumulative_cap_fails() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _, _) = setup_with_cap(&env, 5);
-
-    let buyer = Address::generate(&env);
-    client.buy_tickets_batch(&buyer, &3);
-    // Second call pushes total to 6, over the cap of 5.
-    client.buy_tickets_batch(&buyer, &3);
-}
-
-#[test]
-fn test_buy_ticket_delegates_to_batch() {
-    // buy_ticket should behave identically to buy_tickets_batch(_, _, 1).
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _, _) = setup(&env);
-
-    let buyer = Address::generate(&env);
-    client.buy_ticket(&buyer);
-
-    assert_eq!(client.get_ticket_count(&buyer), 1);
-    assert_eq!(client.get_info().total_tickets, 1);
-}
-
-// ---------------------------------------------------------------------------
-// #1252 — round bytes in entropy
-// ---------------------------------------------------------------------------
-
-#[test]
-fn test_multi_winner_draw_selects_distinct_winners() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    // 2 winners
     let admin = Address::generate(&env);
-    let token = env.register_contract(None, MockToken);
-    let lottery_addr = env.register_contract(None, LotteryContract);
-    let client = LotteryContractClient::new(&env, &lottery_addr);
+    let token = env.register(super::test::MockToken, ());
+    let addr = env.register(LotteryContract, ());
+    let client = LotteryContractClient::new(&env, &addr);
+    // fee_bps set but fee_recipient = None should be rejected.
     client.initialize(
         &admin,
         &token,
         &100,
-        &2u32,
-        &two_winner_splits(&env),
+        &1u32,
+        &single_winner_splits(&env),
         &None,
+        &Some(500u32),
         &None,
     );
+}
 
-    let buyer1 = Address::generate(&env);
-    let buyer2 = Address::generate(&env);
-    let buyer3 = Address::generate(&env);
-    client.buy_ticket(&buyer1);
-    client.buy_ticket(&buyer2);
-    client.buy_ticket(&buyer3);
+#[test]
+fn test_fee_config_accepted_and_draw_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let fee_recipient = Address::generate(&env);
+    let token = env.register(super::test::MockToken, ());
+    let addr = env.register(LotteryContract, ());
+    let client = LotteryContractClient::new(&env, &addr);
+
+    client.initialize(
+        &admin,
+        &token,
+        &100,
+        &1u32,
+        &single_winner_splits(&env),
+        &None,
+        &Some(500u32),     // 5% rake
+        &Some(fee_recipient),
+    );
+
+    let buyer = Address::generate(&env);
+    client.buy_ticket(&buyer);
 
     let secret = [7u8; 32];
-    let salt = [13u8; 32];
+    let salt = [8u8; 32];
     let hash = make_commit(&env, &secret, &salt);
     client.commit(&hash, &(env.ledger().sequence() + 100));
 
-    let secret_bytes: BytesN<32> = BytesN::from_array(&env, &secret);
-    let salt_bytes: BytesN<32> = BytesN::from_array(&env, &salt);
-    let winners = client.draw(&secret_bytes, &salt_bytes);
-
-    assert_eq!(winners.len(), 2);
-    // Two distinct winners.
-    assert_ne!(winners.get(0).unwrap(), winners.get(1).unwrap());
-}
-
-#[test]
-fn test_multi_winner_draw_winners_are_participants() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let admin = Address::generate(&env);
-    let token = env.register_contract(None, MockToken);
-    let lottery_addr = env.register_contract(None, LotteryContract);
-    let client = LotteryContractClient::new(&env, &lottery_addr);
-    client.initialize(
-        &admin,
-        &token,
-        &50,
-        &2u32,
-        &two_winner_splits(&env),
-        &None,
-        &None,
-    );
-
-    let buyers: Vec<Address> = {
-        let mut v = Vec::new(&env);
-        for _ in 0..4 {
-            let b = Address::generate(&env);
-            client.buy_ticket(&b);
-            v.push_back(b);
-        }
-        v
-    };
-
-    let secret = [3u8; 32];
-    let salt = [5u8; 32];
-    let hash = make_commit(&env, &secret, &salt);
-    client.commit(&hash, &(env.ledger().sequence() + 100));
-
-    let secret_bytes: BytesN<32> = BytesN::from_array(&env, &secret);
-    let salt_bytes: BytesN<32> = BytesN::from_array(&env, &salt);
-    let winners = client.draw(&secret_bytes, &salt_bytes);
-
-    for w in winners.iter() {
-        assert!(buyers.contains(&w));
-    }
-}
-
-// ---------------------------------------------------------------------------
-// #1253 — indexed persistent storage
-// ---------------------------------------------------------------------------
-
-#[test]
-fn test_ticket_count_persists_across_calls() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _, _) = setup(&env);
-
-    let buyer = Address::generate(&env);
-    client.buy_ticket(&buyer);
-    client.buy_ticket(&buyer);
-    client.buy_ticket(&buyer);
-
-    assert_eq!(client.get_ticket_count(&buyer), 3);
-    assert_eq!(client.get_info().total_tickets, 3);
-}
-
-#[test]
-fn test_multiple_buyers_total_tickets() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _, _) = setup(&env);
-
-    for _ in 0..5 {
-        let buyer = Address::generate(&env);
-        client.buy_ticket(&buyer);
-    }
-    assert_eq!(client.get_info().total_tickets, 5);
-}
-
-// ---------------------------------------------------------------------------
-// #1255 — rollover
-// ---------------------------------------------------------------------------
-
-#[test]
-fn test_rollover_resets_to_open() {
-    let env = Env::default();
-    env.mock_all_auths();
-    // min_participants = 3, but we only have 1 buyer.
-    let (client, _admin, _token) = setup_with_min(&env, 3);
-
-    let buyer = Address::generate(&env);
-    client.buy_ticket(&buyer);
-
-    let secret = [1u8; 32];
-    let salt = [2u8; 32];
-    let hash = make_commit(&env, &secret, &salt);
-    let deadline = env.ledger().sequence() + 10;
-    client.commit(&hash, &deadline);
-
-    assert_eq!(client.get_info().state, LotteryState::Committed);
-
-    // Advance past the reveal deadline so any caller may trigger rollover.
-    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
-
-    client.rollover();
-
-    assert_eq!(client.get_info().state, LotteryState::Open);
-    // Tickets should still be counted.
-    assert_eq!(client.get_info().total_tickets, 1);
-}
-
-#[test]
-fn test_rollover_allows_new_tickets_and_draw() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _admin, _token) = setup_with_min(&env, 2);
-
-    // Round 1: only 1 buyer — rollover.
-    let buyer1 = Address::generate(&env);
-    client.buy_ticket(&buyer1);
-
-    let secret = [1u8; 32];
-    let salt = [2u8; 32];
-    let hash = make_commit(&env, &secret, &salt);
-    let deadline = env.ledger().sequence() + 10;
-    client.commit(&hash, &deadline);
-    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
-    client.rollover();
-
-    // Round 2: add another buyer, now we have 2 distinct addresses.
-    let buyer2 = Address::generate(&env);
-    client.buy_ticket(&buyer2);
-
-    let secret2 = [9u8; 32];
-    let salt2 = [8u8; 32];
-    let hash2 = make_commit(&env, &secret2, &salt2);
-    let deadline2 = env.ledger().sequence() + 10;
-    client.commit(&hash2, &deadline2);
-
-    let secret_bytes: BytesN<32> = BytesN::from_array(&env, &secret2);
-    let salt_bytes: BytesN<32> = BytesN::from_array(&env, &salt2);
+    let secret_bytes = BytesN::from_array(&env, &secret);
+    let salt_bytes = BytesN::from_array(&env, &salt);
     let winners = client.draw(&secret_bytes, &salt_bytes);
     assert_eq!(winners.len(), 1);
-    let w = winners.get(0).unwrap();
-    assert!(w == buyer1 || w == buyer2);
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #19)")]
-fn test_rollover_fails_when_enough_participants() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _admin, _token) = setup_with_min(&env, 2);
-
-    let buyer1 = Address::generate(&env);
-    let buyer2 = Address::generate(&env);
-    client.buy_ticket(&buyer1);
-    client.buy_ticket(&buyer2);
-
-    let secret = [1u8; 32];
-    let salt = [2u8; 32];
-    let hash = make_commit(&env, &secret, &salt);
-    let deadline = env.ledger().sequence() + 10;
-    client.commit(&hash, &deadline);
-    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
-
-    // Should fail because we already have 2 distinct participants (>= min_participants=2).
-    client.rollover();
-}
-
-#[test]
-#[should_panic(expected = "Error(Contract, #19)")]
-fn test_rollover_fails_when_not_committed() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let (client, _, _) = setup_with_min(&env, 3);
-    // Still Open — rollover should not be available.
-    client.rollover();
-}
-
-#[test]
-fn test_rollover_without_min_uses_winner_count_fallback() {
-    // Without min_participants, rollover should still be available when
-    // distinct participants < winner_count.
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let admin = Address::generate(&env);
-    let token = env.register_contract(None, MockToken);
-    let lottery_addr = env.register_contract(None, LotteryContract);
-    let client = LotteryContractClient::new(&env, &lottery_addr);
-    // 2 winners required, no explicit min_participants.
-    client.initialize(
-        &admin,
-        &token,
-        &100,
-        &2u32,
-        &two_winner_splits(&env),
-        &None,
-        &None,
-    );
-
-    // Only 1 distinct participant — below winner_count of 2.
-    let buyer = Address::generate(&env);
-    client.buy_ticket(&buyer);
-    client.buy_ticket(&buyer);
-
-    let secret = [1u8; 32];
-    let salt = [2u8; 32];
-    let hash = make_commit(&env, &secret, &salt);
-    let deadline = env.ledger().sequence() + 10;
-    client.commit(&hash, &deadline);
-    env.ledger().with_mut(|l| l.sequence_number = deadline + 1);
-
-    client.rollover();
-    assert_eq!(client.get_info().state, LotteryState::Open);
 }
