@@ -12,12 +12,8 @@ libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
 soroban-sdk = { workspace = true, features = ["testutils"] }
 
-[dependencies.multisig]
-path = ".."
-
 [dependencies.soroban-multisig-template]
-path = ".."
-features = ["testutils"]
+path = "../contracts/multisig"
 
 [dependencies.bonding-curve]
 path = "../contracts/bonding-curve"
@@ -25,13 +21,14 @@ features = ["testutils"]
 
 [dependencies.crowdfund]
 path = "../contracts/crowdfund"
-features = ["testutils"]
+package = "soroban-crowdfund-template"
 
 [dependencies.auction]
 path = "../contracts/auction"
+package = "soroban-auction-template"
 [dependencies.dao]
 path = "../contracts/dao"
-features = ["testutils"]
+package = "soroban-dao-template"
 
 [[bin]]
 name = "multisig_state_machine"
@@ -64,6 +61,11 @@ bench = false
 [[bin]]
 name = "auction_fuzz"
 path = "fuzz_targets/auction_fuzz.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "dao_fuzz"
 path = "fuzz_targets/dao_fuzz.rs"
 test = false

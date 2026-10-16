@@ -415,11 +415,27 @@ checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 name = "contract-benchmarks"
 version = "0.1.0"
 dependencies = [
+ "ballot",
+ "bonding-curve",
  "criterion",
+ "soroban-airdrop-template",
+ "soroban-auction-template",
  "soroban-common",
+ "soroban-crowdfund-template",
+ "soroban-dao-template",
  "soroban-escrow-template",
+ "soroban-lottery-template",
+ "soroban-marketplace-template",
+ "soroban-multisig-template",
+ "soroban-nft-template",
+ "soroban-oracle-template",
  "soroban-sdk",
+ "soroban-staking-template",
+ "soroban-subscription-template",
+ "soroban-swap-template",
+ "soroban-timelock-template",
  "soroban-token-template",
+ "soroban-vesting-template",
 ]
 
 [[package]]
@@ -922,7 +938,9 @@ dependencies = [
  "arbitrary",
  "bonding-curve",
  "libfuzzer-sys",
+ "soroban-auction-template",
  "soroban-crowdfund-template",
+ "soroban-dao-template",
  "soroban-multisig-template",
  "soroban-sdk",
 ]
@@ -1863,6 +1881,7 @@ dependencies = [
 name = "soroban-common"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -2005,6 +2024,7 @@ dependencies = [
 name = "soroban-lottery-template"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "soroban-common",
  "soroban-sdk",
 ]
@@ -2150,6 +2170,7 @@ version = "0.1.0"
 dependencies = [
  "soroban-common",
  "soroban-sdk",
+ "soroban-staking-template",
 ]
 
 [[package]]

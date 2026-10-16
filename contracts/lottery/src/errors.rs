@@ -24,6 +24,10 @@ pub enum LotteryError {
     InsufficientParticipants = 15,
     InvalidTicketCap = 16,
     TicketCapExceeded = 17,
+    /// `buy_tickets_batch` called with `count == 0`.
+    InvalidBatchCount = 18,
+    /// `rollover` called when conditions for a rollover are not met.
+    RolloverNotAvailable = 19,
 }
 
 impl_display_error!(
@@ -45,6 +49,8 @@ impl_display_error!(
     InsufficientParticipants => "insufficient participants",
     InvalidTicketCap        => "invalid ticket cap",
     TicketCapExceeded       => "ticket cap exceeded",
+    InvalidBatchCount       => "invalid batch count",
+    RolloverNotAvailable    => "rollover not available",
 );
 
 #[cfg(test)]
@@ -75,7 +81,9 @@ LotteryError::NothingToRefund = {}\n\
 LotteryError::InvalidWinnerConfig = {}\n\
 LotteryError::InsufficientParticipants = {}\n\
 LotteryError::InvalidTicketCap = {}\n\
-LotteryError::TicketCapExceeded = {}\n",
+LotteryError::TicketCapExceeded = {}\n\
+LotteryError::InvalidBatchCount = {}\n\
+LotteryError::RolloverNotAvailable = {}\n",
             LotteryError::AlreadyInitialized as u32,
             LotteryError::NotInitialized as u32,
             LotteryError::Unauthorized as u32,
@@ -93,6 +101,8 @@ LotteryError::TicketCapExceeded = {}\n",
             LotteryError::InsufficientParticipants as u32,
             LotteryError::InvalidTicketCap as u32,
             LotteryError::TicketCapExceeded as u32,
+            LotteryError::InvalidBatchCount as u32,
+            LotteryError::RolloverNotAvailable as u32,
         )
     }
 
