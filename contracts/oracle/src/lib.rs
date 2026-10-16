@@ -24,6 +24,13 @@ use soroban_common::{LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD};
 /// observations are dropped as new ones are recorded.
 pub const MAX_HISTORY: u32 = 30;
 
+/// Basis-point denominator used for EMA smoothing factors (100% = 10 000).
+pub const BPS_DENOMINATOR: u32 = 10_000;
+
+/// Fraction of the heartbeat window, in basis points, below which a
+/// `heartbeat_warning` event is emitted (20%).
+pub const HEARTBEAT_WARNING_BPS: u32 = 2_000;
+
 fn bump_instance(env: &Env) {
     env.storage()
         .instance()
@@ -68,6 +75,21 @@ fn median(values: &mut Vec<i128>) -> i128 {
     } else {
         values.get_unchecked(mid)
     }
+}
+
+/// Ledgers remaining before a price set at `updated_at` goes stale, or `None`
+/// if it is already stale. A price is stale once `now - updated_at > heartbeat`.
+fn ledgers_until_stale(updated_at: u32, heartbeat: u32, now: u32) -> Option<u32> {
+    let age = now.saturating_sub(updated_at);
+    heartbeat.checked_sub(age)
+}
+
+/// Whether `remaining` ledgers fall within the last [`HEARTBEAT_WARNING_BPS`]
+/// of a `heartbeat`-ledger window.
+#[allow(clippy::arithmetic_side_effects)]
+fn in_warning_window(remaining: u32, heartbeat: u32) -> bool {
+    u64::from(remaining) * u64::from(BPS_DENOMINATOR)
+        <= u64::from(heartbeat) * u64::from(HEARTBEAT_WARNING_BPS)
 }
 
 /// Append a new price observation to the ring buffer, dropping the oldest
@@ -115,6 +137,22 @@ fn twap(observations: &Vec<PriceObservation>, now: u64) -> i128 {
         return observations.get_unchecked(len - 1).price;
     }
     weighted_sum / total_weight
+}
+
+/// Compute the exponential moving average over `observations`, which must be
+/// non-empty and sorted oldest-first, seeding with the oldest price and
+/// applying `ema = ema + (price - ema) * alpha` for each subsequent one, where
+/// `alpha = smoothing_bps / BPS_DENOMINATOR`.
+#[allow(clippy::arithmetic_side_effects, clippy::integer_division)]
+fn ema(observations: &Vec<PriceObservation>, smoothing_bps: u32) -> i128 {
+    let alpha = i128::from(smoothing_bps);
+    let denom = i128::from(BPS_DENOMINATOR);
+    let mut ema = observations.get_unchecked(0).price;
+    for i in 1..observations.len() {
+        let price = observations.get_unchecked(i).price;
+        ema = ema.saturating_add(price.saturating_sub(ema).saturating_mul(alpha) / denom);
+    }
+    ema
 }
 
 pub use contract::*;
@@ -176,6 +214,22 @@ mod contract {
 
             let ledger = env.ledger().sequence();
             let timestamp = env.ledger().timestamp();
+
+            // Report how close the previous price came to expiring.
+            let heartbeat: u32 = get_required(&env, &StalenessThreshold)?;
+            if let Some(prev) = env.storage().instance().get::<_, u32>(&UpdatedAt) {
+                match ledgers_until_stale(prev, heartbeat, ledger) {
+                    Some(remaining) if in_warning_window(remaining, heartbeat) => {
+                        events::heartbeat_warning(&env, remaining, heartbeat);
+                    }
+                    Some(_) => {}
+                    None => {
+                        let stale_for = ledger.saturating_sub(prev).saturating_sub(heartbeat);
+                        events::heartbeat_recovered(&env, stale_for, heartbeat);
+                    }
+                }
+            }
+
             env.storage().instance().set(&Price, &price);
             env.storage().instance().set(&UpdatedAt, &ledger);
             env.storage()
@@ -200,13 +254,46 @@ mod contract {
             let updated_at: u32 = get_required(&env, &UpdatedAt)?;
             let threshold: u32 = get_required(&env, &StalenessThreshold)?;
 
-            let age = env.ledger().sequence().saturating_sub(updated_at);
-            if age > threshold {
-                return Err(OracleError::StalePrice);
+            let remaining = ledgers_until_stale(updated_at, threshold, env.ledger().sequence())
+                .ok_or(OracleError::StalePrice)?;
+            if in_warning_window(remaining, threshold) {
+                events::heartbeat_warning(&env, remaining, threshold);
             }
 
             bump_instance(&env);
             Ok(price)
+        }
+
+        /// Whether the current price is stale (or no price has been pushed yet).
+        ///
+        /// Uses the same rule as `get_price`: stale when
+        /// `current_ledger - updated_at > staleness_threshold`.
+        pub fn is_stale(env: Env) -> bool {
+            let updated_at: Option<u32> = env.storage().instance().get(&UpdatedAt);
+            let threshold: Option<u32> = env.storage().instance().get(&StalenessThreshold);
+            match (updated_at, threshold) {
+                (Some(updated_at), Some(threshold)) => {
+                    ledgers_until_stale(updated_at, threshold, env.ledger().sequence())
+                        .is_none()
+                }
+                _ => true,
+            }
+        }
+
+        /// Ledgers remaining before the current price expires, for keeper bots
+        /// and off-chain monitors. Returns `0` if the price is already stale,
+        /// expires after the current ledger, or no price has been pushed yet;
+        /// use `is_stale` to tell those cases apart.
+        pub fn time_until_stale(env: Env) -> u32 {
+            let updated_at: Option<u32> = env.storage().instance().get(&UpdatedAt);
+            let threshold: Option<u32> = env.storage().instance().get(&StalenessThreshold);
+            match (updated_at, threshold) {
+                (Some(updated_at), Some(threshold)) => {
+                    ledgers_until_stale(updated_at, threshold, env.ledger().sequence())
+                        .unwrap_or(0)
+                }
+                _ => 0,
+            }
         }
 
         /// Return the current price, rejecting it if it is older than `max_age` seconds.
@@ -274,6 +361,8 @@ mod contract {
         /// # Errors
         /// - [`OracleError::Unauthorized`] if `publisher` is not in the set configured
         ///   via `set_publishers`.
+        /// - [`OracleError::SubmissionTooFrequent`] if `publisher` already submitted
+        ///   in the current ledger (at least one ledger must pass between submissions).
         pub fn submit_price(env: Env, publisher: Address, price: i128) -> Result<(), OracleError> {
             publisher.require_auth();
 
@@ -285,6 +374,20 @@ mod contract {
             if !publishers.contains(&publisher) {
                 return Err(OracleError::Unauthorized);
             }
+
+            let ledger = env.ledger().sequence();
+            let ledger_key = LastSubmissionLedger(publisher.clone());
+            if let Some(last) = env.storage().persistent().get::<_, u32>(&ledger_key) {
+                if ledger <= last {
+                    return Err(OracleError::SubmissionTooFrequent);
+                }
+            }
+            env.storage().persistent().set(&ledger_key, &ledger);
+            env.storage().persistent().extend_ttl(
+                &ledger_key,
+                LEDGER_LIFETIME_THRESHOLD,
+                LEDGER_BUMP_AMOUNT,
+            );
 
             let timestamp = env.ledger().timestamp();
             let key = Submission(publisher.clone());
@@ -372,6 +475,36 @@ mod contract {
 
             bump_instance(&env);
             Ok(twap(&in_window, now))
+        }
+
+        /// Compute the exponential moving average of the recorded price history.
+        ///
+        /// Walks the [`MAX_HISTORY`] ring buffer oldest-first, seeding with the
+        /// oldest observation and applying
+        /// `EMA_new = price * alpha + EMA_old * (1 - alpha)` for each newer one,
+        /// where `alpha = smoothing_bps / 10_000`. Higher `smoothing_bps` tracks
+        /// the spot price more closely; lower values dampen sudden spikes.
+        ///
+        /// # Errors
+        /// - [`OracleError::InvalidSmoothingFactor`] if `smoothing_bps` is zero or
+        ///   greater than [`BPS_DENOMINATOR`].
+        /// - [`OracleError::InsufficientHistory`] if no observation has been recorded.
+        pub fn get_ema(env: Env, smoothing_bps: u32) -> Result<i128, OracleError> {
+            if smoothing_bps == 0 || smoothing_bps > BPS_DENOMINATOR {
+                return Err(OracleError::InvalidSmoothingFactor);
+            }
+
+            let history: Vec<PriceObservation> = env
+                .storage()
+                .instance()
+                .get(&History)
+                .unwrap_or(Vec::new(&env));
+            if history.is_empty() {
+                return Err(OracleError::InsufficientHistory);
+            }
+
+            bump_instance(&env);
+            Ok(ema(&history, smoothing_bps))
         }
     }
 }

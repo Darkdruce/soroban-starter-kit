@@ -275,6 +275,11 @@ mod contract {
             env.storage()
                 .instance()
                 .set(&TokenKey::Owner(token_id), &to);
+            // Clear any approval so the previous owner's spender cannot move the
+            // token away from the new owner.
+            env.storage()
+                .instance()
+                .remove(&TokenKey::Approved(token_id));
             bump_instance(&env);
             events::transferred(&env, &from, &to, token_id);
             Ok(())
