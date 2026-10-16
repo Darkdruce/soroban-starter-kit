@@ -1,11 +1,12 @@
 #![no_std]
+#![no_std]
 #![deny(missing_docs)]
 //! Bonding-curve token sale contract template.
 //!
 //! Token price scales deterministically with supply along a bonding curve;
 //! buyers mint tokens by paying the curve price and sellers burn to redeem.
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testutils"))]
 extern crate std;
 
 use soroban_sdk::{Address, Env, contract, contractimpl, token};
@@ -18,10 +19,18 @@ mod storage;
 mod prop_test;
 
 pub use errors::BondingCurveError;
-pub use storage::{DataKey, PRICE_SCALE};
+pub use storage::{CurveState, DataKey, PRICE_SCALE};
 use storage::{BPS_DENOMINATOR, MAX_FEE_BPS, MIN_CONNECTOR_WEIGHT_BPS};
 
+use soroban_common::math::{FixedPoint, FixedPointError, apply_bps_fee};
 use soroban_common::{LEDGER_BUMP_AMOUNT, LEDGER_LIFETIME_THRESHOLD, extend_ttl_instance};
+use storage::{BUY_COOLDOWN_LEDGERS, CurveState, MAX_BUYS_PER_LEDGER};
+
+impl From<FixedPointError> for BondingCurveError {
+    fn from(_: FixedPointError) -> Self {
+        BondingCurveError::Overflow
+    }
+}
 
 fn bump(env: &Env) {
     extend_ttl_instance(env, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
@@ -31,13 +40,11 @@ fn fixed_pow(mut base: i128, mut exponent: u32) -> Result<i128, BondingCurveErro
     let mut result = PRICE_SCALE;
     while exponent > 0 {
         if exponent & 1 == 1 {
-            result = result.checked_mul(base).ok_or(BondingCurveError::Overflow)?
-                .checked_div(PRICE_SCALE).ok_or(BondingCurveError::Overflow)?;
+            result = FixedPoint::mul_div(result, base, PRICE_SCALE)?;
         }
         exponent >>= 1;
         if exponent > 0 {
-            base = base.checked_mul(base).ok_or(BondingCurveError::Overflow)?
-                .checked_div(PRICE_SCALE).ok_or(BondingCurveError::Overflow)?;
+            base = FixedPoint::mul_div(base, base, PRICE_SCALE)?;
         }
     }
     Ok(result)
@@ -50,11 +57,13 @@ fn fixed_root(value: i128, root: u32) -> Result<i128, BondingCurveError> {
     for _ in 0..32 {
         let denominator = fixed_pow(estimate, root - 1)?;
         if denominator == 0 { return Err(BondingCurveError::Overflow); }
-        let next = estimate.checked_mul((root - 1) as i128).ok_or(BondingCurveError::Overflow)?
-            .checked_add(value.checked_mul(PRICE_SCALE).ok_or(BondingCurveError::Overflow)?
-                .checked_div(denominator).ok_or(BondingCurveError::Overflow)?)
-            .ok_or(BondingCurveError::Overflow)?
-            .checked_div(root as i128).ok_or(BondingCurveError::Overflow)?;
+        let scaled_value = FixedPoint::mul_div(value, PRICE_SCALE, denominator)?;
+        let next = FixedPoint::mul_div(
+            estimate.checked_mul((root - 1) as i128).ok_or(BondingCurveError::Overflow)?
+                .checked_add(scaled_value).ok_or(BondingCurveError::Overflow)?,
+            PRICE_SCALE,
+            (root as i128).checked_mul(PRICE_SCALE).ok_or(BondingCurveError::Overflow)?,
+        )?;
         if next == estimate { break; }
         estimate = next;
     }
@@ -66,10 +75,8 @@ fn linear_price(base_price: i128, slope: i128, supply: i128) -> Result<i128, Bon
     if supply < 0 || base_price <= 0 || slope < 0 {
         return Err(BondingCurveError::InvalidConfiguration);
     }
-    base_price.checked_add(
-        slope.checked_mul(supply).ok_or(BondingCurveError::Overflow)?
-            .checked_div(PRICE_SCALE).ok_or(BondingCurveError::Overflow)?,
-    ).ok_or(BondingCurveError::Overflow)
+    base_price.checked_add(FixedPoint::mul_div(slope, supply, PRICE_SCALE)?)
+        .ok_or(BondingCurveError::Overflow)
 }
 
 /// Bancor-style spot price. Linear bootstrap pricing remains active until the
@@ -84,14 +91,7 @@ fn calculate_price(
     if reserve <= 0 || supply <= 0 {
         return Ok(linear);
     }
-    let scaled = reserve
-        .checked_mul(PRICE_SCALE)
-        .ok_or(BondingCurveError::Overflow)?;
-    scaled
-        .checked_div(supply + 1)
-        .ok_or(BondingCurveError::Overflow)
-    let reserve_price = reserve.checked_mul(PRICE_SCALE).ok_or(BondingCurveError::Overflow)?
-        .checked_div(supply).ok_or(BondingCurveError::Overflow)?;
+    let reserve_price = FixedPoint::mul_div(reserve, PRICE_SCALE, supply)?;
     Ok(linear.max(reserve_price))
 }
 
@@ -117,33 +117,21 @@ fn buy_cost(
     // Linear curve: cost ≈ reserve * (1/(old_supply+1) + ... + 1/(new_supply+1))
     // Simplified: reserve * amount / (supply + 1) + reserve * amount^2 / (2 * (supply+1)^2)
     // For minimal gas, use average price approximation:
-    let avg_price =
-        (calculate_price(reserve, old_supply)? + calculate_price(reserve, new_supply)?) / 2;
-    let cost = amount
-        .checked_mul(avg_price)
-        .ok_or(BondingCurveError::Overflow)?
-        .checked_div(PRICE_SCALE)
+    let linear = FixedPoint::mul_div_up(base_price, amount, PRICE_SCALE)?
+        .checked_add(FixedPoint::mul_div_up(
+            slope,
+            supply.checked_mul(amount).ok_or(BondingCurveError::Overflow)?
+                .checked_add(amount.checked_mul(amount - 1).ok_or(BondingCurveError::Overflow)? / 2)
+                .ok_or(BondingCurveError::Overflow)?,
+            PRICE_SCALE,
+        )?)
         .ok_or(BondingCurveError::Overflow)?;
-    Ok(cost)
-    let new_supply = supply.checked_add(amount).ok_or(BondingCurveError::Overflow)?;
-    let linear = base_price.checked_mul(amount).ok_or(BondingCurveError::Overflow)?
-        .checked_add(
-            slope.checked_mul(
-                supply.checked_mul(amount).ok_or(BondingCurveError::Overflow)?
-                    .checked_add(amount.checked_mul(amount - 1).ok_or(BondingCurveError::Overflow)? / 2)
-                    .ok_or(BondingCurveError::Overflow)?,
-            ).ok_or(BondingCurveError::Overflow)?
-                .checked_div(PRICE_SCALE).ok_or(BondingCurveError::Overflow)?,
-        ).ok_or(BondingCurveError::Overflow)?;
     if reserve <= 0 || supply <= 0 { return Ok(linear.max(1)); }
-    let ratio = PRICE_SCALE.checked_add(
-        amount.checked_mul(PRICE_SCALE).ok_or(BondingCurveError::Overflow)?
-            .checked_div(supply).ok_or(BondingCurveError::Overflow)?,
-    ).ok_or(BondingCurveError::Overflow)?;
+    let ratio = PRICE_SCALE.checked_add(FixedPoint::mul_div_up(amount, PRICE_SCALE, supply)?)
+        .ok_or(BondingCurveError::Overflow)?;
     let exponent = BPS_DENOMINATOR as u32 / connector_weight_bps;
     let power = fixed_pow(ratio, exponent)?;
-    let bancor = reserve.checked_mul(power - PRICE_SCALE).ok_or(BondingCurveError::Overflow)?
-        .checked_div(PRICE_SCALE).ok_or(BondingCurveError::Overflow)?;
+    let bancor = FixedPoint::mul_div_up(reserve, power - PRICE_SCALE, PRICE_SCALE)?;
     Ok(linear.max(bancor).max(1))
 }
 
@@ -162,32 +150,21 @@ fn sell_proceeds(
 
     let new_supply = supply - amount;
 
-    let avg_price =
-        (calculate_price(reserve, old_supply)? + calculate_price(reserve, new_supply)?) / 2;
-    let proceeds = amount
-        .checked_mul(avg_price)
-        .ok_or(BondingCurveError::Overflow)?
-        .checked_div(PRICE_SCALE)
+    let linear = FixedPoint::mul_div(base_price, amount, PRICE_SCALE)?
+        .checked_add(FixedPoint::mul_div(
+            slope,
+            new_supply.checked_mul(amount).ok_or(BondingCurveError::Overflow)?
+                .checked_add(amount.checked_mul(amount + 1).ok_or(BondingCurveError::Overflow)? / 2)
+                .ok_or(BondingCurveError::Overflow)?,
+            PRICE_SCALE,
+        )?)
         .ok_or(BondingCurveError::Overflow)?;
-    Ok(proceeds)
-    let linear = base_price.checked_mul(amount).ok_or(BondingCurveError::Overflow)?
-        .checked_add(
-            slope.checked_mul(
-                new_supply.checked_mul(amount).ok_or(BondingCurveError::Overflow)?
-                    .checked_add(amount.checked_mul(amount + 1).ok_or(BondingCurveError::Overflow)? / 2)
-                    .ok_or(BondingCurveError::Overflow)?,
-            ).ok_or(BondingCurveError::Overflow)?
-                .checked_div(PRICE_SCALE).ok_or(BondingCurveError::Overflow)?,
-        ).ok_or(BondingCurveError::Overflow)?;
     if reserve <= 0 || supply <= 0 { return Ok(linear.max(1).min(reserve)); }
-    let remaining_ratio = PRICE_SCALE.checked_sub(
-        amount.checked_mul(PRICE_SCALE).ok_or(BondingCurveError::Overflow)?
-            .checked_div(supply).ok_or(BondingCurveError::Overflow)?,
-    ).ok_or(BondingCurveError::Overflow)?;
+    let remaining_ratio = PRICE_SCALE.checked_sub(FixedPoint::mul_div(amount, PRICE_SCALE, supply)?)
+        .ok_or(BondingCurveError::Overflow)?;
     let root = BPS_DENOMINATOR as u32 / connector_weight_bps;
     let remaining_reserve_ratio = fixed_root(remaining_ratio, root)?;
-    let bancor = reserve.checked_mul(PRICE_SCALE - remaining_reserve_ratio).ok_or(BondingCurveError::Overflow)?
-        .checked_div(PRICE_SCALE).ok_or(BondingCurveError::Overflow)?;
+    let bancor = FixedPoint::mul_div(reserve, PRICE_SCALE - remaining_reserve_ratio, PRICE_SCALE)?;
     Ok(linear.max(bancor).max(1).min(reserve))
 }
 
@@ -416,6 +393,10 @@ mod contract {
 impl BondingCurveContract {
     /// Initialize the bonding curve contract.
     ///
+    /// `graduation_supply_cap` — when `Some(cap)`, the curve automatically
+    /// transitions to `Graduated` the first time `supply >= cap` after a buy.
+    /// Pass `None` to disable automatic graduation.
+    ///
     /// # Errors
     /// - [`BondingCurveError::AlreadyInitialized`] if called more than once.
     pub fn initialize(
@@ -427,6 +408,7 @@ impl BondingCurveContract {
         connector_weight_bps: u32,
         fee_bps: u32,
         treasury: Address,
+        graduation_supply_cap: Option<i128>,
     ) -> Result<(), BondingCurveError> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(BondingCurveError::AlreadyInitialized);
@@ -436,6 +418,11 @@ impl BondingCurveContract {
         }
         if fee_bps > MAX_FEE_BPS {
             return Err(BondingCurveError::InvalidFee);
+        }
+        if let Some(cap) = graduation_supply_cap {
+            if cap <= 0 {
+                return Err(BondingCurveError::InvalidConfiguration);
+            }
         }
         admin.require_auth();
 
@@ -449,6 +436,10 @@ impl BondingCurveContract {
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage().instance().set(&DataKey::Treasury, &treasury);
         env.storage().instance().set(&DataKey::Price, &base_price);
+        env.storage().instance().set(&DataKey::CurveState, &CurveState::Active);
+        if let Some(cap) = graduation_supply_cap {
+            env.storage().instance().set(&DataKey::GraduationSupplyCap, &cap);
+        }
 
         bump(&env);
         events::initialized(&env, &admin, &token);
@@ -478,17 +469,81 @@ impl BondingCurveContract {
 
     /// Buy `amount` tokens by paying from the reserve.
     ///
+    /// # Anti-sandwich protections (#1089)
+    ///
+    /// Two complementary guards prevent atomic same-ledger sandwich attacks:
+    ///
+    /// 1. **Per-ledger rate limit** — a single address may submit at most
+    ///    `MAX_BUYS_PER_LEDGER` buys within the same ledger sequence. An
+    ///    attacker who front-runs a victim in the same ledger hits this cap
+    ///    and cannot also sell in the same ledger.
+    ///
+    /// 2. **Buy cooldown** — at least `BUY_COOLDOWN_LEDGERS` must elapse
+    ///    between successive buys from the same address. This makes multi-block
+    ///    sandwich loops prohibitively slow relative to normal user traffic.
+    ///
+    /// Both guards are enforced *before* any state mutation or token transfer.
+    ///
     /// # Errors
     /// - [`BondingCurveError::NotInitialized`] if the contract has not been initialized.
+    /// - [`BondingCurveError::CurveGraduated`] if the curve has already graduated.
     /// - [`BondingCurveError::InvalidAmount`] if `amount` <= 0.
+    /// - [`BondingCurveError::RateLimitExceeded`] if the caller has already bought
+    ///   `MAX_BUYS_PER_LEDGER` times in this ledger sequence.
+    /// - [`BondingCurveError::CooldownActive`] if fewer than `BUY_COOLDOWN_LEDGERS`
+    ///   have elapsed since the caller's last buy.
+    /// - [`BondingCurveError::InvalidAmount`] if the computed cost exceeds `max_cost`.
     pub fn buy(env: Env, buyer: Address, amount: i128, max_cost: i128) -> Result<(), BondingCurveError> {
         if !env.storage().instance().has(&DataKey::Admin) {
             return Err(BondingCurveError::NotInitialized);
         }
+
+        // Graduation guard: no new minting once graduated.
+        let state: CurveState = env
+            .storage()
+            .instance()
+            .get(&DataKey::CurveState)
+            .unwrap_or(CurveState::Active);
+        if state == CurveState::Graduated {
+            return Err(BondingCurveError::CurveGraduated);
+        }
+
         if amount <= 0 {
             return Err(BondingCurveError::InvalidAmount);
         }
         buyer.require_auth();
+
+        let current_ledger = env.ledger().sequence();
+
+        // ── Rate-limit guard ──────────────────────────────────────────────
+        // Check how many buys this address has already made this ledger.
+        let last_ledger_key = DataKey::LastBuyLedger(buyer.clone());
+        let buys_key = DataKey::BuysThisLedger(buyer.clone());
+
+        let last_buy_ledger: u32 = env
+            .storage()
+            .persistent()
+            .get(&last_ledger_key)
+            .unwrap_or(0);
+
+        let buys_this_ledger: u32 = if last_buy_ledger == current_ledger {
+            env.storage().persistent().get(&buys_key).unwrap_or(0)
+        } else {
+            0 // new ledger — counter resets
+        };
+
+        if buys_this_ledger >= MAX_BUYS_PER_LEDGER {
+            return Err(BondingCurveError::RateLimitExceeded);
+        }
+
+        // ── Cooldown guard ────────────────────────────────────────────────
+        // The very first buy (last_buy_ledger == 0) is always allowed.
+        if last_buy_ledger > 0 {
+            let ledgers_since_last = current_ledger.saturating_sub(last_buy_ledger);
+            if ledgers_since_last < BUY_COOLDOWN_LEDGERS {
+                return Err(BondingCurveError::CooldownActive);
+            }
+        }
 
         let token: Address = env
             .storage()
@@ -513,8 +568,7 @@ impl BondingCurveContract {
         let treasury: Address = env.storage().instance().get(&DataKey::Treasury).ok_or(BondingCurveError::NotInitialized)?;
 
         let cost = buy_cost(reserve, supply, amount, base_price, slope, connector_weight_bps)?;
-        let fee = cost.checked_mul(fee_bps as i128).ok_or(BondingCurveError::Overflow)?
-            .checked_div(BPS_DENOMINATOR).ok_or(BondingCurveError::Overflow)?;
+        let fee = apply_bps_fee(cost, fee_bps)?;
         let reserve_credit = cost.checked_sub(fee).ok_or(BondingCurveError::Overflow)?;
         if cost > max_cost || reserve_credit <= 0 {
             return Err(BondingCurveError::InvalidAmount);
@@ -532,6 +586,21 @@ impl BondingCurveContract {
         env.storage().instance().set(&DataKey::Supply, &new_supply);
         env.storage().instance().set(&DataKey::Reserve, &new_reserve);
         env.storage().instance().set(&DataKey::Price, &new_price);
+
+        // ── Update rate-limit state ───────────────────────────────────────
+        let new_buys_this_ledger = buys_this_ledger.saturating_add(1);
+        env.storage().persistent().set(&last_ledger_key, &current_ledger);
+        env.storage().persistent().set(&buys_key, &new_buys_this_ledger);
+        env.storage().persistent().extend_ttl(&last_ledger_key, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+        env.storage().persistent().extend_ttl(&buys_key, LEDGER_LIFETIME_THRESHOLD, LEDGER_BUMP_AMOUNT);
+
+        // ── Auto-graduation check (#1090) ─────────────────────────────────
+        if let Some(cap) = env.storage().instance().get::<_, i128>(&DataKey::GraduationSupplyCap) {
+            if new_supply >= cap {
+                env.storage().instance().set(&DataKey::CurveState, &CurveState::Graduated);
+                events::graduated(&env, cap, new_reserve);
+            }
+        }
 
         bump(&env);
         events::bought(&env, &buyer, cost, amount, new_price, fee);
@@ -580,8 +649,7 @@ impl BondingCurveContract {
         }
 
         let proceeds = sell_proceeds(reserve, supply, amount, base_price, slope, connector_weight_bps)?;
-        let fee = proceeds.checked_mul(fee_bps as i128).ok_or(BondingCurveError::Overflow)?
-            .checked_div(BPS_DENOMINATOR).ok_or(BondingCurveError::Overflow)?;
+        let fee = apply_bps_fee(proceeds, fee_bps)?;
         let seller_proceeds = proceeds.checked_sub(fee).ok_or(BondingCurveError::Overflow)?;
         if seller_proceeds < min_proceeds {
             return Err(BondingCurveError::InvalidAmount);
@@ -661,6 +729,117 @@ impl BondingCurveContract {
     pub fn get_treasury(env: Env) -> Result<Address, BondingCurveError> {
         env.storage().instance().get(&DataKey::Treasury).ok_or(BondingCurveError::NotInitialized)
     }
+
+    // -----------------------------------------------------------------
+    // Graduation state machine (#1090)
+    // -----------------------------------------------------------------
+
+    /// Return the current lifecycle state of the curve (`Active` or `Graduated`).
+    pub fn get_curve_state(env: Env) -> CurveState {
+        env.storage()
+            .instance()
+            .get(&DataKey::CurveState)
+            .unwrap_or(CurveState::Active)
+    }
+
+    /// Return the graduation supply cap, or `None` if none was configured.
+    pub fn get_graduation_supply_cap(env: Env) -> Option<i128> {
+        env.storage().instance().get(&DataKey::GraduationSupplyCap)
+    }
+
+    /// Force graduation (admin only). Useful when the admin wants to graduate
+    /// the curve manually without waiting for the automatic supply-cap trigger.
+    ///
+    /// # Errors
+    /// - [`BondingCurveError::NotInitialized`] if not initialized.
+    /// - [`BondingCurveError::Unauthorized`] if caller is not the admin.
+    /// - [`BondingCurveError::CurveGraduated`] if already graduated.
+    pub fn graduate(env: Env, admin: Address) -> Result<(), BondingCurveError> {
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(BondingCurveError::NotInitialized)?;
+        if admin != stored_admin {
+            return Err(BondingCurveError::Unauthorized);
+        }
+        admin.require_auth();
+
+        let state: CurveState = env
+            .storage()
+            .instance()
+            .get(&DataKey::CurveState)
+            .unwrap_or(CurveState::Active);
+        if state == CurveState::Graduated {
+            return Err(BondingCurveError::CurveGraduated);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::CurveState, &CurveState::Graduated);
+
+        let supply: i128 = env.storage().instance().get(&DataKey::Supply).unwrap_or(0);
+        let reserve: i128 = env.storage().instance().get(&DataKey::Reserve).unwrap_or(0);
+        events::graduated(&env, supply, reserve);
+        bump(&env);
+        Ok(())
+    }
+
+    /// Migrate the curve's reserve and supply accounting to an external AMM pool
+    /// (admin only). Must only be called after graduation.
+    ///
+    /// This entry point transfers the full reserve balance held by the contract
+    /// to `amm_pool` and emits a `migrated_to_amm` event. Zeroing the on-chain
+    /// reserve and supply prevents any further sell redemptions against stale
+    /// state, making it safe for the AMM to take over price discovery.
+    ///
+    /// # Errors
+    /// - [`BondingCurveError::NotInitialized`] if not initialized.
+    /// - [`BondingCurveError::Unauthorized`] if caller is not the admin.
+    /// - [`BondingCurveError::NotGraduated`] if the curve has not graduated yet.
+    pub fn migrate_to_amm(env: Env, admin: Address, amm_pool: Address) -> Result<(), BondingCurveError> {
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(BondingCurveError::NotInitialized)?;
+        if admin != stored_admin {
+            return Err(BondingCurveError::Unauthorized);
+        }
+        admin.require_auth();
+
+        let state: CurveState = env
+            .storage()
+            .instance()
+            .get(&DataKey::CurveState)
+            .unwrap_or(CurveState::Active);
+        if state != CurveState::Graduated {
+            return Err(BondingCurveError::NotGraduated);
+        }
+
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Token)
+            .ok_or(BondingCurveError::NotInitialized)?;
+        let reserve: i128 = env.storage().instance().get(&DataKey::Reserve).unwrap_or(0);
+        let supply: i128 = env.storage().instance().get(&DataKey::Supply).unwrap_or(0);
+
+        // Transfer full reserve to the AMM pool and zero out accounting.
+        if reserve > 0 {
+            token::Client::new(&env, &token).transfer(
+                &env.current_contract_address(),
+                &amm_pool,
+                &reserve,
+            );
+        }
+        env.storage().instance().set(&DataKey::Reserve, &0i128);
+        env.storage().instance().set(&DataKey::Supply, &0i128);
+
+        bump(&env);
+        events::migrated_to_amm(&env, &amm_pool, reserve, supply);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -687,7 +866,7 @@ mod test {
         let contract_addr = env.register_contract(None, BondingCurveContract);
         let contract = BondingCurveContractClient::new(&env, &contract_addr);
 
-        contract.initialize(&admin, &token, &1_000_000i128, &1i128, &10_000u32, &0u32, &admin);
+        contract.initialize(&admin, &token, &1_000_000i128, &1i128, &10_000u32, &0u32, &admin, &None::<i128>);
 
         let initial_price = contract.get_price();
         assert!(initial_price >= 0);
@@ -722,7 +901,7 @@ mod test {
         let contract_addr = env.register_contract(None, BondingCurveContract);
         let contract = BondingCurveContractClient::new(&env, &contract_addr);
 
-        contract.initialize(&admin, &token, &1_000_000i128, &1i128, &10_000u32, &0u32, &admin);
+        contract.initialize(&admin, &token, &1_000_000i128, &1i128, &10_000u32, &0u32, &admin, &None::<i128>);
 
         let initial_reserve = contract.get_reserve();
         assert_eq!(initial_reserve, 0);
@@ -756,7 +935,7 @@ mod test {
         let contract_addr = env.register_contract(None, BondingCurveContract);
         let contract = BondingCurveContractClient::new(&env, &contract_addr);
 
-        contract.initialize(&admin, &token, &1_000_000i128, &1i128, &10_000u32, &0u32, &admin);
+        contract.initialize(&admin, &token, &1_000_000i128, &1i128, &10_000u32, &0u32, &admin, &None::<i128>);
 
         // Try to buy with invalid amount
         let result = contract.try_buy(&buyer, &-100i128, &i128::MAX);
@@ -790,7 +969,7 @@ mod test {
         StellarAssetClient::new(&env, &token).mint(&buyer, &1_000_000i128);
         let contract_addr = env.register_contract(None, BondingCurveContract);
         let contract = BondingCurveContractClient::new(&env, &contract_addr);
-        contract.initialize(&admin, &token, &1_000_000i128, &1i128, &10_000u32, &100u32, &treasury);
+        contract.initialize(&admin, &token, &1_000_000i128, &1i128, &10_000u32, &100u32, &treasury, &None::<i128>);
         contract.buy(&buyer, &100i128, &i128::MAX);
         assert!(soroban_sdk::token::Client::new(&env, &token).balance(&treasury) > 0);
         assert_eq!(contract.get_fee_bps(), 100);
@@ -813,7 +992,7 @@ mod test {
         let contract_addr = env.register_contract(None, BondingCurveContract);
         let contract = BondingCurveContractClient::new(&env, &contract_addr);
 
-        contract.initialize(&admin, &token, &1_000_000i128, &1i128, &10_000u32, &0u32, &admin);
+        contract.initialize(&admin, &token, &1_000_000i128, &1i128, &10_000u32, &0u32, &admin, &None::<i128>);
 
         // Try to buy with a huge amount that would overflow
         // i128::MAX / PRICE_SCALE is a reasonable upper bound
@@ -838,7 +1017,7 @@ mod test {
         let contract_addr = env.register_contract(None, BondingCurveContract);
         let contract = BondingCurveContractClient::new(&env, &contract_addr);
 
-        contract.initialize(&admin, &token, &1_000_000i128, &1i128, &10_000u32, &0u32, &admin);
+        contract.initialize(&admin, &token, &1_000_000i128, &1i128, &10_000u32, &0u32, &admin, &None::<i128>);
 
         // To trigger an overflow in sell_proceeds, we'd need to set up a state where
         // the amount * avg_price calculation overflows. This is harder to construct

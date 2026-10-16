@@ -23,6 +23,16 @@ pub enum DataKey {
     OperatorApproval(Address, Address),
     /// Persistent: number of tokens owned by an address.
     Balance(Address),
+    /// Next token id for sequential batch minting.
+    NextTokenId,
+    /// Collection-level soulbound (non-transferable) flag.
+    Soulbound,
+    /// Number of tokens owned by an address (enumerable).
+    Balance(Address),
+    /// Token id at `index` in an owner's enumerable list.
+    OwnerTokens(Address, u32),
+    /// Index of a token id within its owner's enumerable list.
+    OwnedIndex(u32),
 }
 
 /// Persistent-storage keys (per-key TTL for per-token data).

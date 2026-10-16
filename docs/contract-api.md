@@ -289,24 +289,66 @@ The contract supports **multiple beneficiaries per deployed instance**: `initial
 
 | Function | Parameters | Returns | Errors |
 |----------|-----------|---------|--------|
-| `initialize` | `env: Env, admin: Address, token: Address, claim_deadline: u32` | `Result<(), AirdropError>` | `AlreadyInitialized` |
+| `initialize` | `env: Env, admin: Address, claim_deadline: u32, vesting: Option<VestingConfig>` | `Result<(), AirdropError>` | `AlreadyInitialized`, `InvalidVestingConfig` |
 | `set_root` | `env: Env, root: BytesN<32>` | `Result<(), AirdropError>` | `NotInitialized`, `Unauthorized` |
-| `claim` | `env: Env, recipient: Address, amount: i128, proof: Vec<BytesN<32>>` | `Result<(), AirdropError>` | `NotInitialized`, `RootNotSet`, `InvalidAmount`, `ClaimWindowClosed`, `AlreadyClaimed`, `InvalidProof` |
-| `claim_batch` | `env: Env, entries: Vec<(Address, i128, Vec<BytesN<32>>)>` | `Result<(), AirdropError>` | `NotInitialized`, `RootNotSet`, `ClaimWindowClosed`, `InvalidAmount`, `AlreadyClaimed`, `InvalidProof` |
-| `is_claimed` | `env: Env, address: Address` | `bool` | None |
+| `claim` | `env: Env, recipient: Address, token: Address, amount: i128, proof: Vec<BytesN<32>>` | `Result<(), AirdropError>` | `NotInitialized`, `RootNotSet`, `ClaimWindowClosed`, `InvalidAmount`, `AlreadyClaimed`, `InvalidProof`, `InsufficientBalance` |
+| `claim_batch` | `env: Env, entries: Vec<(Address, Address, i128)>, proof: Vec<BytesN<32>>, proof_flags: Vec<bool>` | `Result<(), AirdropError>` | `NotInitialized`, `RootNotSet`, `ClaimWindowClosed`, `EmptyBatch`, `InvalidAmount`, `DuplicateEntry`, `AlreadyClaimed`, `InvalidProof`, `InsufficientBalance` |
+| `release` | `env: Env, recipient: Address, token: Address` | `Result<i128, AirdropError>` | `NoVestingSchedule`, `NothingToRelease` |
+| `is_claimed` | `env: Env, address: Address, token: Address` | `bool` | None |
 | `get_root` | `env: Env` | `Option<Bytes>` | None |
+| `get_vesting_config` | `env: Env` | `Option<VestingConfig>` | None |
+| `get_vesting` | `env: Env, recipient: Address, token: Address` | `Option<VestingSchedule>` | None |
+| `releasable` | `env: Env, recipient: Address, token: Address` | `i128` | None |
+| `total_locked` | `env: Env, token: Address` | `i128` | None |
+
+### Leaf format
+
+Each leaf commits to the network, the airdrop contract instance, the recipient, the token, and the amount. Proofs therefore cannot be replayed across networks (Testnet vs. Mainnet), across airdrop contracts, or across tokens:
+
+```text
+leaf = sha256(
+    "SOROBAN_AIRDROP_LEAF_V1"      // 23-byte ASCII domain separator
+ || network_id                     // 32 bytes: sha256(network passphrase)
+ || xdr(ScVal::Address(contract))  // the airdrop contract address
+ || xdr(ScVal::Address(recipient))
+ || xdr(ScVal::Address(token))
+ || amount                         // i128, 16-byte big-endian
+)
+node = sha256(min(left, right) || max(left, right))
+```
+
+Because the contract address is part of every leaf, the tree can only be built **after** the contract is deployed (or from its pre-computed address).
+
+### Multi-token distributions
+
+A single tree may contain leaves for any number of tokens. Each `(recipient, token)` pair can be claimed once. Fund the contract with every distributed token; claims fail with `InsufficientBalance` when the contract's balance of a token, minus tokens already locked for vesting, cannot cover the claim.
+
+### Batch claims (multi-proof)
+
+`claim_batch` verifies all entries against one Merkle **multi-proof** (the `OpenZeppelin` `multiProofVerify` format, with SHA-256), implemented in `soroban_common::verify_merkle_multi_proof`. Intermediate nodes shared by several entries are hashed only once, so a batch costs `leaves + proof - 1` hashes instead of `leaves × depth`. For 50 leaves in a 1024-leaf tree this is 56 hashes instead of 500, about 87% fewer CPU instructions (`cargo bench -p contract-benchmarks --bench merkle_ops`). `entries` must be supplied in the leaf order emitted by the multi-proof generator.
 
 `claim_batch` uses all-or-nothing semantics: every entry is validated before any transfer executes, so a single bad entry aborts the whole batch.
+
+### Vesting
+
+When `initialize` receives `Some(VestingConfig { initial_unlock_bps, vesting_duration_ledgers })`, each claim transfers `amount * initial_unlock_bps / 10_000` immediately and locks the remainder in a per-`(recipient, token)` schedule that vests linearly over `vesting_duration_ledgers` ledgers from the claim ledger. Recipients withdraw vested tokens with `release`, which keeps working after the claim deadline.
 
 **Errors:**
 - `AlreadyInitialized` (1) — `initialize` called twice
 - `NotInitialized` (2) — Operation before initialize
 - `Unauthorized` (3) — Caller not admin
 - `RootNotSet` (4) — No merkle root configured yet
-- `InvalidProof` (5) — Merkle proof does not verify
-- `AlreadyClaimed` (6) — Address already claimed
+- `InvalidProof` (5) — Merkle proof or multi-proof does not verify
+- `AlreadyClaimed` (6) — `(recipient, token)` already claimed
 - `InvalidAmount` (7) — Claim amount <= 0
 - `ClaimWindowClosed` (8) — Current ledger past `claim_deadline`
+- `InsufficientBalance` (9) — Contract's unlocked token balance cannot cover the claim
+- `InvalidVestingConfig` (10) — `initial_unlock_bps > 10_000`, or locked portion with zero duration
+- `NoVestingSchedule` (11) — No schedule for `(recipient, token)`
+- `NothingToRelease` (12) — Nothing new has vested
+- `DuplicateEntry` (13) — Same `(recipient, token)` twice in one batch
+- `ArithmeticOverflow` (14) — Checked arithmetic overflowed
+- `EmptyBatch` (15) — `claim_batch` called with no entries
 
 ---
 
@@ -688,17 +730,37 @@ passed to `initialize` is always whitelisted). Batch entry points accept at most
 | Function | Parameters | Returns | Errors |
 |----------|-----------|---------|--------|
 | `initialize` | `env: Env, provider: Address, token: Address` | `Result<(), SubscriptionError>` | `AlreadyInitialized` |
-| `register_plan` | `env: Env, plan_id: Symbol, amount: i128, interval_ledgers: u32` | `Result<(), SubscriptionError>` | `NotInitialized`, `NotAuthorized`, `InvalidAmount`, `InvalidInterval`, `PlanAlreadyExists` |
+| `register_plan` | `env: Env, plan_id: Symbol, amount: i128, interval_ledgers: u32, unit_price: i128, prepay_discount_bps: u32` | `Result<(), SubscriptionError>` | `NotInitialized`, `NotAuthorized`, `InvalidAmount`, `InvalidInterval`, `InvalidDiscount`, `PlanAlreadyExists` |
 | `set_plan_active` | `env: Env, plan_id: Symbol, active: bool` | `Result<(), SubscriptionError>` | `NotInitialized`, `NotAuthorized`, `PlanNotFound` |
-| `subscribe` | `env: Env, subscriber: Address, plan_id: Symbol, trial_ledgers: Option<u32>` | `Result<(), SubscriptionError>` | `NotInitialized`, `PlanNotFound`, `PlanInactive`, `AlreadySubscribed` |
-| `charge` | `env: Env, subscriber: Address` | `Result<(), SubscriptionError>` | `NotInitialized`, `NotAuthorized`, `NotSubscribed`, `SubscriptionInactive`, `IntervalNotElapsed`, `InsufficientAllowance` |
+| `subscribe` | `env: Env, subscriber: Address, plan_id: Symbol, trial_ledgers: Option<u32>, prepay_intervals: Option<u32>` | `Result<(), SubscriptionError>` | `NotInitialized`, `PlanNotFound`, `PlanInactive`, `AlreadySubscribed`, `ArithmeticOverflow` |
+| `charge` | `env: Env, subscriber: Address` | `Result<(), SubscriptionError>` | `NotInitialized`, `NotAuthorized`, `NotSubscribed`, `SubscriptionInactive`, `IntervalNotElapsed`, `InsufficientAllowance`, `ArithmeticOverflow` |
+| `report_usage` | `env: Env, subscriber: Address, units: u64` | `Result<(), SubscriptionError>` | `NotInitialized`, `NotAuthorized`, `InvalidAmount`, `NotSubscribed`, `SubscriptionInactive`, `ArithmeticOverflow` |
 | `cancel` | `env: Env, subscriber: Address` | `Result<(), SubscriptionError>` | `NotInitialized`, `NotSubscribed`, `SubscriptionInactive` |
 | `get_subscription` | `env: Env, subscriber: Address` | `Option<SubscriptionInfo>` | None |
+| `subscribe` | `env: Env, subscriber: Address, plan_id: Symbol, trial_ledgers: Option<u32>` | `Result<(), SubscriptionError>` | `NotInitialized`, `PlanNotFound`, `PlanInactive`, `AlreadySubscribed` |
+| `set_grace_period` | `env: Env, grace_period_ledgers: u32` | `Result<(), SubscriptionError>` | `NotInitialized`, `NotAuthorized` |
+| `charge` | `env: Env, subscriber: Address, plan_id: Symbol` | `Result<ChargeOutcome, SubscriptionError>` | `NotInitialized`, `NotAuthorized`, `NotSubscribed`, `SubscriptionSuspended`, `SubscriptionInactive`, `IntervalNotElapsed` |
+| `charge_batch` | `env: Env, subscriptions: Vec<(Address, Symbol)>` | `Result<BatchChargeResult, SubscriptionError>` | `NotInitialized`, `NotAuthorized` |
+| `change_plan` | `env: Env, subscriber: Address, old_plan_id: Symbol, new_plan_id: Symbol` | `Result<(), SubscriptionError>` | `NotInitialized`, `NotSubscribed`, `SubscriptionSuspended`, `SubscriptionInactive`, `PlanNotFound`, `PlanInactive`, `AlreadySubscribed`, `PaymentOverdue`, `ArithmeticOverflow` |
+| `cancel` | `env: Env, subscriber: Address, plan_id: Symbol` | `Result<(), SubscriptionError>` | `NotInitialized`, `NotSubscribed`, `SubscriptionInactive` |
+| `get_subscription` | `env: Env, subscriber: Address, plan_id: Symbol` | `Option<SubscriptionInfo>` | None |
 | `get_provider` | `env: Env` | `Option<Address>` | None |
 | `get_token` | `env: Env` | `Option<Address>` | None |
 | `get_plan` | `env: Env, plan_id: Symbol` | `Option<Plan>` | None |
+| `get_grace_period` | `env: Env` | `u32` | None |
 
 The subscriber must pre-approve this contract as a token spender (`token.approve(subscriber, subscription_contract, amount * periods, expiry_ledger)`) before the provider can `charge`. An optional `trial_ledgers` on `subscribe` delays the first real charge; `charge` during the trial window only marks the trial complete without transferring funds.
+
+**Metered billing:** plans with a non-zero `unit_price` bill `amount + usage_units * unit_price` per interval. The provider accumulates usage with `report_usage`; the meter resets to zero on each successful `charge` (and is discarded on `cancel`).
+
+**Prepaid billing:** passing `prepay_intervals: Some(n)` to `subscribe` transfers `amount * n` less the plan's `prepay_discount_bps` into contract escrow. Each `charge` releases one interval's share to the provider (usage fees are still pulled from the allowance). `cancel` refunds the unconsumed escrow balance.
+Subscriptions are keyed by `(subscriber, plan_id)`, so one address can hold several plans concurrently, each billed on its own interval.
+
+**Grace period:** a failed `charge` (insufficient allowance or balance) does not revert; it returns `ChargeOutcome::PaymentFailed`, increments `failed_charges_count`, records `delinquent_since_ledger`, and emits `charge_failed`. A failed attempt at or after `delinquent_since_ledger + grace_period_ledgers` sets the subscription to suspended (`ChargeOutcome::Suspended`, `subscription_suspended` event). A successful charge clears the delinquency. The grace period defaults to 120 960 ledgers (~7 days).
+
+**Batch billing:** `charge_batch` charges many `(subscriber, plan_id)` pairs under one provider authorization. Entries that are not due or not chargeable are skipped without reverting the others, and a single `batch_charged` event carries the totals.
+
+**Plan changes:** `change_plan` credits the unused part of the current paid interval (`old_amount * remaining / old_interval`). On an upgrade the shortfall is charged immediately and a new interval starts; on a downgrade the credit is turned into extra ledgers on the new plan before the next charge is due.
 
 **Errors:**
 - `AlreadyInitialized` (1) — `initialize` called twice
@@ -714,6 +776,11 @@ The subscriber must pre-approve this contract as a token spender (`token.approve
 - `PlanAlreadyExists` (11) — Plan ID already registered
 - `PlanNotFound` (12) — Unknown plan ID
 - `PlanInactive` (13) — Plan deactivated
+- `InvalidDiscount` (14) — `prepay_discount_bps` > 10,000
+- `ArithmeticOverflow` (15) — A billing calculation overflowed
+- `SubscriptionSuspended` (14) — Suspended after the grace period expired
+- `PaymentOverdue` (15) — Current period is due or delinquent; charge before changing plans
+- `ArithmeticOverflow` (16) — Pro-ration arithmetic overflowed
 
 ---
 
