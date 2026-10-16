@@ -2,31 +2,41 @@
 // missing_docs for this module. The variants themselves are still documented.
 #![allow(missing_docs)]
 
+use soroban_common::impl_display_error;
 use soroban_sdk::contracterror;
 
-/// Errors returned by the oracle contract entry points.
 #[contracterror]
 #[derive(Clone, Copy, Debug)]
 pub enum OracleError {
-    /// `initialize` was called on an already-initialized contract.
     AlreadyInitialized = 1,
-    /// An entry point was called before `initialize`.
     NotInitialized = 2,
-    /// The caller is not the configured admin.
     Unauthorized = 3,
-    /// The stored price is older than the staleness threshold.
     StalePrice = 4,
-    /// The provided staleness threshold is zero.
     InvalidStalenessThreshold = 5,
-    /// No authorized publisher has submitted a price yet.
     NoPublisherData = 6,
-    /// No price observations fall within the requested TWAP window.
     InsufficientHistory = 7,
     /// The EMA smoothing factor is zero or exceeds 10 000 basis points.
     InvalidSmoothingFactor = 8,
     /// The publisher already submitted a price in the current ledger.
     SubmissionTooFrequent = 9,
+    /// Price submitted is zero or negative.
+    InvalidPrice = 8,
+    /// Requested asset symbol has no price feed.
+    AssetNotFound = 9,
 }
+
+impl_display_error!(
+    OracleError,
+    AlreadyInitialized          => "already initialized",
+    NotInitialized              => "not initialized",
+    Unauthorized                => "not authorized",
+    StalePrice                  => "stale price",
+    InvalidStalenessThreshold   => "invalid staleness threshold",
+    NoPublisherData             => "no publisher data",
+    InsufficientHistory         => "insufficient history",
+    InvalidPrice                => "price must be greater than zero",
+    AssetNotFound               => "asset not found",
+);
 
 #[cfg(test)]
 mod tests {
@@ -49,6 +59,8 @@ OracleError::NoPublisherData = {}\n\
 OracleError::InsufficientHistory = {}\n\
 OracleError::InvalidSmoothingFactor = {}\n\
 OracleError::SubmissionTooFrequent = {}\n",
+OracleError::InvalidPrice = {}\n\
+OracleError::AssetNotFound = {}\n",
             OracleError::AlreadyInitialized as u32,
             OracleError::NotInitialized as u32,
             OracleError::Unauthorized as u32,
@@ -58,6 +70,8 @@ OracleError::SubmissionTooFrequent = {}\n",
             OracleError::InsufficientHistory as u32,
             OracleError::InvalidSmoothingFactor as u32,
             OracleError::SubmissionTooFrequent as u32,
+            OracleError::InvalidPrice as u32,
+            OracleError::AssetNotFound as u32,
         )
     }
 

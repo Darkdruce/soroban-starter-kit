@@ -36,5 +36,16 @@ pub fn heartbeat_recovered(env: &Env, stale_for_ledgers: u32, heartbeat_ledgers:
     env.events().publish(
         (Symbol::new(env, "heartbeat_recovered"),),
         (stale_for_ledgers, heartbeat_ledgers),
+pub fn asset_price_updated(
+    env: &Env,
+    admin: &Address,
+    asset: &Symbol,
+    price: i128,
+    decimals: u32,
+    ledger: u32,
+) {
+    env.events().publish(
+        (Symbol::new(env, "asset_price_updated"), admin.clone()),
+        (asset.clone(), price, decimals, ledger),
     );
 }
