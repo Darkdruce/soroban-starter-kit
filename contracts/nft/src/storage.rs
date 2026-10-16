@@ -17,6 +17,12 @@ pub enum DataKey {
     RoyaltyBps,
     /// Collection-level default royalty recipient.
     RoyaltyRecipient,
+    /// Number of tokens burned so far. Active supply is `TotalSupply - Burned`.
+    Burned,
+    /// Persistent: collection-wide operator approval `(owner, operator) -> bool`.
+    OperatorApproval(Address, Address),
+    /// Persistent: number of tokens owned by an address.
+    Balance(Address),
 }
 
 /// Persistent-storage keys (per-key TTL for per-token data).
