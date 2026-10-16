@@ -29,6 +29,10 @@ pub enum DataKey {
     TotalTickets,
     /// Optional minimum participants required before `draw` may succeed.
     MinParticipants,
+    /// Fee in basis points (1–9 999) deducted from the prize pool before winner payouts.
+    FeeBps,
+    /// Recipient address for the fee amount.
+    FeeRecipient,
 }
 
 #[contracttype]

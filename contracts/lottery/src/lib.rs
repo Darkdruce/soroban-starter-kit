@@ -77,6 +77,9 @@ mod contract {
         /// `min_participants`, if set, is the minimum number of distinct participant addresses
         /// required before `draw` may succeed; if the threshold is not met the admin may call
         /// `rollover` to start a new round and carry the prize pool forward.
+        /// `fee_bps` is an optional operator rake in basis points (1–9 999). When set,
+        /// `fee_recipient` must also be provided; the fee is transferred to that address
+        /// at `draw` time before the winner prize pool is calculated.
         ///
         /// # Errors
         /// - [`LotteryError::AlreadyInitialized`]
@@ -84,6 +87,8 @@ mod contract {
         /// - [`LotteryError::InvalidWinnerConfig`] if winner_count is zero, `prize_splits` length
         ///   doesn't match `winner_count`, or the splits don't sum to 10 000 basis points
         /// - [`LotteryError::InvalidTicketCap`] if `max_tickets_per_address` is `Some(0)`
+        /// - [`LotteryError::InvalidFeeConfig`] if `fee_bps >= 10_000`, or exactly one of
+        ///   `fee_bps`/`fee_recipient` is set without the other
         pub fn initialize(
             env: Env,
             admin: Address,
@@ -93,6 +98,8 @@ mod contract {
             prize_splits: Vec<u32>,
             max_tickets_per_address: Option<u32>,
             min_participants: Option<u32>,
+            fee_bps: Option<u32>,
+            fee_recipient: Option<Address>,
         ) -> Result<(), LotteryError> {
             if env.storage().instance().has(&State) {
                 return Err(LotteryError::AlreadyInitialized);
@@ -116,6 +123,18 @@ mod contract {
             if max_tickets_per_address == Some(0) {
                 return Err(LotteryError::InvalidTicketCap);
             }
+
+            // Validate fee configuration: both must be set together, and bps must be < 10_000.
+            match (&fee_bps, &fee_recipient) {
+                (Some(bps), Some(_)) => {
+                    if *bps == 0 || *bps >= BPS_DENOMINATOR as u32 {
+                        return Err(LotteryError::InvalidFeeConfig);
+                    }
+                }
+                (None, None) => {}
+                _ => return Err(LotteryError::InvalidFeeConfig),
+            }
+
             admin.require_auth();
 
             env.storage().instance().set(&Admin, &admin);
@@ -130,6 +149,10 @@ mod contract {
             }
             if let Some(min) = min_participants {
                 env.storage().instance().set(&MinParticipants, &min);
+            }
+            if let (Some(bps), Some(recipient)) = (fee_bps, fee_recipient) {
+                env.storage().instance().set(&FeeBps, &bps);
+                env.storage().instance().set(&FeeRecipient, &recipient);
             }
 
             bump_instance(&env);
@@ -308,6 +331,9 @@ mod contract {
         /// `winner_count` distinct winners and splits the prize pool between them according to
         /// the configured `prize_splits`.
         ///
+        /// If a fee was configured at initialization, the fee amount is deducted from the total
+        /// prize pool and transferred to the fee recipient before winners are paid.
+        ///
         /// # Errors
         /// - [`LotteryError::NotInitialized`]
         /// - [`LotteryError::Unauthorized`]
@@ -408,13 +434,36 @@ mod contract {
             let token_addr: Address = get_required(&env, &Token)?;
             let token_client = token::Client::new(&env, &token_addr);
 
+            // Deduct the operator rake if configured, then distribute the remainder.
+            let distributable_prize = if let Some(fee_bps) = env
+                .storage()
+                .instance()
+                .get::<DataKey, u32>(&FeeBps)
+            {
+                #[allow(clippy::unwrap_used)] // fee_bps and fee_recipient are validated as a pair at initialize
+                let fee_recipient: Address = env.storage().instance().get(&FeeRecipient).unwrap();
+                let fee_amount = apply_bps_fee(total_prize, fee_bps).unwrap_or(0);
+                if fee_amount > 0 {
+                    token_client.transfer(
+                        &env.current_contract_address(),
+                        &fee_recipient,
+                        &fee_amount,
+                    );
+                    events::fee_transferred(&env, &fee_recipient, fee_amount);
+                }
+                #[allow(clippy::arithmetic_side_effects)]
+                { total_prize - fee_amount }
+            } else {
+                total_prize
+            };
+
             for i in 0..winner_count {
                 #[allow(clippy::unwrap_used)] // i < winner_count == winners.len() == prize_splits.len()
                 let winner = winners.get(i).unwrap();
                 #[allow(clippy::unwrap_used)]
                 let split = prize_splits.get(i).unwrap();
                 #[allow(clippy::arithmetic_side_effects, clippy::integer_division)]
-                let amount = apply_bps_fee(total_prize, split).unwrap_or(0);
+                let amount = apply_bps_fee(distributable_prize, split).unwrap_or(0);
                 token_client.transfer(&env.current_contract_address(), &winner, &amount);
                 events::winner_drawn(&env, &winner, amount);
             }

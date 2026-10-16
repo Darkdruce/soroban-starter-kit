@@ -29,6 +29,13 @@ pub fn winner_drawn(env: &Env, winner: &Address, prize: i128) {
         .publish((Symbol::new(env, "winner_drawn"), winner.clone()), prize);
 }
 
+pub fn fee_transferred(env: &Env, recipient: &Address, amount: i128) {
+    env.events().publish(
+        (Symbol::new(env, "fee_transferred"), recipient.clone()),
+        amount,
+    );
+}
+
 pub fn refund_claimed(env: &Env, buyer: &Address, amount: i128) {
     env.events()
         .publish((Symbol::new(env, "refund_claimed"), buyer.clone()), amount);
