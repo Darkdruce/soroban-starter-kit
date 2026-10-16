@@ -159,3 +159,10 @@ pub fn seller_proceeds_withdrawn(env: &Env, seller: &Address, amount: i128) {
         amount,
     );
 }
+
+pub fn royalty_paid(env: &Env, recipient: &Address, token_id: u32, amount: i128) {
+    env.events().publish(
+        (Symbol::new(env, "royalty_paid"), recipient.clone(), token_id),
+        amount,
+    );
+}

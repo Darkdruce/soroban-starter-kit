@@ -53,6 +53,7 @@ mod contract {
             amount: i128,
             deadline_ledger: u32,
             dispute_timeout_ledgers: u32,
+            grace_period_ledgers: Option<u32>,
             metadata_hash: Option<soroban_sdk::BytesN<32>>,
         ) -> Result<(), EscrowError> {
             lifecycle::initialize(
@@ -65,6 +66,7 @@ mod contract {
                 amount,
                 deadline_ledger,
                 dispute_timeout_ledgers,
+                grace_period_ledgers,
                 metadata_hash,
             )
         }
