@@ -70,6 +70,36 @@ mod contract {
         }
 
         #[allow(clippy::too_many_arguments)]
+        #[allow(clippy::too_many_arguments)]
+        pub fn initialize_with_abandonment_buffer(
+            env: Env,
+            admin: Address,
+            buyer: Address,
+            seller: Address,
+            arbiter: Address,
+            token_contract: Address,
+            amount: i128,
+            deadline_ledger: u32,
+            dispute_timeout_ledgers: u32,
+            abandonment_buffer: u32,
+            metadata_hash: Option<soroban_sdk::BytesN<32>>,
+        ) -> Result<(), EscrowError> {
+            lifecycle::initialize_with_abandonment_buffer(
+                env,
+                admin,
+                buyer,
+                seller,
+                arbiter,
+                token_contract,
+                amount,
+                deadline_ledger,
+                dispute_timeout_ledgers,
+                abandonment_buffer,
+                metadata_hash,
+            )
+        }
+
+        #[allow(clippy::too_many_arguments)]
         pub fn initialize_with_arbiters(
             env: Env,
             admin: Address,
@@ -124,6 +154,10 @@ mod contract {
 
         pub fn request_partial_refund(env: Env) -> Result<(), EscrowError> {
             lifecycle::request_partial_refund(env)
+        }
+
+        pub fn claim_expired_refund(env: Env) -> Result<(), EscrowError> {
+            lifecycle::claim_expired_refund(env)
         }
 
         pub fn raise_dispute(env: Env, caller: Address) -> Result<(), EscrowError> {

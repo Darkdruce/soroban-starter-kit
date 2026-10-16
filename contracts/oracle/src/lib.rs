@@ -10,7 +10,7 @@
 #[macro_use]
 extern crate std;
 
-use soroban_sdk::{Address, Env, Symbol, Vec, contract, contractimpl};
+use soroban_sdk::{Address, Env, Symbol, Vec, contract, contractimpl, token};
 
 mod errors;
 mod events;
@@ -92,6 +92,33 @@ fn push_history(env: &Env, price: i128, timestamp: u64) {
 /// non-empty and sorted oldest-first. Each observation's price is weighted by
 /// how long it held (until the next observation, or `now` for the last one).
 #[allow(clippy::arithmetic_side_effects, clippy::integer_division)]
+fn push_asset_history(env: &Env, asset: &Symbol, price: i128, timestamp: u64) {
+    let key = DataKey::AssetHistory(asset.clone());
+    let mut history: Vec<PriceObservation> = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or(Vec::new(env));
+    history.push_back(PriceObservation { price, timestamp });
+    while history.len() > MAX_HISTORY {
+        history.pop_front();
+    }
+    env.storage().persistent().set(&key, &history);
+    env.storage().persistent().extend_ttl(
+        &key,
+        LEDGER_LIFETIME_THRESHOLD,
+        LEDGER_BUMP_AMOUNT,
+    );
+}
+
+fn exceeds_deviation(previous: i128, next: i128, max_deviation_bps: u32) -> bool {
+    if max_deviation_bps == 0 || previous <= 0 {
+        return false;
+    }
+    let difference = next.saturating_sub(previous).abs();
+    difference.saturating_mul(10_000) > previous.saturating_mul(i128::from(max_deviation_bps))
+}
+
 fn twap(observations: &Vec<PriceObservation>, now: u64) -> i128 {
     let len = observations.len();
     if len == 1 {
@@ -410,6 +437,31 @@ mod contract {
             let ledger = env.ledger().sequence();
             let price_key = AssetPrice(asset.clone());
             let dec_key = AssetDecimals(asset.clone());
+            if env
+                .storage()
+                .persistent()
+                .get::<_, bool>(&FeedPaused(asset.clone()))
+                .unwrap_or(false)
+            {
+                return Err(OracleError::FeedPaused);
+            }
+            let max_deviation_bps: u32 = env
+                .storage()
+                .instance()
+                .get(&MaxDeviationBps)
+                .unwrap_or(0);
+            if let Some((previous, _)) = env.storage().persistent().get::<_, (i128, u32)>(&price_key) {
+                if exceeds_deviation(previous, price, max_deviation_bps) {
+                    let paused_key = FeedPaused(asset.clone());
+                    env.storage().persistent().set(&paused_key, &true);
+                    env.storage().persistent().extend_ttl(
+                        &paused_key,
+                        LEDGER_LIFETIME_THRESHOLD,
+                        LEDGER_BUMP_AMOUNT,
+                    );
+                    return Err(OracleError::PriceDeviationTooHigh);
+                }
+            }
 
             env.storage().persistent().set(&price_key, &(price, ledger));
             env.storage().persistent().extend_ttl(
@@ -423,6 +475,7 @@ mod contract {
                 LEDGER_LIFETIME_THRESHOLD,
                 LEDGER_BUMP_AMOUNT,
             );
+            push_asset_history(&env, &asset, price, env.ledger().timestamp());
 
             bump_instance(&env);
             events::asset_price_updated(&env, &admin, &asset, price, decimals, ledger);
@@ -484,12 +537,185 @@ mod contract {
                 .persistent()
                 .get(&AssetDecimals(asset.clone()))
                 .ok_or(OracleError::AssetNotFound)?;
+            let description: soroban_sdk::String = env
+                .storage()
+                .persistent()
+                .get(&AssetDescription(asset.clone()))
+                .unwrap_or(soroban_sdk::String::from_str(&env, ""));
             Ok(AssetFeedData {
                 asset,
                 price,
                 decimals,
+                description,
                 updated_at,
             })
+        }
+
+        /// Configure feed metadata without changing its current price.
+        pub fn configure_asset_feed(
+            env: Env,
+            asset: Symbol,
+            decimals: u32,
+            description: soroban_sdk::String,
+        ) -> Result<(), OracleError> {
+            let admin: Address = get_required(&env, &Admin)?;
+            admin.require_auth();
+            env.storage()
+                .persistent()
+                .set(&AssetDecimals(asset.clone()), &decimals);
+            env.storage()
+                .persistent()
+                .set(&AssetDescription(asset), &description);
+            Ok(())
+        }
+
+        /// Update a configured asset feed using its existing decimal metadata.
+        pub fn update_price_for(
+            env: Env,
+            asset: Symbol,
+            price: i128,
+        ) -> Result<(), OracleError> {
+            let decimals: u32 = env
+                .storage()
+                .persistent()
+                .get(&AssetDecimals(asset.clone()))
+                .unwrap_or(0);
+            Self::update_asset_price(env, asset, price, decimals)
+        }
+
+        /// Compute a TWAP using only observations for `asset`.
+        pub fn get_twap_for(env: Env, asset: Symbol, window: u64) -> Result<i128, OracleError> {
+            let history: Vec<PriceObservation> = env
+                .storage()
+                .persistent()
+                .get(&AssetHistory(asset))
+                .unwrap_or(Vec::new(&env));
+            let now = env.ledger().timestamp();
+            let cutoff = now.saturating_sub(window);
+            let mut in_window: Vec<PriceObservation> = Vec::new(&env);
+            for observation in history.iter() {
+                if observation.timestamp >= cutoff {
+                    in_window.push_back(observation);
+                }
+            }
+            if in_window.is_empty() {
+                return Err(OracleError::InsufficientHistory);
+            }
+            Ok(twap(&in_window, now))
+        }
+
+        /// Configure the maximum accepted price movement in basis points.
+        pub fn set_max_deviation_bps(env: Env, max_deviation_bps: u32) -> Result<(), OracleError> {
+            let admin: Address = get_required(&env, &Admin)?;
+            admin.require_auth();
+            if max_deviation_bps > 10_000 {
+                return Err(OracleError::InvalidDeviationThreshold);
+            }
+            env.storage().instance().set(&MaxDeviationBps, &max_deviation_bps);
+            Ok(())
+        }
+
+        /// Clear a feed circuit breaker after administrator verification.
+        pub fn unpause_feed(env: Env, asset: Symbol) -> Result<(), OracleError> {
+            let admin: Address = get_required(&env, &Admin)?;
+            admin.require_auth();
+            env.storage().persistent().set(&FeedPaused(asset), &false);
+            Ok(())
+        }
+
+        /// Return whether a feed is paused by the circuit breaker.
+        pub fn is_feed_paused(env: Env, asset: Symbol) -> bool {
+            env.storage()
+                .persistent()
+                .get(&FeedPaused(asset))
+                .unwrap_or(false)
+        }
+
+        /// Configure the token and destination used for publisher bonds.
+        pub fn configure_bonding(
+            env: Env,
+            admin: Address,
+            token_contract: Address,
+            insurance_fund: Address,
+        ) -> Result<(), OracleError> {
+            let stored_admin: Address = get_required(&env, &Admin)?;
+            admin.require_auth();
+            if admin != stored_admin {
+                return Err(OracleError::Unauthorized);
+            }
+            env.storage().instance().set(&BondToken, &token_contract);
+            env.storage().instance().set(&InsuranceFund, &insurance_fund);
+            Ok(())
+        }
+
+        /// Register a publisher after transferring its collateral bond.
+        pub fn register_publisher(env: Env, publisher: Address, bond: i128) -> Result<(), OracleError> {
+            publisher.require_auth();
+            if bond <= 0 {
+                return Err(OracleError::InsufficientBond);
+            }
+            let token_contract: Address = env
+                .storage()
+                .instance()
+                .get(&BondToken)
+                .ok_or(OracleError::BondingNotConfigured)?;
+            let mut publishers: Vec<Address> = env
+                .storage()
+                .instance()
+                .get(&Publishers)
+                .unwrap_or(Vec::new(&env));
+            token::Client::new(&env, &token_contract).transfer(
+                &publisher,
+                &env.current_contract_address(),
+                &bond,
+            );
+            if !publishers.contains(&publisher) {
+                publishers.push_back(publisher.clone());
+                env.storage().instance().set(&Publishers, &publishers);
+            }
+            let key = PublisherBond(publisher);
+            let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+            env.storage().persistent().set(&key, &current.saturating_add(bond));
+            Ok(())
+        }
+
+        /// Slash a publisher's bond and route the collateral to the insurance fund.
+        pub fn slash_publisher(env: Env, publisher: Address, penalty: i128) -> Result<(), OracleError> {
+            let admin: Address = get_required(&env, &Admin)?;
+            admin.require_auth();
+            if penalty <= 0 {
+                return Err(OracleError::InsufficientBond);
+            }
+            let token_contract: Address = env
+                .storage()
+                .instance()
+                .get(&BondToken)
+                .ok_or(OracleError::BondingNotConfigured)?;
+            let insurance_fund: Address = env
+                .storage()
+                .instance()
+                .get(&InsuranceFund)
+                .ok_or(OracleError::BondingNotConfigured)?;
+            let key = PublisherBond(publisher);
+            let bond: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+            if bond < penalty {
+                return Err(OracleError::InsufficientBond);
+            }
+            token::Client::new(&env, &token_contract).transfer(
+                &env.current_contract_address(),
+                &insurance_fund,
+                &penalty,
+            );
+            env.storage().persistent().set(&key, &(bond - penalty));
+            Ok(())
+        }
+
+        /// Return the current bond held for a publisher.
+        pub fn get_publisher_bond(env: Env, publisher: Address) -> i128 {
+            env.storage()
+                .persistent()
+                .get(&PublisherBond(publisher))
+                .unwrap_or(0)
         }
     }
 }
