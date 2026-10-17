@@ -5,5 +5,7 @@ OracleError::StalePrice = 4
 OracleError::InvalidStalenessThreshold = 5
 OracleError::NoPublisherData = 6
 OracleError::InsufficientHistory = 7
+OracleError::InvalidSmoothingFactor = 8
+OracleError::SubmissionTooFrequent = 9
 OracleError::InvalidPrice = 8
 OracleError::AssetNotFound = 9

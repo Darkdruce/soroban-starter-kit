@@ -24,6 +24,8 @@ pub enum DataKey {
     Submission(Address),
     /// Ring buffer of the last `N` price observations, oldest first (instance).
     History,
+    /// The ledger sequence of a publisher's last `submit_price` call (persistent).
+    LastSubmissionLedger(Address),
     /// Per-asset price stored in persistent storage, keyed by asset symbol.
     AssetPrice(Symbol),
     /// Per-asset decimal precision stored in persistent storage, keyed by asset symbol.

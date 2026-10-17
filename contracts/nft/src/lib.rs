@@ -528,6 +528,12 @@ mod contract {
             env.storage()
                 .persistent()
                 .set(&TokenKey::Owner(token_id), &to);
+            // Clear any approval so the previous owner's spender cannot move the
+            // token away from the new owner.
+            env.storage()
+                .instance()
+                .remove(&TokenKey::Approved(token_id));
+            bump_instance(&env);
             enumerable_add(&env, &to, token_id);
             // Clear any existing approval on transfer.
             env.storage()

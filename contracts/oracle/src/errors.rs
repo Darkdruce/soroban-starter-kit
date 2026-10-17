@@ -15,6 +15,10 @@ pub enum OracleError {
     InvalidStalenessThreshold = 5,
     NoPublisherData = 6,
     InsufficientHistory = 7,
+    /// The EMA smoothing factor is zero or exceeds 10 000 basis points.
+    InvalidSmoothingFactor = 8,
+    /// The publisher already submitted a price in the current ledger.
+    SubmissionTooFrequent = 9,
     /// Price submitted is zero or negative.
     InvalidPrice = 8,
     /// Requested asset symbol has no price feed.
@@ -53,6 +57,8 @@ OracleError::StalePrice = {}\n\
 OracleError::InvalidStalenessThreshold = {}\n\
 OracleError::NoPublisherData = {}\n\
 OracleError::InsufficientHistory = {}\n\
+OracleError::InvalidSmoothingFactor = {}\n\
+OracleError::SubmissionTooFrequent = {}\n",
 OracleError::InvalidPrice = {}\n\
 OracleError::AssetNotFound = {}\n",
             OracleError::AlreadyInitialized as u32,
@@ -62,6 +68,8 @@ OracleError::AssetNotFound = {}\n",
             OracleError::InvalidStalenessThreshold as u32,
             OracleError::NoPublisherData as u32,
             OracleError::InsufficientHistory as u32,
+            OracleError::InvalidSmoothingFactor as u32,
+            OracleError::SubmissionTooFrequent as u32,
             OracleError::InvalidPrice as u32,
             OracleError::AssetNotFound as u32,
         )

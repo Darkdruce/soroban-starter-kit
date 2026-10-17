@@ -34,7 +34,7 @@ pub enum DataKey {
 #[derive(Clone)]
 pub enum TokenKey {
     Owner(u32),
-    Approval(u32),
+    Approved(u32),
     Uri(u32),
     /// Optional per-token royalty override in basis points (0–10 000).
     TokenRoyaltyBps(u32),
