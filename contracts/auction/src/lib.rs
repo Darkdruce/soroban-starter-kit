@@ -249,6 +249,40 @@ fn place_bid(
         .set(&DataKey::HighestBidder, bidder);
     env.storage().instance().set(&DataKey::HighestBid, &amount);
 
+    // Check for buy-it-now immediate settlement (issue #1294)
+    let buy_it_now_price: Option<i128> = env.storage().instance().get(&DataKey::BuyItNowPrice);
+    if let Some(bin_price) = buy_it_now_price {
+        if amount >= bin_price {
+            // Immediate settlement: mark as settled before any external calls
+            env.storage().instance().set(&DataKey::Settled, &true);
+            bump_instance(env);
+            
+            let seller: Address = get_instance(env, &DataKey::Seller)?;
+            let token: Address = get_instance(env, &DataKey::Token)?;
+            
+            // Refund previous bidders (if credit was not used, transfer was already made)
+            // Transfer winning bid to seller
+            if required_transfer > 0 {
+                token::Client::new(env, &token).transfer(
+                    bidder,
+                    &env.current_contract_address(),
+                    &required_transfer,
+                );
+            }
+            
+            token::Client::new(env, &token).transfer(
+                &env.current_contract_address(),
+                &seller,
+                &amount,
+            );
+            
+            release_nft(env, bidder);
+            events::bid_placed(env, bidder, amount);
+            events::ended(env, bidder, amount);
+            return Ok(());
+        }
+    }
+
     // Anti-sniping: extend deadline if bid arrives within the extension window.
     let extension_window: u32 = env
         .storage()
@@ -349,6 +383,11 @@ mod contract {
         ///
         /// `cancellation_fee` is the compensation, in `token` units, that the seller
         /// pays the top bidder when cancelling inside the grace window. Must be `>= 0`.
+        /// 
+        /// `buy_it_now_price` is optional (issue #1294). When set, any bid at or above
+        /// this price immediately settles the auction, transferring the item to the bidder
+        /// and payment to the seller.
+        /// 
         /// `nft_contract` / `token_id` optionally make the auction custodial: the NFT is
         /// transferred from `seller` into this contract (the seller's authorization of
         /// `start` covers the nested NFT `transfer`). Pass `None` for both to auction an
@@ -376,6 +415,7 @@ mod contract {
             max_deadline: u32,
             cancellation_grace_ledgers: u32,
             cancellation_fee: i128,
+            buy_it_now_price: Option<i128>,
             nft_contract: Option<Address>,
             token_id: Option<u32>,
         ) -> Result<(), AuctionError> {
@@ -426,6 +466,10 @@ mod contract {
 
             if let Some(rp) = reserve_price {
                 env.storage().instance().set(&DataKey::ReservePrice, &rp);
+            }
+            
+            if let Some(bin) = buy_it_now_price {
+                env.storage().instance().set(&DataKey::BuyItNowPrice, &bin);
             }
 
             bump_instance(&env);
@@ -830,17 +874,45 @@ mod contract {
 
             // Payment and NFT delivery happen in the same invocation, so either both
             // succeed or the whole settlement reverts.
+            
+            // Query and pay NFT royalties (issue #1295)
+            let mut seller_proceeds = highest_bid;
+            let nft_contract_opt: Option<Address> = env.storage().instance().get(&DataKey::NftContract);
+            let token_id_opt: Option<u32> = env.storage().instance().get(&DataKey::NftTokenId);
+            
+            if let (Some(nft_contract), Some(token_id)) = (nft_contract_opt, token_id_opt) {
+                // Attempt to query royalty_info - if the NFT doesn't support it, continue without royalties
+                let nft_client = nft::NftClient::new(&env, &nft_contract);
+                if let Ok(Some((royalty_recipient, royalty_amount))) = 
+                    nft_client.try_royalty_info(&token_id, &highest_bid) {
+                    if royalty_amount > 0 && royalty_amount < highest_bid {
+                        // Pay royalty to creator
+                        let token_client = token::Client::new(&env, &token);
+                        let royalty_paid = token_client
+                            .try_transfer(&env.current_contract_address(), &royalty_recipient, &royalty_amount)
+                            .is_ok_and(|r| r.is_ok());
+                        
+                        if royalty_paid {
+                            seller_proceeds = highest_bid
+                                .checked_sub(royalty_amount)
+                                .ok_or(AuctionError::Overflow)?;
+                            events::royalty_paid(&env, &royalty_recipient, token_id, royalty_amount);
+                        }
+                    }
+                }
+            }
+            
             // Pull-over-push fallback (issue #1067): if the seller cannot receive
             // (frozen, blacklisted, failing receiver), credit their proceeds so
             // settlement never blocks and funds are never trapped.
             let paid = token::Client::new(&env, &token)
-                .try_transfer(&env.current_contract_address(), &seller, &highest_bid)
+                .try_transfer(&env.current_contract_address(), &seller, &seller_proceeds)
                 .is_ok_and(|r| r.is_ok());
             if !paid {
                 let key = DataKey::SellerPending(seller.clone());
                 let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
                 let new_total = current
-                    .checked_add(highest_bid)
+                    .checked_add(seller_proceeds)
                     .ok_or(AuctionError::Overflow)?;
                 env.storage().persistent().set(&key, &new_total);
                 env.storage().persistent().extend_ttl(
@@ -848,7 +920,7 @@ mod contract {
                     LEDGER_LIFETIME_THRESHOLD,
                     LEDGER_BUMP_AMOUNT,
                 );
-                events::seller_proceeds_queued(&env, &seller, highest_bid);
+                events::seller_proceeds_queued(&env, &seller, seller_proceeds);
             }
             release_nft(&env, &winner);
 
@@ -973,6 +1045,7 @@ mod contract {
                     .unwrap_or(0),
                 nft_contract: env.storage().instance().get(&DataKey::NftContract),
                 nft_token_id: env.storage().instance().get(&DataKey::NftTokenId),
+                buy_it_now_price: env.storage().instance().get(&DataKey::BuyItNowPrice),
             })
         }
 

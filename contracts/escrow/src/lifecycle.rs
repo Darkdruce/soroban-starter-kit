@@ -105,6 +105,7 @@ pub fn initialize(
     amount: i128,
     deadline_ledger: u32,
     dispute_timeout_ledgers: u32,
+    grace_period_ledgers: Option<u32>,
     metadata_hash: Option<soroban_sdk::BytesN<32>>,
 ) -> Result<(), EscrowError> {
     if env.storage().instance().has(&State) {
@@ -128,6 +129,11 @@ pub fn initialize(
         1u32,
         dispute_timeout_ledgers,
     );
+    if let Some(grace) = grace_period_ledgers {
+        env.storage()
+            .instance()
+            .set(&DataKey::GracePeriodLedgers, &grace);
+    }
     if let Some(hash) = metadata_hash {
         env.storage().instance().set(&DataKey::MetadataHash, &hash);
     }
@@ -247,6 +253,12 @@ pub fn mark_delivered(env: Env) -> Result<(), EscrowError> {
     env.storage()
         .instance()
         .set(&State, &EscrowState::Delivered);
+    
+    // Record when delivery was marked to enable grace period
+    env.storage()
+        .instance()
+        .set(&DataKey::DeliveryMarkedAt, &env.ledger().sequence());
+    
     extend_ttl(&env);
 
     events::delivery_marked(&env, &seller);
@@ -308,10 +320,37 @@ pub fn request_refund(env: Env) -> Result<(), EscrowError> {
     let state: EscrowState = get_required(&env, &State)?;
     let deadline: u32 = get_required(&env, &Deadline)?;
 
-    let can_refund = matches!(state, EscrowState::Funded | EscrowState::Delivered)
-        && env.ledger().sequence() > deadline;
-    if !can_refund {
+    // Check if deadline passed
+    if env.ledger().sequence() <= deadline {
         return Err(EscrowError::DeadlineNotReached);
+    }
+
+    // If deliverable was marked, check grace period
+    if state == EscrowState::Delivered {
+        if let Some(delivery_marked_at) = env
+            .storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::DeliveryMarkedAt)
+        {
+            let grace_period: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::GracePeriodLedgers)
+                .unwrap_or(0);
+            
+            if grace_period > 0 {
+                let grace_expires = delivery_marked_at.saturating_add(grace_period);
+                if env.ledger().sequence() < grace_expires {
+                    // Still within grace period - buyer cannot claim refund yet
+                    return Err(EscrowError::DeadlineNotReached);
+                }
+            }
+        }
+    }
+
+    let can_refund = matches!(state, EscrowState::Funded | EscrowState::Delivered);
+    if !can_refund {
+        return Err(EscrowError::InvalidState);
     }
 
     refund_to_buyer(env)

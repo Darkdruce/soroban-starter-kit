@@ -44,6 +44,10 @@ pub enum DataKey {
     DisputeTimeoutLedgers,
     /// Ledger sequence at which the current dispute was raised (`u32`).
     DisputeRaisedAt,
+    /// Grace period in ledgers after mark_delivered before buyer can claim expiration refund (`u32`).
+    GracePeriodLedgers,
+    /// Ledger sequence at which mark_delivered was called (`u32`).
+    DeliveryMarkedAt,
     /// List of milestones for multi-milestone escrows (`Vec<Milestone>`).
     /// Only present when the escrow was initialized with milestones.
     Milestones,
@@ -249,9 +253,11 @@ mod discriminant_tests {
             DataKey::MetadataHash => 14,
             DataKey::DisputeTimeoutLedgers => 15,
             DataKey::DisputeRaisedAt => 16,
-            DataKey::Milestones => 17,
-            DataKey::FeeBps => 18,
-            DataKey::Treasury => 19,
+            DataKey::GracePeriodLedgers => 17,
+            DataKey::DeliveryMarkedAt => 18,
+            DataKey::Milestones => 19,
+            DataKey::FeeBps => 20,
+            DataKey::Treasury => 21,
         }
     }
 
@@ -274,9 +280,11 @@ mod discriminant_tests {
         assert_eq!(escrow_data_key_index(&DataKey::MetadataHash), 14);
         assert_eq!(escrow_data_key_index(&DataKey::DisputeTimeoutLedgers), 15);
         assert_eq!(escrow_data_key_index(&DataKey::DisputeRaisedAt), 16);
-        assert_eq!(escrow_data_key_index(&DataKey::Milestones), 17);
-        assert_eq!(escrow_data_key_index(&DataKey::FeeBps), 18);
-        assert_eq!(escrow_data_key_index(&DataKey::Treasury), 19);
+        assert_eq!(escrow_data_key_index(&DataKey::GracePeriodLedgers), 17);
+        assert_eq!(escrow_data_key_index(&DataKey::DeliveryMarkedAt), 18);
+        assert_eq!(escrow_data_key_index(&DataKey::Milestones), 19);
+        assert_eq!(escrow_data_key_index(&DataKey::FeeBps), 20);
+        assert_eq!(escrow_data_key_index(&DataKey::Treasury), 21);
     }
 }
 
