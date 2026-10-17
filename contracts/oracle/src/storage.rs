@@ -28,6 +28,20 @@ pub enum DataKey {
     AssetPrice(Symbol),
     /// Per-asset decimal precision stored in persistent storage, keyed by asset symbol.
     AssetDecimals(Symbol),
+    /// Human-readable description for an asset feed.
+    AssetDescription(Symbol),
+    /// Per-asset TWAP observation history.
+    AssetHistory(Symbol),
+    /// Maximum accepted single-update deviation in basis points.
+    MaxDeviationBps,
+    /// Whether a feed is paused pending administrator verification.
+    FeedPaused(Symbol),
+    /// Token used for publisher bonds.
+    BondToken,
+    /// Destination for slashed publisher bonds.
+    InsuranceFund,
+    /// Bond balance held for a publisher.
+    PublisherBond(Address),
 }
 
 /// Snapshot of the oracle state returned by read entry points.
@@ -74,6 +88,8 @@ pub struct AssetFeedData {
     pub price: i128,
     /// Decimal precision of the price (e.g. 7 for XLM/USD at 7 decimals).
     pub decimals: u32,
+    /// Human-readable description of the feed.
+    pub description: soroban_sdk::String,
     /// Ledger sequence at which this price was recorded.
     pub updated_at: u32,
 }
