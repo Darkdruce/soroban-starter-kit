@@ -35,3 +35,14 @@ pub fn approved(env: &Env, owner: &Address, spender: &Address, token_id: u32) {
         token_id,
     );
 }
+
+pub fn approval_for_all(env: &Env, owner: &Address, operator: &Address, approved: bool) {
+    env.events().publish(
+        (
+            Symbol::new(env, "approval_for_all"),
+            owner.clone(),
+            operator.clone(),
+        ),
+        approved,
+    );
+}
