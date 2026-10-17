@@ -7,3 +7,4 @@ OracleError::NoPublisherData = 6
 OracleError::InsufficientHistory = 7
 OracleError::InvalidPrice = 8
 OracleError::AssetNotFound = 9
+OracleError::InsufficientQuorum = 10

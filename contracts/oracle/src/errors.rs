@@ -19,6 +19,9 @@ pub enum OracleError {
     InvalidPrice = 8,
     /// Requested asset symbol has no price feed.
     AssetNotFound = 9,
+    /// Fewer than the configured minimum quorum of fresh publishers
+    /// submitted prices for `get_median_price` (issue #1195).
+    InsufficientQuorum = 10,
 }
 
 impl_display_error!(
@@ -32,6 +35,7 @@ impl_display_error!(
     InsufficientHistory         => "insufficient history",
     InvalidPrice                => "price must be greater than zero",
     AssetNotFound               => "asset not found",
+    InsufficientQuorum          => "insufficient publisher quorum",
 );
 
 #[cfg(test)]
@@ -54,7 +58,8 @@ OracleError::InvalidStalenessThreshold = {}\n\
 OracleError::NoPublisherData = {}\n\
 OracleError::InsufficientHistory = {}\n\
 OracleError::InvalidPrice = {}\n\
-OracleError::AssetNotFound = {}\n",
+OracleError::AssetNotFound = {}\n\
+OracleError::InsufficientQuorum = {}\n",
             OracleError::AlreadyInitialized as u32,
             OracleError::NotInitialized as u32,
             OracleError::Unauthorized as u32,
@@ -64,6 +69,7 @@ OracleError::AssetNotFound = {}\n",
             OracleError::InsufficientHistory as u32,
             OracleError::InvalidPrice as u32,
             OracleError::AssetNotFound as u32,
+            OracleError::InsufficientQuorum as u32,
         )
     }
 
