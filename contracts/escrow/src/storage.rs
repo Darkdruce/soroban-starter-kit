@@ -56,6 +56,9 @@ pub enum DataKey {
     FeeBps,
     /// Treasury [`Address`] that receives the deducted fee on each release.
     Treasury,
+    /// Number of ledgers after the deadline before an abandoned funded escrow
+    /// can be refunded by its buyer.
+    AbandonmentBuffer,
 }
 
 /// Lifecycle states of an escrow.
@@ -80,6 +83,8 @@ pub enum EscrowState {
     Refunded = 5,
     /// Escrow was cancelled before funding.
     Cancelled = 6,
+    /// The buyer reclaimed funds after the abandonment window elapsed.
+    ExpiredRefunded = 7,
 }
 
 impl Default for EscrowState {
@@ -98,6 +103,7 @@ impl core::fmt::Display for EscrowState {
             EscrowState::Completed => "completed",
             EscrowState::Refunded => "refunded",
             EscrowState::Cancelled => "cancelled",
+            EscrowState::ExpiredRefunded => "expired_refunded",
         })
     }
 }
@@ -253,6 +259,10 @@ mod discriminant_tests {
             DataKey::MetadataHash => 14,
             DataKey::DisputeTimeoutLedgers => 15,
             DataKey::DisputeRaisedAt => 16,
+            DataKey::Milestones => 17,
+            DataKey::FeeBps => 18,
+            DataKey::Treasury => 19,
+            DataKey::AbandonmentBuffer => 20,
             DataKey::GracePeriodLedgers => 17,
             DataKey::DeliveryMarkedAt => 18,
             DataKey::Milestones => 19,
@@ -280,6 +290,10 @@ mod discriminant_tests {
         assert_eq!(escrow_data_key_index(&DataKey::MetadataHash), 14);
         assert_eq!(escrow_data_key_index(&DataKey::DisputeTimeoutLedgers), 15);
         assert_eq!(escrow_data_key_index(&DataKey::DisputeRaisedAt), 16);
+        assert_eq!(escrow_data_key_index(&DataKey::Milestones), 17);
+        assert_eq!(escrow_data_key_index(&DataKey::FeeBps), 18);
+        assert_eq!(escrow_data_key_index(&DataKey::Treasury), 19);
+        assert_eq!(escrow_data_key_index(&DataKey::AbandonmentBuffer), 20);
         assert_eq!(escrow_data_key_index(&DataKey::GracePeriodLedgers), 17);
         assert_eq!(escrow_data_key_index(&DataKey::DeliveryMarkedAt), 18);
         assert_eq!(escrow_data_key_index(&DataKey::Milestones), 19);

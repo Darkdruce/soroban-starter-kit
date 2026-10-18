@@ -23,6 +23,16 @@ pub enum OracleError {
     InvalidPrice = 8,
     /// Requested asset symbol has no price feed.
     AssetNotFound = 9,
+    /// The update exceeded the configured maximum deviation.
+    PriceDeviationTooHigh = 10,
+    /// The feed is paused pending administrator verification.
+    FeedPaused = 11,
+    /// The circuit-breaker threshold is invalid.
+    InvalidDeviationThreshold = 12,
+    /// The publisher has no registered bond or the penalty exceeds it.
+    InsufficientBond = 13,
+    /// Publisher bonding has not been configured.
+    BondingNotConfigured = 14,
     /// Fewer than the configured minimum quorum of fresh publishers
     /// submitted prices for `get_median_price` (issue #1195).
     InsufficientQuorum = 10,
@@ -39,6 +49,11 @@ impl_display_error!(
     InsufficientHistory         => "insufficient history",
     InvalidPrice                => "price must be greater than zero",
     AssetNotFound               => "asset not found",
+    PriceDeviationTooHigh       => "price deviation too high",
+    FeedPaused                  => "feed paused",
+    InvalidDeviationThreshold   => "invalid deviation threshold",
+    InsufficientBond            => "insufficient publisher bond",
+    BondingNotConfigured        => "publisher bonding not configured",
     InsufficientQuorum          => "insufficient publisher quorum",
 );
 
@@ -65,6 +80,11 @@ OracleError::InvalidSmoothingFactor = {}\n\
 OracleError::SubmissionTooFrequent = {}\n",
 OracleError::InvalidPrice = {}\n\
 OracleError::AssetNotFound = {}\n\
+OracleError::PriceDeviationTooHigh = {}\n\
+OracleError::FeedPaused = {}\n\
+OracleError::InvalidDeviationThreshold = {}\n\
+OracleError::InsufficientBond = {}\n\
+OracleError::BondingNotConfigured = {}\n",
 OracleError::InsufficientQuorum = {}\n",
             OracleError::AlreadyInitialized as u32,
             OracleError::NotInitialized as u32,
@@ -77,6 +97,11 @@ OracleError::InsufficientQuorum = {}\n",
             OracleError::SubmissionTooFrequent as u32,
             OracleError::InvalidPrice as u32,
             OracleError::AssetNotFound as u32,
+            OracleError::PriceDeviationTooHigh as u32,
+            OracleError::FeedPaused as u32,
+            OracleError::InvalidDeviationThreshold as u32,
+            OracleError::InsufficientBond as u32,
+            OracleError::BondingNotConfigured as u32,
             OracleError::InsufficientQuorum as u32,
         )
     }
