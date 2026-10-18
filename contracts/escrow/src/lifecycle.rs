@@ -72,6 +72,7 @@ fn store_escrow_data(
     deadline_ledger: u32,
     required_signatures: u32,
     dispute_timeout_ledgers: u32,
+    abandonment_buffer: u32,
 ) {
     env.storage().instance().set(&Buyer, buyer);
     env.storage().instance().set(&Seller, seller);
@@ -87,6 +88,9 @@ fn store_escrow_data(
     env.storage()
         .instance()
         .set(&DisputeTimeoutLedgers, &dispute_timeout_ledgers);
+    env.storage()
+        .instance()
+        .set(&AbandonmentBuffer, &abandonment_buffer);
 }
 
 fn emit_init_events(env: &Env, buyer: &Address, seller: &Address, arbiter: &Address, amount: i128) {
@@ -128,6 +132,52 @@ pub fn initialize(
         deadline_ledger,
         1u32,
         dispute_timeout_ledgers,
+        0,
+    );
+    if let Some(hash) = metadata_hash {
+        env.storage().instance().set(&DataKey::MetadataHash, &hash);
+    }
+    extend_ttl(&env);
+    emit_init_events(&env, &buyer, &seller, &arbiter, amount);
+    Ok(())
+}
+
+/// Initialize an escrow with an abandonment window after the deadline.
+#[allow(clippy::too_many_arguments)]
+pub fn initialize_with_abandonment_buffer(
+    env: Env,
+    admin: Address,
+    buyer: Address,
+    seller: Address,
+    arbiter: Address,
+    token_contract: Address,
+    amount: i128,
+    deadline_ledger: u32,
+    dispute_timeout_ledgers: u32,
+    abandonment_buffer: u32,
+    metadata_hash: Option<soroban_sdk::BytesN<32>>,
+) -> Result<(), EscrowError> {
+    if env.storage().instance().has(&State) {
+        return Err(EscrowError::AlreadyInitialized);
+    }
+    validate_amount(amount)?;
+    validate_parties(&buyer, &seller, &arbiter)?;
+    validate_deadline::<EscrowError>(&env, deadline_ledger)?;
+    token::Client::new(&env, &token_contract).decimals();
+    env.storage()
+        .instance()
+        .set(&soroban_common::AdminKey::Admin, &admin);
+    store_escrow_data(
+        &env,
+        &buyer,
+        &seller,
+        &arbiter,
+        &token_contract,
+        amount,
+        deadline_ledger,
+        1,
+        dispute_timeout_ledgers,
+        abandonment_buffer,
     );
     if let Some(grace) = grace_period_ledgers {
         env.storage()
@@ -178,6 +228,7 @@ pub fn initialize_with_arbiters(
         deadline_ledger,
         required_signatures,
         dispute_timeout_ledgers,
+        0,
     );
     env.storage().instance().set(&Arbiters, &arbiters);
     if let Some(hash) = metadata_hash {
@@ -388,6 +439,28 @@ pub fn request_partial_refund(env: Env) -> Result<(), EscrowError> {
     refund_to_buyer(env)
 }
 
+/// Reclaim an abandoned funded escrow after its deadline plus buffer.
+pub fn claim_expired_refund(env: Env) -> Result<(), EscrowError> {
+    #[cfg(feature = "pausable")]
+    crate::EscrowContract::require_not_paused(&env)?;
+
+    let buyer: Address = get_required(&env, &Buyer)?;
+    buyer.require_auth();
+    require_state(&env, EscrowState::Funded)?;
+
+    let deadline: u32 = get_required(&env, &Deadline)?;
+    let buffer: u32 = env
+        .storage()
+        .instance()
+        .get(&AbandonmentBuffer)
+        .unwrap_or(0);
+    if env.ledger().sequence() <= deadline.saturating_add(buffer) {
+        return Err(EscrowError::DeadlineNotReached);
+    }
+
+    refund_to_buyer_with_state(env, EscrowState::ExpiredRefunded)
+}
+
 pub fn cancel(env: Env) -> Result<(), EscrowError> {
     let buyer: Address = get_required(&env, &Buyer)?;
     buyer.require_auth();
@@ -522,6 +595,10 @@ pub fn release_to_seller(env: Env) -> Result<(), EscrowError> {
 }
 
 pub fn refund_to_buyer(env: Env) -> Result<(), EscrowError> {
+    refund_to_buyer_with_state(env, EscrowState::Refunded)
+}
+
+fn refund_to_buyer_with_state(env: Env, state: EscrowState) -> Result<(), EscrowError> {
     require_state(&env, EscrowState::Funded)?;
 
     let buyer: Address = get_required(&env, &Buyer)?;
@@ -531,6 +608,7 @@ pub fn refund_to_buyer(env: Env) -> Result<(), EscrowError> {
     // Checks–Effects–Interactions (#1190): finalise state and zero out amount
     // BEFORE any external token transfer.
     env.storage().instance().set(&State, &EscrowState::Refunded);
+    env.storage().instance().set(&State, &state);
     env.storage().instance().set(&Amount, &0i128);
     mark_all_milestones_released(&env);
     extend_ttl(&env);
@@ -666,6 +744,7 @@ pub fn initialize_with_milestones(
         deadline_ledger,
         1u32,
         dispute_timeout_ledgers,
+        0,
     );
     env.storage()
         .instance()
