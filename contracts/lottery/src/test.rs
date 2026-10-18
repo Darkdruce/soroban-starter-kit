@@ -60,6 +60,11 @@ fn single_winner_splits(env: &Env) -> Vec<u32> {
     Vec::from_array(env, [10_000u32])
 }
 
+fn two_winner_splits(env: &Env) -> Vec<u32> {
+    Vec::from_array(env, [6_000u32, 4_000u32])
+}
+
+/// Set up a basic lottery with one winner, no ticket cap, no min_participants.
 fn setup(env: &Env) -> (LotteryContractClient, Address, Address) {
     let admin = Address::generate(env);
     let token = env.register_contract(None, MockToken);
@@ -70,7 +75,7 @@ fn setup(env: &Env) -> (LotteryContractClient, Address, Address) {
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// Basic lifecycle tests
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -83,7 +88,7 @@ fn test_initialize() {
     assert_eq!(info.token, token);
     assert_eq!(info.ticket_price, 100);
     assert_eq!(info.state, LotteryState::Open);
-    assert!(info.participants.is_empty());
+    assert_eq!(info.total_tickets, 0);
 }
 
 #[test]
@@ -114,7 +119,8 @@ fn test_buy_ticket() {
     let (client, _, _) = setup(&env);
     let buyer = Address::generate(&env);
     client.buy_ticket(&buyer);
-    assert_eq!(client.get_info().participants.len(), 1);
+    assert_eq!(client.get_info().total_tickets, 1);
+    assert_eq!(client.get_ticket_count(&buyer), 1);
 }
 
 #[test]
@@ -172,7 +178,6 @@ fn test_draw_wrong_preimage_fails() {
     let hash = make_commit(&env, &secret, &salt);
     client.commit(&hash, &(env.ledger().sequence() + 100));
 
-    // Reveal wrong secret.
     let bad_secret: BytesN<32> = BytesN::from_array(&env, &[9u8; 32]);
     let salt_bytes: BytesN<32> = BytesN::from_array(&env, &salt);
     client.draw(&bad_secret, &salt_bytes);
@@ -193,7 +198,6 @@ fn test_buy_ticket_after_commit_fails() {
     let hash = make_commit(&env, &secret, &salt);
     client.commit(&hash, &(env.ledger().sequence() + 100));
 
-    // Should fail — lottery is no longer Open.
     let another = Address::generate(&env);
     client.buy_ticket(&another);
 }
@@ -216,7 +220,6 @@ fn test_draw_after_draw_fails() {
     let secret_bytes: BytesN<32> = BytesN::from_array(&env, &secret);
     let salt_bytes: BytesN<32> = BytesN::from_array(&env, &salt);
     client.draw(&secret_bytes, &salt_bytes);
-    // Second draw should fail.
     client.draw(&secret_bytes, &salt_bytes);
 }
 

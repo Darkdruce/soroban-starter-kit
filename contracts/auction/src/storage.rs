@@ -45,6 +45,8 @@ pub enum DataKey {
     /// Seller proceeds awaiting withdrawal after a failed direct payout in
     /// `end()` (issue #1067).
     SellerPending(Address),
+    /// Optional buy-it-now price that immediately settles the auction (issue #1294).
+    BuyItNowPrice,
 }
 
 /// Linear price-decay schedule for a Dutch auction (issue #1071).
@@ -87,4 +89,6 @@ pub struct AuctionInfo {
     pub nft_contract: Option<Address>,
     /// Token id of the escrowed item, if the auction is custodial.
     pub nft_token_id: Option<u32>,
+    /// Optional buy-it-now price for instant settlement.
+    pub buy_it_now_price: Option<i128>,
 }

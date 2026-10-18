@@ -24,6 +24,8 @@ pub enum DataKey {
     Submission(Address),
     /// Ring buffer of the last `N` price observations, oldest first (instance).
     History,
+    /// The ledger sequence of a publisher's last `submit_price` call (persistent).
+    LastSubmissionLedger(Address),
     /// Per-asset price stored in persistent storage, keyed by asset symbol.
     AssetPrice(Symbol),
     /// Per-asset decimal precision stored in persistent storage, keyed by asset symbol.
@@ -42,6 +44,9 @@ pub enum DataKey {
     InsuranceFund,
     /// Bond balance held for a publisher.
     PublisherBond(Address),
+    /// Minimum number of fresh publisher submissions required for
+    /// `get_median_price` to return a result (issue #1195).
+    MinQuorum,
 }
 
 /// Snapshot of the oracle state returned by read entry points.

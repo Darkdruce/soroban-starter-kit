@@ -406,8 +406,6 @@ mod contract {
         ///
         /// - [`CrowdfundError::NotInitialized`] if not set up.
         /// - [`CrowdfundError::DeadlineNotReached`] if the deadline has not passed and campaign not cancelled.
-        /// - [`CrowdfundError::GoalAlreadyMet`] if the goal was met (creator should claim instead).
-        /// - [`CrowdfundError::DeadlineNotReached`] if the deadline has not passed.
         /// - [`CrowdfundError::GoalAlreadyMet`] if the goal was met AND the claim window hasn't expired AND funds were claimed.
         /// - [`CrowdfundError::NothingToWithdraw`] if the caller has no pledge to refund.
         pub fn refund(env: Env, pledger: Address) -> Result<(), CrowdfundError> {
@@ -416,21 +414,19 @@ mod contract {
             let cancelled: bool = get_instance(&env, &DataKey::Cancelled)?;
             let deadline: u32 = get_instance(&env, &DataKey::Deadline)?;
 
-            // Allow refund if cancelled OR if deadline passed and goal not met
+            // Allow refund if cancelled OR if deadline passed
             if !cancelled && env.ledger().sequence() <= deadline {
                 return Err(CrowdfundError::DeadlineNotReached);
             }
 
             let goal: i128 = get_instance(&env, &DataKey::Goal)?;
             let total: i128 = get_instance(&env, &DataKey::TotalPledged)?;
-            if !cancelled && total >= goal {
-                return Err(CrowdfundError::GoalAlreadyMet);
             let claimed: bool = get_instance(&env, &DataKey::Claimed)?;
             
             // Allow refund if:
             // 1. Goal not met, OR
             // 2. Goal met BUT creator failed to claim within claim window
-            if total >= goal {
+            if !cancelled && total >= goal {
                 if claimed {
                     // Funds already claimed by creator
                     return Err(CrowdfundError::GoalAlreadyMet);
@@ -449,7 +445,7 @@ mod contract {
                     return Err(CrowdfundError::GoalAlreadyMet);
                 }
                 
-                // Claim window expired - emit event if not already emitted
+                // Claim window expired - emit event
                 events::creator_claim_expired(&env, claim_deadline);
             }
 
@@ -489,17 +485,6 @@ mod contract {
         /// - [`CrowdfundError::DeadlinePassed`] if the deadline has already passed.
         /// - [`CrowdfundError::CampaignCancelled`] if already cancelled.
         pub fn cancel_campaign(env: Env) -> Result<(), CrowdfundError> {
-        /// Set milestones for tranche-based fund release (creator only, before campaign starts).
-        /// Closes #1168
-        ///
-        /// # Errors
-        ///
-        /// - [`CrowdfundError::NotAuthorized`] if caller is not the creator.
-        /// - [`CrowdfundError::DeadlinePassed`] if campaign has already started/ended.
-        pub fn set_milestones(
-            env: Env,
-            milestones: Vec<storage::Milestone>,
-        ) -> Result<(), CrowdfundError> {
             let creator: Address = get_instance(&env, &DataKey::Creator)?;
             creator.require_auth();
 
@@ -517,6 +502,30 @@ mod contract {
 
             bump_instance(&env);
             events::campaign_cancelled(&env, &creator);
+            Ok(())
+        }
+
+        /// Set milestones for tranche-based fund release (creator only, before campaign deadline).
+        /// Closes #1168
+        ///
+        /// # Errors
+        ///
+        /// - [`CrowdfundError::NotAuthorized`] if caller is not the creator.
+        /// - [`CrowdfundError::CampaignCancelled`] if campaign is cancelled.
+        pub fn set_milestones(
+            env: Env,
+            milestones: Vec<storage::Milestone>,
+        ) -> Result<(), CrowdfundError> {
+            let creator: Address = get_instance(&env, &DataKey::Creator)?;
+            creator.require_auth();
+
+            let cancelled: bool = get_instance(&env, &DataKey::Cancelled)?;
+            if cancelled {
+                return Err(CrowdfundError::CampaignCancelled);
+            }
+
+            env.storage().instance().set(&DataKey::Milestones, &milestones);
+            bump_instance(&env);
             Ok(())
         }
 

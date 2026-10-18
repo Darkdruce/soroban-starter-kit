@@ -14,6 +14,12 @@ pub enum WrappedTokenError {
     InsufficientBalance = 5,
     InsufficientReserve = 6,
     MaxWrapExceeded = 7,
+    /// An i128 supply or amount calculation overflowed.
+    Overflow = 8,
+    /// A fee is greater than 10_000 bps, or a non-zero fee was configured without a `fee_recipient`.
+    InvalidFee = 9,
+    /// A batch call was given an empty recipient list.
+    EmptyBatch = 10,
     /// Aggregate unwrap volume in the current ledger window exceeded the cap.
     RateLimitExceeded = 8,
     /// Amount is below the configured minimum wrap/unwrap threshold.
